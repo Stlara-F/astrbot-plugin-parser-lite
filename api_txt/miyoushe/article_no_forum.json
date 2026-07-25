@@ -25,12 +25,7 @@
           "is_official": false,
           "post_status": 0
         },
-        "topic_ids": [
-          53,
-          1969,
-          1970,
-          2141
-        ],
+        "topic_ids": [53, 1969, 1970, 2141],
         "view_status": 1,
         "max_floor": 1,
         "is_original": 1,
