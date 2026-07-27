@@ -21,7 +21,7 @@ T = TypeVar("T")
 
 class WMPVPParser(BaseParser):
     platform: ClassVar[Platform] = Platform(
-        name=PlatformEnum.WMPVP, display_name="完美世界"
+        name=PlatformEnum.WMPVP, display_name="完美世界电竞"
     )
 
     async def fetch(self, decoder: Decoder[T], url: str, params: dict | None = None):
