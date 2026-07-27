@@ -110,7 +110,7 @@ class UniResponse:
                 async for chunk in self._raw.aiter_content():
                     yield chunk
         except (TransportError, RequestException) as e:
-            raise RetryableDownloadError(str(e)) from e
+            raise RetryableDownloadError(e.__repr__()) from e
 
 
 class UniHttpClient:
@@ -220,4 +220,4 @@ class UniHttpClient:
                 async with self._httpx.stream(method, url, headers=headers) as resp:
                     yield UniResponse(resp)
         except (TransportError, RequestException) as e:
-            raise RetryableDownloadError(str(e)) from e
+            raise RetryableDownloadError(e.__repr__()) from e
