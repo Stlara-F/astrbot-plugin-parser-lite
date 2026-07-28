@@ -2,7 +2,7 @@ from hashlib import md5
 from typing import ClassVar, TypeVar
 
 from msgspec.json import Decoder
-from nonebot.log import logger
+from ...utils.log import logger
 
 from ..base import (
     BaseParser,

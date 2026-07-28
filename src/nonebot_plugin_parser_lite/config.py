@@ -1,9 +1,10 @@
+import os
+from pathlib import Path as _Path
 from anyio import Path
-from nonebot import get_driver, get_plugin_config
-import nonebot_plugin_localstore as _store
 from pydantic import BaseModel
 
 from .constants import PlatformEnum
+from .utils._flags import _get_flag, _STANDALONE
 from .utils.bilibili.video import BiliVideoCodecs, BiliVideoQuality
 
 
@@ -224,14 +225,32 @@ class Config(BaseModel):
         )
 
 
-# 初始化配置实例
-_driver = get_driver()
-_cache_dir: Path = Path(_store.get_plugin_cache_dir())
-_config_dir: Path = Path(_store.get_plugin_config_dir())
-_data_dir: Path = Path(_store.get_plugin_data_dir())
-pconfig: Config = get_plugin_config(Config)
-"""插件配置"""
-gconfig = _driver.config
-"""全局配置"""
-_nickname: str = next(iter(gconfig.nickname), "nonebot-plugin-parser")
-"""机器人昵称"""
+if _STANDALONE:
+    base_dir = _Path(
+        os.environ.get(
+            "PARSER_LITE_BASE_DIR",
+            _Path(__file__).resolve().parent.parent,
+        )
+    )
+    _cache_dir: Path = Path(str(base_dir / "cache"))
+    _config_dir: Path = Path(str(base_dir / "config"))
+    _data_dir: Path = Path(str(base_dir / "data"))
+    for d in (_Path(_cache_dir), _Path(_config_dir), _Path(_data_dir)):
+        d.mkdir(parents=True, exist_ok=True)
+    pconfig: Config = Config()
+    gconfig = None
+    _nickname: str = "parser-lite"
+else:
+    from nonebot import get_driver, get_plugin_config
+    import nonebot_plugin_localstore as _store
+
+    _driver = get_driver()
+    _cache_dir: Path = Path(_store.get_plugin_cache_dir())
+    _config_dir: Path = Path(_store.get_plugin_config_dir())
+    _data_dir: Path = Path(_store.get_plugin_data_dir())
+    pconfig: Config = get_plugin_config(Config)
+    """插件配置"""
+    gconfig = _driver.config
+    """全局配置"""
+    _nickname: str = next(iter(gconfig.nickname), "nonebot-plugin-parser")
+    """机器人昵称"""

@@ -8,13 +8,20 @@ import platform
 from anyio import Path
 from DrissionPage import Chromium, ChromiumOptions
 from DrissionPage._units.listener import DataPacket as DataPacket
-from nonebot import get_driver
-from nonebot.log import logger
+
+from ._flags import _get_flag, _STANDALONE
+if _STANDALONE:
+    driver = None
+    from logging import getLogger as _getLogger
+    logger = _getLogger("parser_lite.browser")
+else:
+    from nonebot import get_driver
+    from nonebot.log import logger
+    driver = get_driver()
 
 from ..config import pconfig
 
 system = platform.system()
-driver = get_driver()
 
 
 class BrowserManager:
@@ -250,6 +257,8 @@ class BrowserManager:
                 cls._idle_task = None
 
 
-@driver.on_shutdown
-def close_browser():
-    BrowserManager.quit()
+if driver is not None:
+
+    @driver.on_shutdown
+    def close_browser():
+        BrowserManager.quit()
