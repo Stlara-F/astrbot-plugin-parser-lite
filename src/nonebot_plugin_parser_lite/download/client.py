@@ -72,6 +72,10 @@ class UniResponse:
     def content(self) -> bytes:
         return self._raw.content
 
+    @property
+    def is_success(self) -> bool:
+        return 200 <= self.status_code <= 299
+
     def json(self, **kw: Any) -> Any:
         return self._raw.json(**kw)
 
