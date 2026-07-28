@@ -5,6 +5,7 @@ from ..base import (
     DOWNLOADER,
     BaseParser,
     MatchWithParams,
+    ParseException,
     Platform,
     PlatformEnum,
     handle,
@@ -25,6 +26,12 @@ class LinuxDoParser(BaseParser):
             use_curl_cffi=True,
             headers=self.headers,
         )
+        if not res.is_success:
+            try:
+                summary = res.json()
+            except Exception:
+                summary = res.text[:100]
+            raise ParseException(f"获取帖子失败: {summary}")
         post = postDecoder.decode(res.content)
         return self.result(
             author=self.create_author(
@@ -40,7 +47,7 @@ class LinuxDoParser(BaseParser):
             stats=self.create_stats(
                 like_count=format_num(post.like_count),
                 view_count=format_num(post.views),
-                comment_count=format_num(post.posts_count),
+                comment_count=format_num(post.posts_count - 1),
             ),
             timestamp=post.detail.timestamp,
         )

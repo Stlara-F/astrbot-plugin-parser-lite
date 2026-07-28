@@ -43,7 +43,7 @@ class Response(Struct):
     title: str
     id: int
     posts_count: int
-    """跟帖数"""
+    """跟帖数,包含主贴"""
     reply_count: int
     """所有跟贴的总回复数"""
     views: int
