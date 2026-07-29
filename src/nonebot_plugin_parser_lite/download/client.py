@@ -74,7 +74,27 @@ class UniResponse:
 
     @property
     def is_success(self) -> bool:
-        return 200 <= self.status_code <= 299
+        return codes.is_success(self.status_code)
+
+    @property
+    def is_informational(self) -> bool:
+        return codes.is_informational(self.status_code)
+
+    @property
+    def is_redirect(self) -> bool:
+        return codes.is_redirect(self.status_code)
+
+    @property
+    def is_client_error(self) -> bool:
+        return codes.is_client_error(self.status_code)
+
+    @property
+    def is_server_error(self) -> bool:
+        return codes.is_server_error(self.status_code)
+
+    @property
+    def is_error(self) -> bool:
+        return codes.is_error(self.status_code)
 
     def json(self, **kw: Any) -> Any:
         return self._raw.json(**kw)
