@@ -1,4 +1,5 @@
 import os as _os
+
 _os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
 
 from .utils._flags import _STANDALONE, _get_flag  # noqa: F401
@@ -42,11 +43,11 @@ else:
     require("nonebot_plugin_localstore")
 
     from nonebot_plugin_apscheduler import scheduler
+
     from .matchers import clear_result_cache
     from .utils.browser import BrowserManager
 
 from .config import Config
-
 from .utils.cache import CacheManager
 
 __plugin_meta__ = PluginMetadata(
