@@ -1,6 +1,9 @@
 import os as _os
 _os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
 
+import os as _os
+_os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
+
 from .utils._flags import _STANDALONE, _get_flag  # noqa: F401
 
 if _STANDALONE:
