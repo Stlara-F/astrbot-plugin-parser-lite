@@ -1652,7 +1652,17 @@ class ParserLitePlugin(Star):
             for e in errlog:
                 lines.append(e)
 
-        # ── 8. 修复建议 ──
+        # ── 7. 渲染管线 (曾因 helper.py→nonebot 导入崩溃) ──
+        try:
+            from nonebot_plugin_parser_lite.render import RENDERER
+            lines.append(f"[OK] Render: templates={RENDERER.templates_dir}")
+        except Exception as e:
+            _fail("Render import (helper.py no nonebot guard)", e)
+        try:
+            import jinja2
+            lines.append("[OK] jinja2: available")
+        except ImportError:
+            lines.append("[WARN] jinja2: not installed → card rendering disabled")
         if todo:
             lines.append(f"\n── 修复建议 ({len(todo)} 项) ──")
             for i, t in enumerate(todo, 1): lines.append(f"  {i}. {t}")

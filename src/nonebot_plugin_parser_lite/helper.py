@@ -3,11 +3,26 @@ from functools import wraps
 from typing import Any, Literal
 
 from anyio import Path
-from nonebot.adapters import Event
-from nonebot.matcher import current_bot, current_event
-from nonebot_plugin_alconna import SupportAdapter, uniseg
-from nonebot_plugin_alconna.uniseg import (
-    CustomNode,
+
+from .utils._flags import _STANDALONE
+
+if _STANDALONE:
+    # Stubs for standalone mode
+    Event = object  # type: ignore
+    UniMessage = object  # type: ignore
+    ForwardNodeInner = object  # type: ignore
+    UniHelper = object  # type: ignore
+    uniseg = None  # type: ignore
+    CustomNode = object  # type: ignore
+    SupportAdapter = object  # type: ignore
+    current_bot = None  # type: ignore
+    current_event = None  # type: ignore
+else:
+    from nonebot.adapters import Event
+    from nonebot.matcher import current_bot, current_event
+    from nonebot_plugin_alconna import SupportAdapter, uniseg
+    from nonebot_plugin_alconna.uniseg import (
+        CustomNode,
     File,
     Image,
     Reference,
