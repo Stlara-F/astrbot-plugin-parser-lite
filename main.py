@@ -26,6 +26,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 _src = os.path.join(_here, "src")
 if os.path.isdir(_src):
     sys.path.insert(0, _src)
+sys.path.insert(0, _here)
 
 from astrbot.api import AstrBotConfig
 from astrbot.api import logger as astrbot_logger
