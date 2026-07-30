@@ -1,0 +1,9 @@
+name: nonebot_plugin_parser_lite
+display_name: "链接解析"
+desc: "社交媒体分享链接解析 — 支持 26 平台自动识别+卡片渲染+媒体下载, 基于 nonebot-plugin-parser-lite (PR#205 已合并)"
+version: v1.3.1
+author: Stlara-F
+repo: https://github.com/Stlara-F/nonebot-plugin-parser-lite
+support_platforms:
+  - aiocqhttp
+astrbot_version: ">=4.26.8"

@@ -1,2 +1,11 @@
 __pycache__/
 node_modules/
+.injected
+data/
+cache/
+config/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+FEATURES.md
