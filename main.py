@@ -512,6 +512,19 @@ _SLIDER_HINTS: dict[str, dict] = {
 }
 """上游字段缺少 Field(ge=,le=) 的 slider 补丁 — 上游补齐后此处自动失效"""
 
+# ── 发送策略: 从 _send_any 方法中提取支持的类型, 0 hardcode ────────────────
+def _get_sendable_types() -> list[str]:
+    """从 _send_any 方法体中扫描所有 media_type 分支, 自动生成选项列表 (战未来)"""
+    import re as _re
+    try:
+        src = inspect.getsource(ParserLitePlugin._send_any)
+    except Exception:
+        return ["card", "image", "video", "audio"]
+    types = _re.findall(r'media_type\s*==\s*"(\w+)"', src)
+    return sorted(set(types))
+
+_get_sendable_types  # 懒求值函数, 在 _BRIDGE_FIELDS 中使用 lambda 调用
+
 # bridge 语义字段: 不在上游 Config 中的 AstrBot 专属配置项, 声明式注入
 _BRIDGE_FIELDS: list[dict] = [
     {
@@ -528,6 +541,13 @@ _BRIDGE_FIELDS: list[dict] = [
         "desc": "Cookie映射(JSON)",
         "default": "{}",
         "hint": "语法: {\"平台名\":\"key1=val1; key2=val2\"}。例: {\"bilibili\":\"SESSDATA=xxx; bili_jct=yyy\",\"zhihu\":\"z_c0=zzz\"}。B站Cookie从浏览器F12→Application→Cookies→bilibili.com 复制。各平台独立，以分号分隔键值对",
+    },
+    {
+        "path": "send_strategy",
+        "type": "list",
+        "desc": "发送策略",
+        "default": lambda: _get_sendable_types(),
+        "options": lambda: _get_sendable_types(),
     },
 ]
 """AstrBot 专属字段声明: path=JSON路径, source=动态选项生成器(可选), default/hint/desc=静态元数据"""
@@ -707,13 +727,21 @@ def _inject_dynamic_options_static():
             isinstance(existing, dict) and existing.get("options") == ["__INJECT__"]
         ) or (not isinstance(existing, dict) or not existing)
         if needs_inject:
-            entry = {"type": bf["type"], "description": bf["desc"], "default": bf.get("default", [])}
+            entry = {"type": bf["type"], "description": bf["desc"]}
+            dv = bf.get("default")
+            entry["default"] = dv() if callable(dv) else (dv if dv is not None else [])
             if "items_type" in bf:
                 entry["items"] = {"type": bf["items_type"]}
             if "hint" in bf:
                 entry["hint"] = bf["hint"]
             if "source" in bf:
                 entry["options"] = bf["source"]()
+            if "options" in bf:
+                opts = bf["options"]
+                entry["options"] = opts() if callable(opts) else opts
+            if "default" in bf:
+                dv = bf["default"]
+                entry["default"] = dv() if callable(dv) else dv
             obj[last] = entry
             updated = True; injected.append(bf["path"])
 
@@ -1425,6 +1453,17 @@ class ParserLitePlugin(Star):
     async def on_message(self, event: AstrMessageEvent):
         await self._handle_card_message(event)
 
+    def _should_send(self, media_type: str) -> bool:
+        """发送策略门: 从配置读取, 默认从 _send_any 自动扫描的全部类型"""
+        try:
+            s = (BridgeConfig._source or {}).get("send_strategy", _get_sendable_types())
+            if isinstance(s, str):
+                try: s = json.loads(s)
+                except Exception: s = _get_sendable_types()
+            return media_type in (s if isinstance(s, list) else [])
+        except Exception:
+            return True
+
     async def _handle_card_message(self, event: AstrMessageEvent):
         # 二选一门: 用原始 message_id 去重 (跨 handler 实例)
         msg_id = None
@@ -1448,7 +1487,8 @@ class ParserLitePlugin(Star):
         for url in urls[:3]:
             result = await self._parse_raw(url)
             if result is None: continue
-            await self._send_card(event, result)
+            if self._should_send("card"):
+                await self._send_card(event, result)
             for item in result.content:
                 if hasattr(item, "path_task"):
                     try:
@@ -1456,11 +1496,14 @@ class ParserLitePlugin(Star):
                         dur = getattr(item, "duration", 0.0)
                         p = Path(str(await item.path_task))
                         if isinstance(item, (ImageContent, GraphicContent)):
-                            await self._send_any(event, p, "image", source_url=src_url)
+                            if self._should_send("image"):
+                                await self._send_any(event, p, "image", source_url=src_url)
                         elif isinstance(item, VideoContent):
-                            await self._send_any(event, p, "video", source_url=src_url, duration=dur)
+                            if self._should_send("video"):
+                                await self._send_any(event, p, "video", source_url=src_url, duration=dur)
                         elif isinstance(item, AudioContent):
-                            await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
+                            if self._should_send("audio"):
+                                await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
                     except Exception: pass
 
     # ── 命令 ──────────────────────────────────────────────────────────────────
@@ -1476,7 +1519,8 @@ class ParserLitePlugin(Star):
             result = await self._parse_raw(url)
             if result is None:
                 yield event.plain_result("不支持的链接"); return
-            await self._send_card(event, result)
+            if self._should_send("card"):
+                await self._send_card(event, result)
             for item in result.content:
                 if hasattr(item, "path_task"):
                     try:
@@ -1484,11 +1528,14 @@ class ParserLitePlugin(Star):
                         dur = getattr(item, "duration", 0.0)
                         p = Path(str(await item.path_task))
                         if isinstance(item, (ImageContent, GraphicContent)):
-                            await self._send_any(event, p, "image", source_url=src_url)
+                            if self._should_send("image"):
+                                await self._send_any(event, p, "image", source_url=src_url)
                         elif isinstance(item, VideoContent):
-                            await self._send_any(event, p, "video", source_url=src_url, duration=dur)
+                            if self._should_send("video"):
+                                await self._send_any(event, p, "video", source_url=src_url, duration=dur)
                         elif isinstance(item, AudioContent):
-                            await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
+                            if self._should_send("audio"):
+                                await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
                     except Exception: pass
             if result.platform and result.platform.name == "bilibili":
                 LazyManager.add(self._key(event), result, result.url,
