@@ -69,6 +69,42 @@ from nonebot_plugin_parser_lite.data import (
     VideoContent,
 )
 from nonebot_plugin_parser_lite.download import DOWNLOADER
+
+_last_proxy: str | None = None
+
+def _apply_downloader_proxy(proxy_url: str):
+    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端 (env var 对这两个库无效)"""
+    global _last_proxy
+    if proxy_url == (_last_proxy or ""):
+        return
+    _last_proxy = proxy_url
+    from curl_cffi import AsyncSession as CurlSession
+    from httpx import AsyncClient as HttpxClient
+    from httpx import Timeout
+    client = DOWNLOADER.client
+    if hasattr(client, "_httpx"):
+        try:
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(client._httpx.aclose())
+        except Exception:
+            pass
+    if hasattr(client, "_curl"):
+        try:
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(client._curl.close())
+        except Exception:
+            pass
+    if not proxy_url:
+        client._httpx = HttpxClient(verify=False, follow_redirects=True,
+                                     timeout=Timeout(timeout=15))
+        client._curl = CurlSession(impersonate="chrome146", timeout=240,
+                                    verify=False, allow_redirects=True)
+    else:
+        client._httpx = HttpxClient(proxy=proxy_url.strip(), verify=False,
+                                     follow_redirects=True, timeout=Timeout(timeout=15))
+        client._curl = CurlSession(proxy=proxy_url.strip(), impersonate="chrome146",
+                                    timeout=240, verify=False, allow_redirects=True)
+    astrbot_logger.info(f"[ParserLite] downloader proxy: {proxy_url or 'disabled'}")
 from nonebot_plugin_parser_lite.parsers.base import BaseParser
 from nonebot_plugin_parser_lite.utils.cache import CacheManager
 from nonebot_plugin_parser_lite.utils.common import LimitedSizeDict
@@ -123,10 +159,7 @@ class BridgeConfig:
         DOWNLOADER.MAX_RETRIES = _cfg.max_retries
         DOWNLOADER.max_size_mb = _cfg.max_size
         proxy = (cls._source or {}).get("plite_http_proxy", "")
-        if proxy:
-            os.environ["ALL_PROXY"] = str(proxy)
-        else:
-            os.environ.pop("ALL_PROXY", None)
+        _apply_downloader_proxy(proxy)
         astrbot_logger.debug(f"[ParserLite] configure: {len(valid)} fields, dirty={h != cls._hash}")
 
     @classmethod
@@ -246,15 +279,7 @@ class ParserLite:
         # ③ 双路重试 (代理/直连)
         for attempt in (0, 1):
             use_proxy_now = (proxy_first and attempt == 0) or (not proxy_first and attempt == 1)
-            if proxy_url:
-                if use_proxy_now:
-                    for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
-                        os.environ[k] = str(proxy_url).strip()
-                else:
-                    for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
-                        os.environ.pop(k, None)
-            if hasattr(DOWNLOADER, "ensure_client"):
-                DOWNLOADER.ensure_client()
+            _apply_downloader_proxy(proxy_url if use_proxy_now else "")
             try:
                 for parser_cls in ordered:
                     pname = getattr(getattr(parser_cls, "platform", None), "name", "")

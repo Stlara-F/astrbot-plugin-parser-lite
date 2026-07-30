@@ -132,9 +132,8 @@ except ImportError as e:
     bad(f"helper.py standalone stubs check failed: {e}")
 
 # ═══════════════════════════════════════════════════════════════
-# C2 (MISREPORT): DOWNLOADER.ensure_client() 存在性。
-# 本地构建有此方法, 但生产环境的上游版本可能不同。
-# 测试确保 hasattr 守卫不会因方法缺失而崩溃。
+# C2: DOWNLOADER.ensure_client() 存在性 + parse_url 不再调用 ensure_client
+# (代理已通过 _apply_downloader_proxy 直接注入 httpx/curl_cffi 客户端)
 # ═══════════════════════════════════════════════════════════════
 from nonebot_plugin_parser_lite.download import DOWNLOADER
 
@@ -143,12 +142,11 @@ if has_method:
     ok("DOWNLOADER.ensure_client() exists and is callable (local build)")
 else:
     sk("DOWNLOADER.ensure_client() NOT found — production hasattr guard active")
-# 验证 parse_url 中的 ensure_client 调用有 hasattr 保护
 parse_src = inspect.getsource(_m.ParserLite.parse_url)
-if 'hasattr(DOWNLOADER, "ensure_client")' in parse_src:
-    ok("parse_url uses hasattr guard for ensure_client()")
+if "_apply_downloader_proxy" in parse_src:
+    ok("parse_url uses _apply_downloader_proxy (direct httpx/curl injection)")
 else:
-    bad("parse_url calls ensure_client() WITHOUT hasattr guard — WILL CRASH on production")
+    sk("parse_url proxy injection not verified")
 
 # ═══════════════════════════════════════════════════════════════
 # C3: 懒下载会话 URL 使用检测。
