@@ -6,7 +6,15 @@ PR#205 merged → sokoko-org/main. Runs inside nonebot_plugin_parser_lite/ packa
 
 from __future__ import annotations
 
-import asyncio, functools, inspect, json, logging, os, re, sys, time, traceback
+import asyncio
+import inspect
+import json
+import logging
+import os
+import re
+import sys
+import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -51,8 +59,11 @@ class _LoguruBridge(logging.Handler):
 # ── 上游 imports ───────────────────────────────────────────────────────────────
 from nonebot_plugin_parser_lite.config import Config as _UpConfig
 from nonebot_plugin_parser_lite.data import (
-    ParseResult, Comment, ImageContent, VideoContent, AudioContent, GraphicContent,
-    LinkContent, LivePhotoContent, StickerContent,
+    AudioContent,
+    GraphicContent,
+    ImageContent,
+    ParseResult,
+    VideoContent,
 )
 from nonebot_plugin_parser_lite.parsers.base import BaseParser
 from nonebot_plugin_parser_lite.download import DOWNLOADER

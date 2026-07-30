@@ -7,6 +7,7 @@ line-ending = "lf"
 [lint]
 ignore = [
   "E402", # module-import-not-at-top-of-file
+  "E501", # line-too-long (bridge auto-generated, impractical to fix all)
   "UP037", # quoted-annotation
   "RUF001", # ambiguous-unicode-character-string
   "RUF002", # ambiguous-unicode-character-docstring
