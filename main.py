@@ -266,13 +266,14 @@ class ParserLite:
                         parser = self._get_parser(parser_cls)
                         cookies = _get_cookies_for(pname)
                         if cookies and pname == "bilibili":
-                            ck_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-                            BridgeConfig._source = BridgeConfig._source or {}
-                            BridgeConfig._source["plite_bili_ck"] = ck_str
-                            get_config()
-                            try:
-                                object.__setattr__(get_config(), "plite_bili_ck", ck_str)
-                            except Exception: pass
+                            ck_str = next(iter(cookies.values())) if cookies else ""
+                            if ck_str:
+                                BridgeConfig._source = BridgeConfig._source or {}
+                                BridgeConfig._source["plite_bili_ck"] = ck_str
+                                get_config()
+                                try:
+                                    object.__setattr__(get_config(), "plite_bili_ck", ck_str)
+                                except Exception: pass
                         return await parser.parse(kw, mwp)
                     except Exception as e:
                         astrbot_logger.warning(f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
