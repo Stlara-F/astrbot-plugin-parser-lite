@@ -1464,6 +1464,68 @@ class ParserLitePlugin(Star):
         except Exception:
             return True
 
+    async def _send_items(self, event: AstrMessageEvent, items: list, result: ParseResult):
+        """统一发送入口: 超过4项且配置允许 → 合并转发, 否则逐一发送"""
+        need_forward = (
+            get_config().need_forward_contents
+            and len([i for i in items if hasattr(i, "path_task")]) > 4
+        )
+        if need_forward:
+            await self._send_as_forward(event, items, result)
+        else:
+            for item in items:
+                await self._send_one(event, item)
+
+    async def _send_one(self, event: AstrMessageEvent, item):
+        """发送单个媒体项"""
+        if not hasattr(item, "path_task"): return
+        try:
+            src_url = getattr(item.path_task, "url", "")
+            dur = getattr(item, "duration", 0.0)
+            p = Path(str(await item.path_task))
+            if isinstance(item, (ImageContent, GraphicContent)):
+                if self._should_send("image"):
+                    await self._send_any(event, p, "image", source_url=src_url)
+            elif isinstance(item, VideoContent):
+                if self._should_send("video"):
+                    await self._send_any(event, p, "video", source_url=src_url, duration=dur)
+            elif isinstance(item, AudioContent):
+                if self._should_send("audio"):
+                    await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
+        except Exception: pass
+
+    async def _send_as_forward(self, event: AstrMessageEvent, items: list, result: ParseResult):
+        """合并转发: 将多项媒体内容打包为 Comp.Nodes (移植自上游 Renderer.__build_forward_segs)"""
+        nodes = []
+        author = result.author.name if result.author and result.author.name else "解析"
+        platform = result.platform.display_name if result.platform else ""
+        MAX_PER_NODE = 90  # OneBot 限制
+
+        for item in items:
+            if not hasattr(item, "path_task"): continue
+            if len(nodes) >= MAX_PER_NODE: break
+            try:
+                p = Path(str(await item.path_task))
+                if isinstance(item, ImageContent):
+                    nodes.append(Comp.Node(
+                        content=[Comp.Plain(f"{author} | {platform}"),
+                                 Comp.Image.fromFileSystem(str(p))],
+                        name=author, uin="0"))
+                elif isinstance(item, VideoContent):
+                    nodes.append(Comp.Node(
+                        content=[Comp.Plain(f"{author} 的视频"),
+                                 Comp.Video.fromFileSystem(str(p))],
+                        name=author, uin="0"))
+                elif isinstance(item, AudioContent):
+                    nodes.append(Comp.Node(
+                        content=[Comp.Plain(f"{author} 的音频"),
+                                 Comp.Record.fromFileSystem(str(p))],
+                        name=author, uin="0"))
+            except Exception: pass
+
+        if nodes:
+            await event.send(event.chain_result([Comp.Nodes(nodes=nodes)]))
+
     async def _handle_card_message(self, event: AstrMessageEvent):
         # 二选一门: 用原始 message_id 去重 (跨 handler 实例)
         msg_id = None
@@ -1489,22 +1551,7 @@ class ParserLitePlugin(Star):
             if result is None: continue
             if self._should_send("card"):
                 await self._send_card(event, result)
-            for item in result.content:
-                if hasattr(item, "path_task"):
-                    try:
-                        src_url = getattr(item.path_task, "url", "")
-                        dur = getattr(item, "duration", 0.0)
-                        p = Path(str(await item.path_task))
-                        if isinstance(item, (ImageContent, GraphicContent)):
-                            if self._should_send("image"):
-                                await self._send_any(event, p, "image", source_url=src_url)
-                        elif isinstance(item, VideoContent):
-                            if self._should_send("video"):
-                                await self._send_any(event, p, "video", source_url=src_url, duration=dur)
-                        elif isinstance(item, AudioContent):
-                            if self._should_send("audio"):
-                                await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
-                    except Exception: pass
+            await self._send_items(event, result.content, result)
 
     # ── 命令 ──────────────────────────────────────────────────────────────────
     async def cmd_parse(self, event: AstrMessageEvent):
@@ -1521,22 +1568,7 @@ class ParserLitePlugin(Star):
                 yield event.plain_result("不支持的链接"); return
             if self._should_send("card"):
                 await self._send_card(event, result)
-            for item in result.content:
-                if hasattr(item, "path_task"):
-                    try:
-                        src_url = getattr(item.path_task, "url", "")
-                        dur = getattr(item, "duration", 0.0)
-                        p = Path(str(await item.path_task))
-                        if isinstance(item, (ImageContent, GraphicContent)):
-                            if self._should_send("image"):
-                                await self._send_any(event, p, "image", source_url=src_url)
-                        elif isinstance(item, VideoContent):
-                            if self._should_send("video"):
-                                await self._send_any(event, p, "video", source_url=src_url, duration=dur)
-                        elif isinstance(item, AudioContent):
-                            if self._should_send("audio"):
-                                await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
-                    except Exception: pass
+            await self._send_items(event, result.content, result)
             if result.platform and result.platform.name == "bilibili":
                 LazyManager.add(self._key(event), result, result.url,
                                 get_config().plite_lazy_download_timeout)
