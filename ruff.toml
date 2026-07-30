@@ -11,6 +11,7 @@ ignore = [
   "E701", # multiple-statements-on-one-line-colon (bridge style)
   "E702", # multiple-statements-on-one-line-semicolon (bridge style)
   "ASYNC240", # async-pathlib (bridge use of Path in async context)
+  "RUF100", # unused-noqa (E501 removed from enabled rules, makes upstream noqa stale)
   "UP037", # quoted-annotation
   "RUF001", # ambiguous-unicode-character-string
   "RUF002", # ambiguous-unicode-character-docstring
