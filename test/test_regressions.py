@@ -114,12 +114,17 @@ try:
     ok("upstream package imports without nonebot dependency")
 except ImportError as e:
     bad(f"upstream package import failed: {e}")
-# 验证 helper.py standalone stub 完整性 (Segment/Reference 缺失曾导致渲染崩溃)
+# 验证 helper.py standalone stub 完整性 (逐个缺失曾导致多次渲染崩溃)
+stubs_needed = ["Segment", "Reference", "Image", "Video", "File", "Voice", "Text", "CustomNode", "UniMessage"]
 try:
-    from nonebot_plugin_parser_lite.helper import Segment, Reference
-    ok("helper.py standalone stubs: Segment + Reference defined")
+    from nonebot_plugin_parser_lite import helper as _hp
+    missing = [s for s in stubs_needed if not hasattr(_hp, s)]
+    if not missing:
+        ok(f"helper.py standalone stubs: all {len(stubs_needed)} types defined")
+    else:
+        bad(f"helper.py standalone stubs missing: {missing}")
 except ImportError as e:
-    bad(f"helper.py standalone stubs missing: {e}")
+    bad(f"helper.py standalone stubs check failed: {e}")
 
 # ═══════════════════════════════════════════════════════════════
 # C2 (MISREPORT): DOWNLOADER.ensure_client() 存在性。

@@ -7,17 +7,22 @@ from anyio import Path
 from .utils._flags import _STANDALONE
 
 if _STANDALONE:
-    # Stubs for standalone mode
-    Event = object  # type: ignore
-    Segment = object  # type: ignore
-    Reference = object  # type: ignore
-    UniMessage = object  # type: ignore
-    UniHelper = object  # type: ignore
-    uniseg = None  # type: ignore
-    CustomNode = object  # type: ignore
-    SupportAdapter = object  # type: ignore
-    current_bot = None  # type: ignore
-    current_event = None  # type: ignore
+    # Stubs for standalone mode: 所有 nonebot_plugin_alconna.uniseg 导入类型
+    Event = object          # type: ignore
+    Segment = object        # type: ignore
+    Reference = object      # type: ignore
+    UniMessage = object     # type: ignore
+    UniHelper = object      # type: ignore
+    CustomNode = object     # type: ignore
+    Image = object          # type: ignore
+    Video = object          # type: ignore
+    File = object           # type: ignore
+    Voice = object          # type: ignore
+    Text = object           # type: ignore
+    uniseg = None           # type: ignore
+    SupportAdapter = object # type: ignore
+    current_bot = None      # type: ignore
+    current_event = None    # type: ignore
 else:
     from nonebot.adapters import Event
     from nonebot.matcher import current_bot, current_event
