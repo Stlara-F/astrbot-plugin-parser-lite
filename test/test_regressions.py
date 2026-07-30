@@ -334,6 +334,53 @@ try:
 except ImportError as _e:
     bad(f"test.test_parsers import FAILED (plugin root not in sys.path): {_e}")
 
+# ═══════════════════════════════════════════════════════════════
+# C18: _send_card cache hit 直接发送 fromBytes, 不走 _send_any 文件路径
+# (_send_any 遇到不存在的文件直接 return 不抛异常, fromBytes 回退永远不会执行)
+# ═══════════════════════════════════════════════════════════════
+card_src = inspect.getsource(_m.ParserLitePlugin._send_card)
+if "_CARD_CACHE" in card_src and "fromBytes" in card_src:
+    if "send_any" not in card_src.split("cache_key")[-1].split("return")[0]:
+        ok("card cache hit sends fromBytes directly (no _send_any dead path)")
+    else:
+        bad("card cache hit still uses _send_any with missing file path")
+else:
+    sk("card cache verification incomplete")
+
+# ═══════════════════════════════════════════════════════════════
+# C19: _is_parser_enabled 读取正确的 disabled_platforms 字段
+# (原实现读取 parsers.disabled, 但注入的 schema 只有 plite_disabled_platforms)
+# ═══════════════════════════════════════════════════════════════
+ie_src = inspect.getsource(_m._is_parser_enabled)
+if "disabled_platforms" in ie_src:
+    ok("_is_parser_enabled uses disabled_platforms (upstream config)")
+else:
+    bad("_is_parser_enabled does NOT reference disabled_platforms")
+
+# ═══════════════════════════════════════════════════════════════
+# C20: B站 cookie 写入正确的 pydantic 字段 plite_bili_ck
+# (原实现 setattr(get_config(), '_bili_ck', ...), BilibiliParser 读取的是 pconfig.bili_ck)
+# ═══════════════════════════════════════════════════════════════
+parse_src2 = inspect.getsource(_m.ParserLite.parse_url)
+if "plite_bili_ck" in parse_src2:
+    ok("parse_url sets plite_bili_ck for bilibili cookie injection")
+elif "_bili_ck" in parse_src2:
+    bad("parse_url sets _bili_ck (private attr, not read by BilibiliParser)")
+else:
+    sk("cookie injection path not verified")
+
+# ═══════════════════════════════════════════════════════════════
+# C21: _on_download_trigger 使用懒下载会话的 URL 而非重新扫描触发消息
+# (原实现调用 cmd_parse(event), 触发消息只含 "xz"/"下载", 永远查不到 URL)
+# ═══════════════════════════════════════════════════════════════
+dt_src = inspect.getsource(_m.ParserLitePlugin._on_download_trigger)
+if "session.url" in dt_src and "cmd_parse" not in dt_src:
+    ok("_on_download_trigger uses session.url (not cmd_parse re-scan)")
+elif "cmd_parse" in dt_src:
+    bad("_on_download_trigger still delegates to cmd_parse (will miss lazy URL)")
+else:
+    sk("_on_download_trigger verification incomplete")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass

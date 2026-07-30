@@ -182,7 +182,11 @@ def _load_parsers_config() -> dict:
     except Exception: return {}
 
 def _is_parser_enabled(platform: str) -> bool:
-    return platform not in _load_parsers_config().get("disabled", [])
+    try:
+        cfg = get_config()
+        return platform not in [p.name.lower() if hasattr(p, "name") else str(p).lower() for p in (cfg.disabled_platforms if hasattr(cfg, "disabled_platforms") else [])]
+    except Exception:
+        return True
 
 def _use_proxy_for(platform: str):
     try:
@@ -262,11 +266,10 @@ class ParserLite:
                     try:
                         parser = self._get_parser(parser_cls)
                         cookies = _get_cookies_for(pname)
-                        if cookies:
+                        if cookies and pname == "bilibili":
+                            ck_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
                             try:
-                                ck_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-                                if hasattr(get_config(), "bili_ck") and pname == "bilibili":
-                                    setattr(get_config(), "_bili_ck", ck_str)
+                                object.__setattr__(get_config(), "plite_bili_ck", ck_str)
                             except Exception: pass
                         return await parser.parse(kw, mwp)
                     except Exception as e:
@@ -1420,10 +1423,7 @@ class ParserLitePlugin(Star):
         cache_key = result.url
         if cache_key in _CARD_CACHE:
             data = _CARD_CACHE[cache_key]
-            try:
-                await self._send_any(event, Path(str(get_config().cache_dir)) / f"_card_{hash(cache_key)}.jpg", "card")
-            except Exception:
-                await event.send(event.chain_result([Comp.Image.fromBytes(data)]))
+            await event.send(event.chain_result([Comp.Image.fromBytes(data)]))
             astrbot_logger.info(f"[ParserLite] card cache hit ({len(data)} bytes)")
             return
 
@@ -1615,7 +1615,13 @@ class ParserLitePlugin(Star):
         if not session:
             yield event.plain_result("没有待下载的链接"); return
         LazyManager.remove(key)
-        async for _ in self.cmd_parse(event): yield _
+        result = await self._parse_raw(session.url)
+        if result is None:
+            yield event.plain_result("不支持的链接"); return
+        if self._should_send("card"):
+            await self._send_card(event, result)
+        await self._send_items(event, result.content, result)
+        yield event.plain_result("已下载")
 
     async def cmd_clean(self, event: AstrMessageEvent):
         count = await self._do_clean_cache()
