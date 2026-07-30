@@ -1,241 +1,76 @@
-<div align="center">
-<a href="https://v2.nonebot.dev/store">
-    <img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-template/refs/heads/resource/.docs/NoneBotPlugin.svg" width="310" alt="logo">
+# ✨ AstrBot 链接分享自动解析插件 ✨
 
-</a>
+基于 [nonebot-plugin-parser-lite](https://github.com/sokoko-org/nonebot-plugin-parser-lite) 的 AstrBot 适配版。上游核心解析能力完整保留，AstrBot 桥接层零侵入。
 
-## ✨ [Nonebot2](https://github.com/nonebot/nonebot2) 链接分享自动解析插件 ✨
-
-[![Code style: djlint](https://img.shields.io/badge/html%20style-djlint-blue.svg)](https://www.djlint.com)
-
-</div>
-
-> [!IMPORTANT]
->
-> 严禁将本项目用于任何非法用途
->
-> 由于使用不当造成的一切责任由使用者承担，本项目维护者无任何责任
+> 桥接代码: `main.py` (~800行) | 上游改动: `requirements.txt` (1文件, 适配AstrBot依赖)
 
 ## 📖 支持的平台
 
-| 平台                 | 图文 | 评论区渲染    | 视频 | Live Photo |
-| :------------------- | :--- | :------------ | :--- | :--------- |
-| **B 站**             | ✅   | ✅            | ✅   | ✅         |
-| **抖音**             | ✅   | ⛔ _(仅图文)_ | ✅   | ✅         |
-| **微博**             | ✅   | ✅            | ✅   | ✅         |
-| **小红书**           | ✅   | ✅            | ✅   | ✅         |
-| **快手**             | ✅   | ❌            | ✅   | 🚫         |
-| **AcFun**            | ✅   | ❌            | ✅   | 🚫         |
-| **X (Twitter)**      | ✅   | ❌            | ✅   | 🚫         |
-| **百度贴吧**         | ✅   | ✅            | ❌   | 🚫         |
-| **知乎**             | ✅   | ✅            | ✅   | 🚫         |
-| **堆糖**             | ✅   | ✅            | 🚫   | 🚫         |
-| **小黑盒**           | ✅   | ✅            | ✅   | 🚫         |
-| **ILLU**             | ✅   | ✅            | 🚫   | 🚫         |
-| **LOFTER**           | ✅   | ✅            | 🚫   | 🚫         |
-| **网易 BUFF**        | ✅   | ✅            | 🚫   | 🚫         |
-| **酷安**             | ✅   | ✅            | 🚫   | 🚫         |
-| **虎扑**             | ✅   | ✅            | ✅   | 🚫         |
-| **米游社**           | ✅   | ✅            | ✅   | 🚫         |
-| **豆瓣**             | ✅   | ✅            | 🚫   | 🚫         |
-| **5EPlay**           | ✅   | ✅            | ✅   | 🚫         |
-| **豆包**             | 🚫   | 🚫            | ✅   | 🚫         |
-| **Linux Do**         | ✅   | ✅            | 🚫   | 🚫         |
-| **完美世界竞技平台** | ✅   | ✅            | ✅   | 🚫         |
-
-| 平台           | 音频支持 | 评论区渲染 |
-| :------------- | :------- | :--------- |
-| **网易云音乐** | ✅       | ❌         |
-| **酷狗音乐**   | ✅       | ❌         |
-| **汽水音乐**   | ✅       | ❌         |
-| **酷我音乐**   | ✅       | ❌         |
-
-> 💡 **标识说明**
->
-> - ✅ 表示完整支持解析与富文本渲染
-> - ❌ 表示插件尚未适配该模块
-> - 🚫 表示该平台暂无此类内容形态 (如有遗漏或平台更新，欢迎提交 Issue 告知)
-> - **图文**：指代一切以文本为主体、图片混排、多图相册、社区长文、问答、多媒体笔记等内容形态。
-
-支持的链接，可参考 [测试链接](https://github.com/fllesser/nonebot-plugin-parser/blob/master/tests/others/test_urls.md)
+上游支持的 26 个平台全部可用（B站、抖音、微博、小红书、快手、AcFun、X、贴吧、知乎、豆瓣、酷安、虎扑、小黑盒、米游社、LOFTER、5EPlay、ILLU、堆糖、BUFF、豆包、Linux Do、完美世界 及 网易云/酷狗/汽水/酷我音乐）。详见 [上游 README](https://github.com/sokoko-org/nonebot-plugin-parser-lite#readme)。
 
 ## 💿 安装
 
-把`src/nonebot_plugin_parser_lite`文件夹复制到插件加载目录(比如`plugins`)
-
-<details>
-<summary>pip</summary>
+将整个 `nonebot_plugin_parser_lite/` 目录放入 AstrBot `data/plugins/`，重启即可。首次启动自动安装 Chromium（卡片渲染用）。
 
 ```shell
+# 在 AstrBot 插件目录下安装依赖
 pip install -r requirements.txt
 ```
 
-</details>
+## 🎉 指令
 
-<details>
-<summary>uv</summary>
+| 指令 | 说明 |
+|------|------|
+| `parse <url>` | 解析链接，返回卡片+媒体文件 |
+| `parse_doctor` | 全自动诊断（7阶段, 含堆栈+修复建议） |
+| `parse_status` | 运行状态 |
+| `parse_clean` | 清理缓存 |
+| `parse_enable` / `parse_disable` | 群开关 |
+| `parse_install_chromium` | 手动安装 Chromium |
+| `cmd_bm <BV号>` | 下载B站音频 |
+| `cmd_blogin` | B站扫码登录（发送二维码图片） |
 
-```shell
-uv add --requirements requirements.txt
-```
-
-</details>
-
-## 🎈 特性
-
-- 评论区渲染支持
-- 通用的基础模板，便于拓展自定义
-- 富文本内容渲染支持
-
-<details>
-<summary>渲染效果</summary>
-
-|                                                                            哔哩哔哩                                                                             |                                                                               小红书                                                                                |
-| :-------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------------------------------------------: |
-| <img width="1240" height="2880" alt="142f794a8df94207bf742c75434c942b" src="https://github.com/user-attachments/assets/7c73228d-bf1c-44e1-96be-adcf9ef32f85" /> | <img width="1240" height="5382" alt="203b2500-2393-53c4-901c-77169489e4ee" src="https://github.com/user-attachments/assets/969290cd-9bb3-4945-8f26-8d6cdeb51f57" /> |
-
-</details>
+AstrBot 中命令前缀 `/` 会自动识别，输入 `/parse_doctor` 或 `parse_doctor` 均可触发。自动解析：群内发送任何含 URL 的消息（文本/卡片/小程序）自动解析，无需命令。
 
 ## ⚙️ 配置
 
-> [!NOTE]
->
-> 插件会自动使用系统环境中的http系统代理进行网络请求
+在 AstrBot WebUI 插件配置面板中修改。所有配置项（含下拉选项、平台列表、解析器开关）从上游代码**动态注入**，0 hardcode。上游新增字段/解析器自动出现在面板中。
 
-<details>
-<summary>配置项</summary>
+首次安装后配置自动注入，`.injected` 文件标记已注入状态，后续重启跳过注入保留用户修改。删除 `.injected` 或恢复 `__INJECT__` 标记可强制重新注入。
 
-```bash
-# [可选] nonebot2 内置配置，若服务器上传带宽太低或报错发送消息超时，建议调高，防止超时
-API_TIMEOUT=100
+## 🧠 工作原理
 
-# [可选] B 站 cookie, 必须含有 SESSDATA 项，可附加 B 站 AI 总结功能
-# 获取方式（觉得麻烦可以看最下面的指令扫码登陆）
-# B站网页打开开发者工具，切换到网络标签页，刷新后点击一个类型为`fetch`的网络请求复制请求头中 Cookie 的全部内容
-# 若希望cookie会自动刷新,请进入控制台，输入 window.localStorage.ac_time_value 并执行即可获取其值。
-# 然后按照如下格式填写，xxxx为你的 Cookie 内容, abc 为 ac_time_value 的值
-plite_bili_ck="xxxxxxxxxx;ac_time_value=abc"
-
-# [可选] 允许的 B 站视频编码，越靠前的编码优先级越高
-# 可选 "avc"(H.264，体积较大), "hev"(HEVC), "av01"(AV1), "unknown"(未知)
-# 后两项在不同设备可能有兼容性问题，如需完全避免，可只填一项，如 '["avc"]'
-plite_bili_video_codes=["avc", "av01", "hev", "unknown"]
-
-# [可选] B 站视频清晰度
-# 360p(16), 480p(32), 720p(64), 1080p(80), 1080p+(112), 1080p_60(116), 4k(120)
-plite_bili_video_quality=80
-
-# [可选] 音频解析，是否需要上传群文件
-plite_need_upload_audio=False
-
-# [可选] 视频解析，是否需要上传群文件
-plite_need_upload_video=False
-
-# [可选] 视频，图片，音频是否使用 base64 发送
-# 注意：编解码和传输 base64 会占用更多的内存,性能和带宽, 甚至可能会使 websocket 连接崩溃
-# 因此该配置项仅推荐 nonebot 和 协议端不在同一机器的用户配置
-plite_use_base64=False
-
-# [可选] 视频最大解析时长，单位：秒
-plite_duration_maximum=480
-
-# [可选] 音视频下载最大文件大小，单位 MB，超过该配置将阻断下载
-plite_max_size=90
-
-# [可选] 全局禁止的解析
-# 示例 plite_disabled_platforms=["bilibili", "douyin"] 表示禁止了哔哩哔哩和抖音
-# 可选值: ["bilibili", "douyin", "kuaishou", "x", "acfun", "weibo", "rednote"]
-plite_disabled_platforms=["x"]
-
-# [可选] 黑名单用户列表
-# 示例 plite_blacklist=["QQClient_123456"]
-plite_blacklist_users=[]
-
-# [可选] 是否在解析结果中附加原始URL
-plite_append_url=False
-
-# [可选] 是否在解析结果中添加原始URL二维码
-plite_append_qrcode=False
-
-# [可选] 是否需要转发媒体内容(超过 4 项时始终使用合并转发)
-plite_need_forward_contents=True
-
-# [可选] 是否开启懒下载模式，仅在用户请求时才下载视频
-plite_lazy_download=False
-
-# [可选] 懒下载是否发送命令提示
-plite_lazy_download_tip=False
-
-# [可选] 懒下载模式等待命令超时时间
-plite_lazy_download_timeout=30
-
-# [可选] 在懒下载模式中用户请求下载视频时的命令列表
-plite_download_command=["xz", "下载"]
-
-# [可选] 浏览器程序路径，如果无法识别浏览器请填写此配置
-plite_browser_path=""
-
-# [可选] 是否使用 ffmpeg 转码 Live Photo，若设备配置不佳，请禁用此功能
-# 禁用后将分别发送 Live Photo 底图和动图部分
-plite_live_photo=True
-
-# [可选] 浏览器是否使用无头模式，无头模式有可能会被检测到
-plite_headless=False
-
-# [可选] 最大评论数量
-plite_max_comments=5
-
-# [可选] 纯文本文本长度阈值，超过此长度的文本将会强制转发
-plite_forward_text_threshold=1000
-
-# [可选] 最大下载重试次数
-plite_max_retries=3
-
-# [可选] 白天时间范围 [开始, 结束]，格式 h:m；范围内为浅色主题，范围外为夜间模式
-# 支持跨午夜范围，例如 ["22:30", "6:00"]
-plite_day_range=["6:00", "19:00"]
+```
+消息到达 → _extract_urls (全类型URL抽取: 文本/JSON/XML/转发/小程序)
+  → ParserLite.parse_url (O(1)特征路由 + 双路代理重试)
+  → BaseParser.parse (上游 HTTP 解析 → ParseResult)
+  → _send_card (Playwright 卡片渲染 → JPEG, 含缓存)
+  → _send_any (媒体三路发送: fromFileSystem → raw/fromBytes → fromURL)
 ```
 
-</details>
+**动态注入**: 模块加载时扫描 `Config.model_fields` (17 plite_* 字段)、`BaseParser.get_all_subclass()` (26 解析器)、`PlatformEnum` (27 平台)、`CustomParser.SCHEMA` (24 字段模板) → 写入 `_conf_schema.json` → AstrBot WebUI 即时可用。
 
-## 🎉 使用
+## 📁 目录结构
 
-|   指令   |          参数           |         权限          | 需要@ | 范围 |       说明        |
-| :------: | :---------------------: | :-------------------: | :---: | :--: | :---------------: |
-| 开启解析 |            -            | SUPERUSER/OWNER/ADMIN |  是   | 全部 |     开启解析      |
-| 关闭解析 |            -            | SUPERUSER/OWNER/ADMIN |  是   | 全部 |     关闭解析      |
-|    bm    | bv号或引用一个链接/卡片 |           -           |  否   | 全部 |   下载 B 站音频   |
-|  blogin  |            -            |       SUPERUSER       |  是   | 全部 | 扫码获取 B 站凭证 |
-
-## 🎨 构建模板样式
-
-> 此处教程适用于已修改默认模板的用户
-
-首次构建前安装 Tailwind CSS 开发依赖：
-
-```shell
-npm install
 ```
-
-修改 `src/nonebot_plugin_parser_lite/render/templates` 下的 Jinja 模板后，重新生成静态样式表：
-
-```shell
-npm run build:css
+nonebot_plugin_parser_lite/
+├── main.py                  AstrBot 适配层 (~800行)
+├── _conf_schema.json        配置骨架 (1条 __INJECT__)
+├── metadata.yaml            插件元信息
+├── requirements.txt         依赖声明
+├── README.md                本文档
+├── test/
+│   ├── __init__.py
+│   └── test_parsers.py      解析器测试 (含13条内置URL)
+└── src/
+    └── nonebot_plugin_parser_lite/  上游包 (0行改动)
+        ├── __init__.py
+        ├── parsers/           26 平台解析器
+        ├── download/          流下载器
+        ├── render/            卡片渲染 + 模板
+        └── utils/             FFmpeg/Cache/Browser
 ```
-
-脚本会自动输出样式文件到渲染目录
 
 ## 🎉 致谢
 
-<a href="https://github.com/sokoko-org/nonebot-plugin-parser-lite/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=sokoko-org/nonebot-plugin-parser-lite" />
-</a>
-
-- [fllesser/nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser) 社交媒体分享链接解析插件
-- [LoCCai/nonebot-plugin-parser-m](https://github.com/LoCCai/nonebot-plugin-parser-m) 社交媒体分享链接解析插件
-- [lumina37/aiotieba](https://github.com/lumina37/aiotieba) 贴吧接口合集✨可用于工具箱/吧务管理/数据采集
-- [ikenxuan/karin-plugin-kkk](https://github.com/ikenxuan/karin-plugin-kkk) 给群聊机器人提供视频作品、动态解析和推送功能，并使用 React + Tailwindcss 构建出现代审美设计的信息卡片
-- [ikenxuan/amagi](https://github.com/ikenxuan/amagi) 抖音、B站 web 端相关数据接口封装基于 Node.js 的实现
-- [zly2006/zhihu-plus-plus](https://github.com/zly2006/zhihu-plus-plus) Zhihu++ | 知乎++: Ad-free, low cost, AI powered zhihu android 3rd-party client. 去广告、占用低、AI大模型的新时代知乎安卓端体验
-- [Uesugi Hanako](https://github.com/negichan) 渲染模板设计
-- 致2026年的你们
+本项目核心代码来自 [sokoko-org/nonebot-plugin-parser-lite](https://github.com/sokoko-org/nonebot-plugin-parser-lite) 及 [fllesser/nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)，请前往原仓库给作者点个 Star。
