@@ -1372,29 +1372,7 @@ class ParserLitePlugin(Star):
 
     # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
     async def on_url_auto(self, event: AstrMessageEvent):
-        urls = self._extract_urls(event)
-        if not urls: return
-        if self._disabled(event) or self._blacklisted(event): return
-        for url in urls[:3]:
-            result = await self._parse_raw(url)
-            if result is None: continue
-            await self._send_card(event, result)
-            for item in result.content:
-                if hasattr(item, "path_task"):
-                    try:
-                        src_url = getattr(item.path_task, "url", "")
-                        dur = getattr(item, "duration", 0.0)
-                        p = Path(str(await item.path_task))
-                        if isinstance(item, (ImageContent, GraphicContent)):
-                            await self._send_any(event, p, "image", source_url=src_url)
-                        elif isinstance(item, VideoContent):
-                            await self._send_any(event, p, "video", source_url=src_url, duration=dur)
-                        elif isinstance(item, AudioContent):
-                            await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
-                    except Exception: pass
-            if result.platform and result.platform.name == "bilibili":
-                self._lazy_sessions[self._key(event)] = LazySession(
-                    result.url, get_config().plite_lazy_download_timeout)
+        await self._handle_card_message(event)
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_message_group(self, event: AstrMessageEvent):
