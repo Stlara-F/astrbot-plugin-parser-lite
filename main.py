@@ -862,6 +862,7 @@ class ParserLitePlugin(Star):
         self._plugin_start_time: float = time.time()
         self._disabled_groups: set[str] = set()
         self._lazy_sessions: dict[str, LazySession] = {}
+        self._recently_processed: set[int] = set()
 
     async def initialize(self) -> None:
         try:
@@ -1407,6 +1408,13 @@ class ParserLitePlugin(Star):
         await self._handle_card_message(event)
 
     async def _handle_card_message(self, event: AstrMessageEvent):
+        # 二选一门: 同一消息只处理一次 (on_message_group 和 on_url_auto 可能同时匹配)
+        msg_id = getattr(event, "message_id", None) or getattr(getattr(event, "message_obj", None), "message_id", None) or id(event)
+        if msg_id in self._recently_processed:
+            return
+        self._recently_processed.add(msg_id)
+        if len(self._recently_processed) > 50:
+            self._recently_processed.clear()
         urls = self._extract_urls(event)
         if not urls: return
         if self._disabled(event) or self._blacklisted(event): return
@@ -1733,4 +1741,5 @@ filter.command("parse_install_chromium")(ParserLitePlugin.cmd_install_chromium)
 filter.command("cmd_bm")(ParserLitePlugin.cmd_bm)
 filter.command("cmd_blogin")(ParserLitePlugin.cmd_blogin)
 filter.regex(r"^(xz|下载)$")(ParserLitePlugin._on_download_trigger)
+filter.regex(r"https?://")(ParserLitePlugin.on_url_auto)
 filter.llm_tool(name="parse_url")(ParserLitePlugin.parse_url)
