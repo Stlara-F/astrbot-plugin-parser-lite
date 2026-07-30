@@ -7,6 +7,7 @@ PR#205 merged → sokoko-org/main. Runs inside nonebot_plugin_parser_lite/ packa
 from __future__ import annotations
 
 import asyncio, functools, inspect, json, logging, os, re, sys, time, traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -843,10 +844,52 @@ def format_brief(result: ParseResult) -> str:
     if parts: lines.append(" | ".join(parts))
     return "\n".join(lines)
 
-# ── 懒下载会话 ────────────────────────────────────────────────────────────────
-class LazySession:
-    def __init__(self, url: str, timeout: int):
-        self.url = url; self.deadline = time.time() + timeout
+# ── 懒下载管理器 ──────────────────────────────────────────────────────────────
+class LazyManager:
+    """上游 LazyManager 的 AstrBot 移植版: per-user session + asyncio.Task 自动超时清理"""
+
+    @dataclass
+    class Session:
+        result: ParseResult
+        url: str
+        task: asyncio.Task[None] | None = None
+        deadline: float = 0.0
+
+    _sessions: dict[str, "LazyManager.Session"] = {}
+
+    @classmethod
+    def add(cls, key: str, result: "ParseResult", url: str, timeout_sec: float) -> None:
+        """创建/刷新懒下载会话, 自动注册超时清理任务"""
+        cls.remove(key)
+        task = asyncio.create_task(cls._timeout_handler(key, timeout_sec))
+        cls._sessions[key] = cls.Session(result=result, url=url, task=task, deadline=time.time() + timeout_sec)
+
+    @classmethod
+    def get(cls, key: str) -> "LazyManager.Session | None":
+        sess = cls._sessions.get(key)
+        if sess and time.time() > sess.deadline:
+            cls.remove(key)
+            return None
+        return sess
+
+    @classmethod
+    def remove(cls, key: str) -> None:
+        sess = cls._sessions.pop(key, None)
+        if sess and sess.task and not sess.task.done():
+            sess.task.cancel()
+
+    @classmethod
+    async def _timeout_handler(cls, key: str, timeout_sec: float) -> None:
+        await asyncio.sleep(timeout_sec)
+        cls.remove(key)
+
+    @classmethod
+    def cleanup(cls) -> int:
+        now = time.time()
+        expired = [k for k, v in cls._sessions.items() if v.deadline < now]
+        for k in expired:
+            cls.remove(k)
+        return len(expired)
 
 # ── 卡片缓存 ──────────────────────────────────────────────────────────────────
 _CARD_CACHE: dict[str, bytes] = {}
@@ -861,7 +904,6 @@ class ParserLitePlugin(Star):
         self._cleanup_task: Optional[asyncio.Task[None]] = None
         self._plugin_start_time: float = time.time()
         self._disabled_groups: set[str] = set()
-        self._lazy_sessions: dict[str, LazySession] = {}
         self._recently_processed: set[int] = set()
 
     async def initialize(self) -> None:
@@ -965,10 +1007,7 @@ class ParserLitePlugin(Star):
         return event.get_sender_id() in get_config().blacklist_users
 
     def _clean_lazy(self) -> int:
-        now = time.time()
-        expired = [k for k, v in self._lazy_sessions.items() if v.deadline < now]
-        for k in expired: del self._lazy_sessions[k]
-        return len(expired)
+        return LazyManager.cleanup()
 
     @staticmethod
     def _url_from_text(event: AstrMessageEvent) -> Optional[str]:
@@ -1451,8 +1490,8 @@ class ParserLitePlugin(Star):
                             await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
                     except Exception: pass
             if result.platform and result.platform.name == "bilibili":
-                self._lazy_sessions[self._key(event)] = LazySession(
-                    result.url, get_config().plite_lazy_download_timeout)
+                LazyManager.add(self._key(event), result, result.url,
+                                get_config().plite_lazy_download_timeout)
         except Exception as e:
             astrbot_logger.error(f"[ParserLite] cmd_parse 异常\n{traceback.format_exc()}")
             yield event.plain_result(f"解析失败: {e}")
@@ -1467,12 +1506,11 @@ class ParserLitePlugin(Star):
     async def _on_download_trigger(self, event: AstrMessageEvent):
         text = event.get_message_str().strip()
         if not re.match(r"^(xz|下载)$", text): return
-        self._clean_lazy()
         key = self._key(event)
-        session = self._lazy_sessions.get(key)
-        if not session or time.time() > session.deadline:
+        session = LazyManager.get(key)
+        if not session:
             yield event.plain_result("没有待下载的链接"); return
-        del self._lazy_sessions[key]
+        LazyManager.remove(key)
         async for _ in self.cmd_parse(event): yield _
 
     async def cmd_clean(self, event: AstrMessageEvent):
@@ -1487,7 +1525,7 @@ class ParserLitePlugin(Star):
             f"ParserLite v1.3.1", f"Uptime: {h}h{m2}m{s}s",
             f"Cache: {len(_RESULT_CACHE)} entries",
             f"Disabled groups: {len(self._disabled_groups)}",
-            f"Lazy sessions: {len(self._lazy_sessions)}",
+            f"Lazy: {len(LazyManager._sessions)} sessions",
             f"Platforms: {len(PlatformEnum)}",
             f"Parsers: {len(list(BaseParser.get_all_subclass()))}",
         ]
@@ -1679,14 +1717,42 @@ class ParserLitePlugin(Star):
         yield event.plain_result("所有镜像均失败, 请手动安装")
 
     async def cmd_bm(self, event: AstrMessageEvent):
+        """下载 B站音频: 从当前消息 / 懒下载会话 / 回复消息 三路提取 BV 号"""
         text = event.get_message_str()
+        bvid = None
+
+        # 1) 当前消息直接匹配
         m = re.search(r"[Bb][Vv][A-Za-z0-9]{10}", text)
-        if not m:
-            yield event.plain_result("未找到BV号"); return
+        if m: bvid = m.group(0)
+
+        # 2) 懒下载会话中提取 (先回复了 bilibili 链接, 再发 cmd_bm)
+        if not bvid:
+            session = LazyManager.get(self._key(event))
+            if session and session.url:
+                m = re.search(r"[Bb][Vv][A-Za-z0-9]{10}", session.url)
+                if m: bvid = m.group(0)
+
+        # 3) 从被回复的消息中提取 BV (上游 BvReplyMergeExtension 等价实现)
+        if not bvid:
+            msg_obj = getattr(event, "message_obj", None)
+            if msg_obj:
+                raw_segs = getattr(msg_obj, "message", None) or []
+                for seg in (raw_segs if isinstance(raw_segs, list) else []):
+                    if isinstance(seg, dict) and seg.get("type") == "reply":
+                        reply_data = seg.get("data", {})
+                        reply_text = reply_data.get("text", "") or reply_data.get("message", "") or ""
+                        m = re.search(r"[Bb][Vv][A-Za-z0-9]{10}", str(reply_text))
+                        if m:
+                            bvid = m.group(0)
+                            break
+
+        if not bvid:
+            yield event.plain_result("未找到BV号 (当前消息/懒下载会话/回复消息均无)"); return
+
         from nonebot_plugin_parser_lite.parsers.bilibili import BilibiliParser
         bili = BilibiliParser()
         try:
-            urls = await bili.extract_download_urls(bvid=m.group(0))
+            urls = await bili.extract_download_urls(bvid=bvid)
             yield event.plain_result(f"Audio: {urls[0][:80] if urls else 'none'}")
         except Exception as e:
             yield event.plain_result(f"Error: {e}")
