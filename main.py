@@ -577,6 +577,13 @@ _BRIDGE_FIELDS: list[dict] = [
         "default": lambda: _get_sendable_types(),
         "options": lambda: _get_sendable_types(),
     },
+    {
+        "path": "plite_http_proxy",
+        "type": "string",
+        "desc": "HTTP代理",
+        "default": "",
+        "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。配置后所有解析器请求均通过代理",
+    },
 ]
 """AstrBot 专属字段声明: path=JSON路径, source=动态选项生成器(可选), default/hint/desc=静态元数据"""
 
@@ -647,8 +654,6 @@ def _build_field_entry(fname: str, finfo, is_new: bool) -> dict | None:
     # str
     elif ann is str or (hasattr(ann, "__origin__") and ann.__origin__ is str):
         entry["type"] = "string"
-        if fname == "plite_http_proxy":
-            entry["hint"] = "socks5://127.0.0.1:1080"
     # bool → 归入 features (不生成独立条目)
     elif ann is bool or (hasattr(ann, "__origin__") and ann.__origin__ is bool):
         return None

@@ -473,6 +473,16 @@ if '"hint": ""' in inject_src or '"hint":""' in inject_src.replace(" ", ""):
 else:
     sk("parser_extra hint field not confirmed")
 
+# ═══════════════════════════════════════════════════════════════
+# C30: plite_http_proxy 已注入 schema (桥接层专属字段)
+# (原实现读取 _source 但未注入, WebUI 无法配置代理)
+# ═══════════════════════════════════════════════════════════════
+bf_src = inspect.getsource(_m)
+if '"plite_http_proxy"' in bf_src and '"HTTP代理"' in bf_src:
+    ok("plite_http_proxy injected in _BRIDGE_FIELDS")
+else:
+    bad("plite_http_proxy NOT found in _BRIDGE_FIELDS")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass
