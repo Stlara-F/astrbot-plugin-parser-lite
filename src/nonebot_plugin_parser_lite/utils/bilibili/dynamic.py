@@ -19,9 +19,9 @@ class Dynamic:
 
     async def get_info(self) -> dict:
         """
-        获取动态信�?
+        获取动态信息
 
-        :return: 调用 API 返回的结�?
+        :return: 调用 API 返回的结果
         """
         if not self.detail:
             params = {
@@ -29,7 +29,8 @@ class Dynamic:
                 "timezone_offset": -480,
                 "platform": "web",
                 "gaia_source": "main_web",
-                "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete","web_location": "333.1368",
+                "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete",  # noqa: E501
+                "web_location": "333.1368",
                 "x-bili-device-req-json": '{"platform":"web","device":"pc"}',
                 "x-bili-web-req-json": '{"spm_id":"333.1368"}',
             }
@@ -49,9 +50,9 @@ class Dynamic:
 
     async def is_article(self) -> bool:
         """
-        判断动态是否为专栏发布动�?
+        判断动态是否为专栏发布动态
 
-        :return: 是否为专�?
+        :return: 是否为专栏
         """
         if self.detail is None:
             await self.get_info()
@@ -59,7 +60,7 @@ class Dynamic:
 
     def turn_to_opus(self) -> Opus:
         """
-        对图文动态，转换为图�?
+        对图文动态，转换为图文
 
         :return: 图文对象
         """

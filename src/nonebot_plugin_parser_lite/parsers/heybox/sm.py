@@ -19,7 +19,8 @@ import ujson
 SM_CONFIG = {
     "organization": "0yD85BjYvGFAvHaSQ1mc",
     "appId": "heybox_website",
-    "publicKey": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCXj9exmI4nQjmT52iwr+yf7hAQ06bfSZHTAHUfRBYiagCf/whhd8es0R79wBigpiHLd28TKA8b8mGR8OiiI1hV+qfynCWihvp3mdj8MiiH6SU3lhro2hkfYzImZB0RmWr2zE4Xt1+A6Oyp6bf+W7JSxYUXHw3nNv7Td4jw4jEFKQIDAQAB","protocol": "https",
+    "publicKey": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCXj9exmI4nQjmT52iwr+yf7hAQ06bfSZHTAHUfRBYiagCf/whhd8es0R79wBigpiHLd28TKA8b8mGR8OiiI1hV+qfynCWihvp3mdj8MiiH6SU3lhro2hkfYzImZB0RmWr2zE4Xt1+A6Oyp6bf+W7JSxYUXHw3nNv7Td4jw4jEFKQIDAQAB",  # noqa: E501
+    "protocol": "https",
     "apiHost": "fp-it.portal101.cn",
 }
 
@@ -164,7 +165,8 @@ DES_RULE: dict[str, dict[str, Any]] = {
 }
 
 BROWSER_ENV = {
-    "plugins": "MicrosoftEdgePDFPluginPortableDocumentFormatinternal-pdf-viewer1,MicrosoftEdgePDFViewermhjfbmdgcfjbbpaeojofohoefgiehjai1","ua": (
+    "plugins": "MicrosoftEdgePDFPluginPortableDocumentFormatinternal-pdf-viewer1,MicrosoftEdgePDFViewermhjfbmdgcfjbbpaeojofohoefgiehjai1",  # noqa: E501
+    "ua": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
@@ -174,7 +176,7 @@ BROWSER_ENV = {
     ),  # 每次启动随机指纹
     "timezone": -480,  # 时区
     "platform": "Win32",
-    "url": "https://www.xiaoheihe.cn/",  # 固定�?
+    "url": "https://www.xiaoheihe.cn/",  # 固定值
     "referer": "",
     "res": "1920_1080_24_1.25",  # 屏幕宽度_高度_色深_window.devicePixelRatio
     "clientSize": "0_0_1080_1920_1920_1080_1920_1080",
@@ -182,10 +184,10 @@ BROWSER_ENV = {
 }
 
 
-#  将浏览器环境对象的key全部排序，然后对其所有的值及其子对象的值加入数字并字符串相加�?
+#  将浏览器环境对象的key全部排序，然后对其所有的值及其子对象的值加入数字并字符串相加。
 # 若值为数字，则乘以10000(0x2710)再将其转成字符串存入数组,最后再做md5,存入tn变量
-# （tn变量要做加密�?
-# 把这个对象用加密规则进行加密，然后对结果做GZIP压缩（结果是对象，应该有序列化）�?
+# （tn变量要做加密）
+# 把这个对象用加密规则进行加密，然后对结果做GZIP压缩（结果是对象，应该有序列化），
 # 最后做AES加密（加密细节目前不清除），密钥为变量priId
 # 加密规则：新对象的key使用相对应加解密规则的obfuscated_name值，
 # value为字符串化后进行进行DES加密，再进行btoa加密
@@ -198,7 +200,7 @@ def _DES(o: dict):
             rule = DES_RULE[i]
             if rule["is_encrypt"] == 1:
                 c = Cipher(TripleDES(rule["key"].encode("utf-8") * 3), ECB())
-                # 8-bytes * 3 以避免弃用警�?
+                # 8-bytes * 3 以避免弃用警告
                 data = str(res).encode("utf-8")
                 if pad_len := (-len(data)) % 8:
                     data += b"\x00" * pad_len
@@ -256,7 +258,7 @@ def get_smid():
 def sm_payload():
     uid = str(uuid.uuid4()).encode("utf-8")
     priId = hashlib.md5(uid).hexdigest()[:16]
-    # ep不一定对，先走走�?
+    # ep不一定对，先走走看
     ep = PK.encrypt(uid, padding.PKCS1v15())  # pyright: ignore[reportAttributeAccessIssue]
     ep = base64.b64encode(ep).decode("utf-8")
 
@@ -279,7 +281,7 @@ def sm_payload():
         "os": "web",
         "version": "3.0.0",
         "sdkver": "3.0.0",
-        "box": "",  # 似乎是个SMID，但是第一次的时候是�?不过不影响结�?
+        "box": "",  # 似乎是个SMID，但是第一次的时候是空,不过不影响结果
         "rtype": "all",
         "smid": get_smid(),
         "subVersion": "1.0.0",

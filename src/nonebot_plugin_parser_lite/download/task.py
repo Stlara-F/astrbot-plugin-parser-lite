@@ -69,25 +69,25 @@ class DownloadTaskWrapper(Awaitable[T], Generic[T]):
 def auto_task(
     func: Callable[P, Coroutine[Any, Any, T]],
 ) -> Callable[P, DownloadTaskWrapper[T]]:
-    """装饰器：返回惰性的下载包装器，并挂�?url / ext_headers 属性�?
+    """装饰器：返回惰性的下载包装器，并挂载 url / ext_headers 属性。
 
-    约束（运行时检查）�?
+    约束（运行时检查）：
     - 被修饰函数签名必须包含：
         url: str
         ext_headers: dict[str, str] | None = None
         use_curl_cffi: bool = False
     - 调用方必须使用关键字传参 url=...
-    - ext_headers 可以省略，不传时等价�?None（使用默�?headers�?
-    - use_curl_cffi 可以省略，不传时等价�?False（使�?httpx�?
+    - ext_headers 可以省略，不传时等价于 None（使用默认 headers）
+    - use_curl_cffi 可以省略，不传时等价于 False（使用 httpx）
     """
 
     @wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> DownloadTaskWrapper[T]:
-        # 1) 强制要求 url 通过关键字参数传�?
+        # 1) 强制要求 url 通过关键字参数传入
         if "url" not in kwargs:
             raise RuntimeError(
-                f"@auto_task 要求 {func.__qualname__} 必须有关键字参数 url: str�?
-                f"请使�?{func.__name__}(url=..., ...) 的形式调�?
+                f"@auto_task 要求 {func.__qualname__} 必须有关键字参数 url: str，"
+                f"请使用 {func.__name__}(url=..., ...) 的形式调用"
             )
 
         raw_url = kwargs["url"]
@@ -98,22 +98,23 @@ def auto_task(
         # 3) 运行时类型校验（防御性）
         if not isinstance(raw_url, str):
             raise TypeError(
-                f"@auto_task 要求 {func.__qualname__} �?url 参数�?str, "
+                f"@auto_task 要求 {func.__qualname__} 的 url 参数为 str, "
                 f"但实际是 {type(raw_url)!r}"
             )
         if ext_headers is not None and not isinstance(ext_headers, dict):
             raise TypeError(
-                f"@auto_task 要求 {func.__qualname__} �?ext_headers 类型�?dict[str, str] | None, "f"但实际是 {type(ext_headers)!r}"
+                f"@auto_task 要求 {func.__qualname__} 的 ext_headers 类型为 dict[str, str] | None, "  # noqa: E501
+                f"但实际是 {type(ext_headers)!r}"
             )
         if not isinstance(use_curl_cffi, bool):
             raise TypeError(
-                f"@auto_task 要求 {func.__qualname__} �?use_curl_cffi 类型�?bool, "
+                f"@auto_task 要求 {func.__qualname__} 的 use_curl_cffi 类型为 bool, "
                 f"但实际是 {type(use_curl_cffi)!r}"
             )
 
         url: str = raw_url
 
-        # 4) 构造惰性下载包装器（保留原�?args/kwargs，不影响其它参数�?
+        # 4) 构造惰性下载包装器（保留原始 args/kwargs，不影响其它参数）
         return DownloadTaskWrapper(
             func=func,
             args=tuple(args),
