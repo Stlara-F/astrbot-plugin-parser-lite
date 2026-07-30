@@ -241,6 +241,15 @@ def test_coverage(result: TestResult):
 # ═══════════════════════════════════════════════════════════════
 async def main():
     global TEST_URLS
+    # ── Smoke: 自检 UTF-8 编码 ──
+    _self_path = __import__("pathlib").Path(__file__)
+    try:
+        _self_path.read_text("utf-8")
+    except UnicodeDecodeError:
+        import sys
+        print("FATAL: test_parsers.py is not valid UTF-8", file=sys.stderr)  # noqa: T201
+        return 1
+
     urls = _load_test_urls()
     TEST_URLS = urls
 
