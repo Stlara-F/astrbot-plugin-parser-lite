@@ -808,10 +808,10 @@ def _inject_dynamic_options_static():
             short_key not in schema["parser_extra"].get("items", {})):
             extra[short_key] = {
                 "description": _schema_desc(fname),
-                "type": "list",
+                "type": "string" if not is_list else "list",
                 "options": list(enum_cls.__members__),
                 "default": fallback,
-                "_single": not is_list,  # 从上游 annotation 提取单选标记
+                "hint": "",
             }
     if extra:
         schema.setdefault("parser_extra", {"type": "object", "description": "解析器专属扩展", "items": {}})

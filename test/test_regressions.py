@@ -453,6 +453,26 @@ if "find_spec" in doc_src and "is not None" in doc_src:
 else:
     sk("cmd_doctor jinja2 check verification incomplete")
 
+# ═══════════════════════════════════════════════════════════════
+# C29: parser_extra 注入格式区分单选/多选
+# 单选: type=string, options=list, default="", hint=""
+# 多选: type=list, options=list, default=[], hint=""
+# 不再使用 _single 元数据标记, type 字段本身承载语义
+# ═══════════════════════════════════════════════════════════════
+inject_src = inspect.getsource(_m._inject_dynamic_options_static)
+if '"type": "string" if not is_list else "list"' in inject_src or '"type":"string" if not' in inject_src.replace(" ", ""):
+    ok("parser_extra injection uses type=string for single, type=list for multi")
+else:
+    sk("parser_extra type injection pattern not confirmed")
+if '"_single"' not in inject_src:
+    ok("parser_extra injection: _single metadata removed (type conveys semantics)")
+else:
+    bad("parser_extra injection still has _single metadata")
+if '"hint": ""' in inject_src or '"hint":""' in inject_src.replace(" ", ""):
+    ok("parser_extra injection includes hint field")
+else:
+    sk("parser_extra hint field not confirmed")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass
