@@ -97,8 +97,7 @@ class BridgeConfig:
         if isinstance(features_list, list):
             for k, f in _UpConfig.model_fields.items():
                 if f.annotation is bool and k.startswith("plite_"):
-                    if _label(k) in features_list:
-                        data[k] = True
+                    data[k] = _label(k) in features_list
         valid = {k: v for k, v in data.items() if k in _UpConfig.model_fields}
         # parser_extra 冲突覆盖: 注入到 valid 中 (优先于顶级 plite_ 同名字段)
         cls._inject_parser_extra(valid, data)
@@ -268,6 +267,9 @@ class ParserLite:
                         cookies = _get_cookies_for(pname)
                         if cookies and pname == "bilibili":
                             ck_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+                            BridgeConfig._source = BridgeConfig._source or {}
+                            BridgeConfig._source["plite_bili_ck"] = ck_str
+                            get_config()
                             try:
                                 object.__setattr__(get_config(), "plite_bili_ck", ck_str)
                             except Exception: pass
@@ -954,9 +956,10 @@ class ParserLitePlugin(Star):
         self._log_bridge: _LoguruBridge | None = None
         self._parser: ParserLite | None = None
         self._cleanup_task: asyncio.Task[None] | None = None
+        self._chromium_task: asyncio.Task[None] | None = None
         self._plugin_start_time: float = time.time()
         self._disabled_groups: set[str] = set()
-        self._recently_processed: set[int] = set()
+        self._recently_processed: dict[int, float] = {}
 
     async def initialize(self) -> None:
         try:
@@ -986,10 +989,12 @@ class ParserLitePlugin(Star):
             astrbot_logger.error(f"[ParserLite] ✗ initialize 失败\n{traceback.format_exc()}")
 
     async def terminate(self) -> None:
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            try: await self._cleanup_task
-            except asyncio.CancelledError: pass
+        for _task_attr in ("_cleanup_task", "_chromium_task"):
+            _task = getattr(self, _task_attr, None)
+            if _task:
+                _task.cancel()
+                try: await _task
+                except asyncio.CancelledError: pass
         if self._parser is not None:
             try: await self._parser.close()
             except Exception: pass
@@ -1550,8 +1555,10 @@ class ParserLitePlugin(Star):
         if nodes:
             await event.send(event.chain_result([Comp.Nodes(nodes=nodes)]))
 
+    _DEDUP_TTL = 60  # seconds
+
     async def _handle_card_message(self, event: AstrMessageEvent):
-        # 二选一门: 用原始 message_id 去重 (跨 handler 实例)
+        # 二选一门: 用原始 message_id 去重 (跨 handler 实例, TTL=60s)
         msg_id = None
         # AstrBot aiocqhttp → event.message_obj.raw_message.message_id
         msg_obj = getattr(event, "message_obj", None)
@@ -1562,11 +1569,14 @@ class ParserLitePlugin(Star):
         # fallback: event.get_message_str() 取 hash
         if msg_id is None:
             msg_id = hash(event.get_message_str())
+        now = time.time()
         if msg_id in self._recently_processed:
-            return
-        self._recently_processed.add(msg_id)
+            if now - self._recently_processed[msg_id] < self._DEDUP_TTL:
+                return
+        self._recently_processed[msg_id] = now
         if len(self._recently_processed) > 50:
-            self._recently_processed.clear()
+            cutoff = now - self._DEDUP_TTL
+            self._recently_processed = {k: v for k, v in self._recently_processed.items() if v > cutoff}
         urls = self._extract_urls(event)
         if not urls: return
         if self._disabled(event) or self._blacklisted(event): return
@@ -1782,7 +1792,7 @@ class ParserLitePlugin(Star):
             for e in errlog:
                 lines.append(e)
 
-        # ── 7. 渲染管线 (曾因 helper.py→nonebot 导入崩溃) ──
+        # ── 8. 渲染管线 (曾因 helper.py→nonebot 导入崩溃) ──
         try:
             from nonebot_plugin_parser_lite.render import RENDERER
             lines.append(f"[OK] Render: templates={RENDERER.templates_dir}")
@@ -1790,10 +1800,13 @@ class ParserLitePlugin(Star):
             _fail("Render import (helper.py no nonebot guard)", e)
         try:
             import importlib.util
-            if importlib.util.find_spec("jinja2"):
+            if importlib.util.find_spec("jinja2") is not None:
                 lines.append("[OK] jinja2: available")
-        except ImportError:
-            lines.append("[WARN] jinja2: not installed → card rendering disabled")
+            else:
+                lines.append("[WARN] jinja2: not installed → card rendering disabled")
+                todo.append("pip install jinja2")
+        except Exception:
+            lines.append("[WARN] jinja2: import check failed")
         if todo:
             lines.append(f"\n── 修复建议 ({len(todo)} 项) ──")
             for i, t in enumerate(todo, 1): lines.append(f"  {i}. {t}")
@@ -1864,9 +1877,15 @@ class ParserLitePlugin(Star):
         bili = BilibiliParser()
         try:
             urls = await bili.extract_download_urls(bvid=bvid)
-            yield event.plain_result(f"Audio: {urls[0][:80] if urls else 'none'}")
+            _video_url, audio_url = (urls[0], urls[1]) if len(urls) > 1 else (urls[0], None)
+            if audio_url:
+                yield event.plain_result(f"Audio: {audio_url[:80]}")
+            else:
+                yield event.plain_result("该视频未提取到独立音频流")
         except Exception as e:
             yield event.plain_result(f"Error: {e}")
+        finally:
+            await bili.aclose()
 
     async def cmd_blogin(self, event: AstrMessageEvent):
         from nonebot_plugin_parser_lite.parsers.bilibili import BilibiliParser

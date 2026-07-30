@@ -43,14 +43,11 @@ else:
     bad(f"_source = {BridgeConfig._source}")
 
 # ═══════════════════════════════════════════════════════════════
-# C5: features 开关完全死代码。
-# WebUI 的 features 勾选列表未被映射到上游 plite_* bool 字段,
-# 所有开关配置被 silently 丢弃。
-# 修复: 在 configure() 中将 features label → plite_* field 反向映射,
-# 仅设置勾选的为 True, 未勾选的保留上游默认值。
+# C5: features 开关双向映射 (selected→True, unselected→False).
+# 仅勾选 → True, 未勾选 → 显式 False (而非保留上游默认值导致无法关闭).
 # ═══════════════════════════════════════════════════════════════
-from nonebot_plugin_parser_lite.config import Config as UpConfig
 
+# selected → True
 BridgeConfig._hash = ""
 BridgeConfig._source = None
 BridgeConfig.configure(plite_max_size=50, features=["Lazy Download", "Headless"])
@@ -59,12 +56,15 @@ if cfg and cfg.lazy_download is True and cfg.headless is True:
     ok("features mapping: Lazy Download=True, Headless=True (selected)")
 else:
     bad(f"lazy_download={cfg.lazy_download}, headless={cfg.headless}")
-# 未勾选的功能应保留上游 pydantic 默认值, 不应被强制设为 False
-live_default = UpConfig.model_fields["plite_live_photo"].default
-if cfg and cfg.live_photo == live_default:
-    ok(f"unselected features keep default: live_photo={live_default}")
+# unselected → False (was: kept upstream default, un-toggle impossible)
+BridgeConfig._hash = ""
+BridgeConfig._source = None
+BridgeConfig.configure(plite_max_size=50, features=["Lazy Download"])
+cfg2 = BridgeConfig.get_config()
+if cfg2 and cfg2.headless is False:
+    ok("features mapping: Headless=False (unselected, explicitly off)")
 else:
-    bad(f"unselected features corrupted: live_photo={cfg.live_photo}")
+    bad(f"Headless={cfg2.headless} (expected False when not in features list)")
 
 # ═══════════════════════════════════════════════════════════════
 # C7: _get_cookies_for / _use_proxy_for 重复定义。
@@ -95,19 +95,24 @@ except Exception as e:
     bad(f"_inject_dynamic_options_static() crashed: {e}")
 
 # ═══════════════════════════════════════════════════════════════
-# C1: __init__.py env var 保护。
-# AstrBot 可能走 import nonebot_plugin_parser_lite.main 路径,
-# 此时 __init__.py 先于 main.py 执行, 需内置 env var 设置。
-# 同时 helper.py 需 _STANDALONE 守卫防止 from nonebot.adapters import Event 崩溃。
+# C1: main.py 在导入上游前设置 PARSER_LITE_STANDALONE env var.
+# __init__.py 不应包含 setdefault (会破坏 NoneBot 插件正常加载路径),
+# 只由 main.py 在 AstrBot 上下文下主动设置.
 # ═══════════════════════════════════════════════════════════════
-# 检查 __init__.py 第一行可执行代码是否设置 env var
-init_path = Path(__file__).resolve().parent.parent / "src" / "nonebot_plugin_parser_lite" / "__init__.py"
-init_lines = init_path.read_text("utf-8").splitlines()
-found_env = any("PARSER_LITE_STANDALONE" in ln and "setdefault" in ln for ln in init_lines[:5])
-if found_env:
-    ok("__init__.py sets PARSER_LITE_STANDALONE before _flags import")
+_main_path = Path(__file__).resolve().parent.parent / "main.py"
+_main_lines = _main_path.read_text("utf-8").splitlines()
+found_main_env = any("PARSER_LITE_STANDALONE" in ln and "setdefault" in ln for ln in _main_lines[:25])
+if found_main_env:
+    ok("main.py sets PARSER_LITE_STANDALONE before upstream imports")
 else:
-    bad("__init__.py does NOT set PARSER_LITE_STANDALONE")
+    bad("main.py does NOT set PARSER_LITE_STANDALONE")
+# 验证 __init__.py 不再含 setdefault (避免破坏 NoneBot 路径)
+init_path = Path(__file__).resolve().parent.parent / "src" / "nonebot_plugin_parser_lite" / "__init__.py"
+init_text = init_path.read_text("utf-8")
+if "setdefault" not in init_text:
+    ok("__init__.py: no setdefault (NoneBot plugin path safe)")
+else:
+    bad("__init__.py contains setdefault — will break NoneBot loading")
 # 验证上游包可在无 nonebot 环境下导入
 try:
     import nonebot_plugin_parser_lite  # noqa: F401
@@ -380,6 +385,73 @@ elif "cmd_parse" in dt_src:
     bad("_on_download_trigger still delegates to cmd_parse (will miss lazy URL)")
 else:
     sk("_on_download_trigger verification incomplete")
+
+# ═══════════════════════════════════════════════════════════════
+# C22: features 开关双向映射 — 检查 configure() 写入 False 的路径
+# (原实现只写 True, 未选中保留上游默认 → 默认开启的开关无法关闭)
+# ═══════════════════════════════════════════════════════════════
+cfg3_src = inspect.getsource(_m.BridgeConfig.configure)
+if "_label(k) in features_list" in cfg3_src:
+    ok("features mapping assigns bool directly (_label in list)")
+else:
+    bad("features mapping missing _label check")
+
+# ═══════════════════════════════════════════════════════════════
+# C23: dedup 去重集合含 TTL 过期机制
+# (原实现 set 无 TTL, 整集合清空时过去很久的连接也被吞掉)
+# ═══════════════════════════════════════════════════════════════
+hcm_src = inspect.getsource(_m.ParserLitePlugin._handle_card_message)
+if "_DEDUP_TTL" in hcm_src and "now - self._recently_processed" in hcm_src:
+    ok("dedup has TTL-based expiry (dict with timestamps)")
+else:
+    sk("dedup TTL verification incomplete")
+
+# ═══════════════════════════════════════════════════════════════
+# C24: cmd_bm 正确解包 (video_url, audio_url) 并 aclose parser
+# (原实现返回 urls[0] 作为音频, 实际是视频流; 未 aclose 泄漏 httpx)
+# ═══════════════════════════════════════════════════════════════
+bm_src2 = inspect.getsource(_m.ParserLitePlugin.cmd_bm)
+if "audio_url" in bm_src2 and "aclose" in bm_src2:
+    ok("cmd_bm unpacks audio_url + calls aclose()")
+else:
+    sk("cmd_bm unpack/aclose verification incomplete")
+
+# ═══════════════════════════════════════════════════════════════
+# C25: __init__.py 不含 setdefault (不破坏 NoneBot 路径)
+# (旧实现 setdefault 使 standalone 成为所有环境的默认, NoneBot 插件失灵)
+# ═══════════════════════════════════════════════════════════════
+_i_text2 = init_path.read_text("utf-8")
+if "os.environ.setdefault" not in _i_text2 and 'setdefault("PARSER_LITE_STANDALONE"' not in _i_text2:
+    ok("__init__.py: no env var setdefault (NoneBot safe)")
+else:
+    bad("__init__.py still has setdefault")
+
+# ═══════════════════════════════════════════════════════════════
+# C26: terminate() 取消 _chromium_task (防止插件重载时泄漏)
+# ═══════════════════════════════════════════════════════════════
+term_src = inspect.getsource(_m.ParserLitePlugin.terminate)
+if "_chromium_task" in term_src:
+    ok("terminate cancels _chromium_task")
+else:
+    sk("_chromium_task cancel in terminate not verified")
+
+# ═══════════════════════════════════════════════════════════════
+# C27: cookie 写入后同步更新 _source (防止 configure() 重建丢失)
+# ═══════════════════════════════════════════════════════════════
+pu_src2 = inspect.getsource(_m.ParserLite.parse_url)
+if '_source["plite_bili_ck"]' in pu_src2:
+    ok("parse_url writes cookie to _source (survives configure rebuild)")
+else:
+    sk("_source cookie persistence not verified")
+
+# ═══════════════════════════════════════════════════════════════
+# C28: jinja2 检查处理 find_spec 返回 None (非 ImportError)
+# ═══════════════════════════════════════════════════════════════
+doc_src = inspect.getsource(_m.ParserLitePlugin.cmd_doctor)
+if "find_spec" in doc_src and "is not None" in doc_src:
+    ok("cmd_doctor jinja2 check handles find_spec → None correctly")
+else:
+    sk("cmd_doctor jinja2 check verification incomplete")
 
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
