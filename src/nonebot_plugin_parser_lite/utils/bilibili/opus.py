@@ -7,7 +7,7 @@ from .exceptions import BiliHelperException
 
 class Opus:
     """
-    图文类
+    图文�?
     """
 
     info: dict[str, Any] | None = None
@@ -20,7 +20,7 @@ class Opus:
         """
         获取图文基本信息
 
-        :return: 调用 API 返回的结果
+        :return: 调用 API 返回的结�?
         """
         if not self.info:
             result = (
@@ -29,8 +29,7 @@ class Opus:
                     params={
                         "timezone_offset": -480,
                         "id": self.opus_id,
-                        "features": "onlyfansVote,onlyfansAssetsV2,decorationCard,htmlNewStyle,ugcDelete,editable,opusPrivateVisible",  # noqa: E501
-                    },
+                        "features": "onlyfansVote,onlyfansAssetsV2,decorationCard,htmlNewStyle,ugcDelete,editable,opusPrivateVisible",},
                 )
             ).json()
             if result["code"] != 0:
@@ -38,5 +37,5 @@ class Opus:
             self.info = result["data"]
             assert self.info
             if self.info.get("fallback"):
-                raise BiliHelperException("传入的 opus_id 不正确")
+                raise BiliHelperException("传入�?opus_id 不正�?)
         return self.info

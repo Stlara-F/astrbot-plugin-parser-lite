@@ -7,20 +7,20 @@ from .exceptions import BiliHelperException
 
 class FavoriteListContentOrder(Enum):
     """
-    收藏夹列表内容排序方式枚举。
+    收藏夹列表内容排序方式枚举�?
     """
 
     MTIME = "mtime"
-    """最近收藏"""
+    """最近收�?""
     VIEW = "view"
-    """最多播放"""
+    """最多播�?""
     PUBTIME = "pubtime"
-    """最新投稿"""
+    """最新投�?""
 
 
 class SearchFavoriteListMode(IntEnum):
     """
-    收藏夹搜索模式枚举
+    收藏夹搜索模式枚�?
     """
 
     ONLY = 0
@@ -39,19 +39,18 @@ async def get_video_favorite_list_content(
     credential: Credential | None = None,
 ) -> dict:
     """
-    获取视频收藏夹列表内容，也可用于搜索收藏夹内容
+    获取视频收藏夹列表内容，也可用于搜索收藏夹内�?
 
-    :param media_id: 收藏夹 ID
+    :param media_id: 收藏�?ID
     :param page: 页码, defaults to 1
-    :param keyword: 搜索关键词, defaults to None
+    :param keyword: 搜索关键�? defaults to None
     :param order: 排序方式, defaults to FavoriteListContentOrder.MTIME
     :param tid: 分区 ID, defaults to 0
     :param mode: _des搜索模式，默认仅当前收藏夹cription_, defaults to SearchFavoriteListMode.ONLY
     :param credential: Credential, defaults to None
     :raises BiliHelperError: _description_
     :return: _description_
-    """  # noqa: E501
-    params = {
+    """params = {
         "media_id": media_id,
         "pn": page,
         "ps": 20,

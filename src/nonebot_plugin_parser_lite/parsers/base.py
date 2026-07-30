@@ -53,13 +53,13 @@ KeyPatterns = list[tuple[str, Pattern[str], ParamRules]]
 _KEY_PATTERNS = "_key_patterns"
 
 
-# 重试装饰器
+# 重试装饰�?
 def retry(max_retries: int = 3, delay: float = 1.0):
     """
-    通用重试装饰器
+    通用重试装饰�?
 
-    :param max_retries: 最大重试次数
-    :param delay: 初始重试延迟（秒）
+    :param max_retries: 最大重试次�?
+    :param delay: 初始重试延迟（秒�?
     """
 
     def decorator(
@@ -75,10 +75,10 @@ def retry(max_retries: int = 3, delay: float = 1.0):
                     if retry_count > max_retries:
                         raise
 
-                    # 指数退避
+                    # 指数退�?
                     current_delay = delay * (2 ** (retry_count - 1))
                     await asyncio.sleep(current_delay)
-            return await func(*args, **kwargs)  # 类型检查用，实际不会执行
+            return await func(*args, **kwargs)  # 类型检查用，实际不会执�?
 
         return wrapper
 
@@ -94,26 +94,24 @@ def handle(
 ):
     """注册处理器装饰器
 
-    约定：
+    约定�?
     - keyword: 必填，在 rule 里始终作为关键字用于初步判断 (`keyword in text`)
-    - pattern: 可选，完整正则，用于匹配整段 URL 文本
-    - params: 可选，ParamRules，用于基于 query 的补充筛选（required/equals/default/one_of/as_int 等）
-    - pattern 与 params 至少要指定一个（可以同时存在）：
-        - 只有 pattern：纯正则匹配，不看 query
-        - 只有 params：regex 由 keyword 自动生成为 `https?://<keyword>[^\\s]*`
-        - pattern + params：
+    - pattern: 可选，完整正则，用于匹配整�?URL 文本
+    - params: 可选，ParamRules，用于基�?query 的补充筛选（required/equals/default/one_of/as_int 等）
+    - pattern �?params 至少要指定一个（可以同时存在）：
+        - 只有 pattern：纯正则匹配，不�?query
+        - 只有 params：regex �?keyword 自动生成�?`https?://<keyword>[^\\s]*`
+        - pattern + params�?
             * 先用 pattern 过滤
-            * 若 pattern 没有匹配到末尾或追加 `$`，则自动在末尾补 `[^\\s]*`，以便 MatchWithParams 能看到查询参数部分
-            * 再用 params 解析 URL 后进一步判断
-    """  # noqa: E501
+            * �?pattern 没有匹配到末尾或追加 `$`，则自动在末尾补 `[^\\s]*`，以�?MatchWithParams 能看到查询参数部�?
+            * 再用 params 解析 URL 后进一步判�?
+    """if pattern is None and not params:
+        raise ValueError("handle: pattern �?params 至少要指定一�?)
 
-    if pattern is None and not params:
-        raise ValueError("handle: pattern 和 params 至少要指定一个")
-
-    # 确定基础 regex：
-    # - 有 pattern 时：使用 pattern 作为基础正则
-    #   * 若同时存在 params 且 pattern 看起来只匹配到 path，则自动扩展以匹配后续 query
-    # - 无 pattern 时：使用 keyword 作为 URL 前缀生成正则
+    # 确定基础 regex�?
+    # - �?pattern 时：使用 pattern 作为基础正则
+    #   * 若同时存�?params �?pattern 看起来只匹配�?path，则自动扩展以匹配后�?query
+    # - �?pattern 时：使用 keyword 作为 URL 前缀生成正则
 
     if pattern is not None:
         regex = pattern
@@ -147,17 +145,17 @@ def handle(
 
 
 class BaseParser:
-    """所有平台 Parser 的抽象基类
+    """所有平�?Parser 的抽象基�?
 
-    子类必须实现：
+    子类必须实现�?
     - platform: 平台信息（包含名称和显示名称)
     """
 
     _registry: ClassVar[list[type["BaseParser"]]] = []
-    """ 存储所有已注册的 Parser 类 """
+    """ 存储所有已注册�?Parser �?"""
 
     platform: ClassVar[Platform]
-    """ 平台信息（包含名称和显示名称） """
+    """ 平台信息（包含名称和显示名称�?"""
 
     if TYPE_CHECKING:
         _key_patterns: ClassVar[KeyPatterns]
@@ -173,61 +171,61 @@ class BaseParser:
         )
 
     async def aclose(self) -> None:
-        """关闭底层 HTTP 客户端，释放连接等资源。"""
+        """关闭底层 HTTP 客户端，释放连接等资源�?""
         await self.httpx.aclose()
 
     def __init_subclass__(cls, **kwargs):
-        """自动注册子类到 _registry"""
+        """自动注册子类�?_registry"""
         super().__init_subclass__(**kwargs)
-        if ABC not in cls.__bases__:  # 跳过抽象类
+        if ABC not in cls.__bases__:  # 跳过抽象�?
             BaseParser._registry.append(cls)
 
         cls._handlers: dict[str, list[tuple[Pattern[str], HandlerFunc]]] = {}
         cls._key_patterns = []
 
-        # 获取所有被 handle 装饰的方法
+        # 获取所有被 handle 装饰的方�?
         for attr_name in dir(cls):
             attr = getattr(cls, attr_name)
             if callable(attr) and hasattr(attr, _KEY_PATTERNS):
                 key_patterns: KeyPatterns = getattr(attr, _KEY_PATTERNS)
                 handler = cast(HandlerFunc, attr)
                 for keyword, pattern, param_rules in key_patterns:
-                    # 记录 keyword -> (pattern, handler) 列表（解析时只关心 pattern）
+                    # 记录 keyword -> (pattern, handler) 列表（解析时只关�?pattern�?
                     cls._handlers.setdefault(keyword, []).append((pattern, handler))
-                    # _key_patterns 用于 matcher 注册，保留 param_rules
+                    # _key_patterns 用于 matcher 注册，保�?param_rules
                     cls._key_patterns.append((keyword, pattern, param_rules))
 
-        # 按关键字长度降序排序（search_url 仍然按原逻辑）
+        # 按关键字长度降序排序（search_url 仍然按原逻辑�?
         cls._key_patterns.sort(key=lambda x: -len(x[0]))
 
     @classmethod
     def get_all_subclass(cls) -> list[type["BaseParser"]]:
-        """获取所有已注册的 Parser 类"""
+        """获取所有已注册�?Parser �?""
         return cls._registry
 
     @final
     async def parse(self, keyword: str, searched: MatchWithParams) -> ParseResult:
-        """解析 URL 提取信息。
+        """解析 URL 提取信息�?
 
-        :param keyword: 关键词
+        :param keyword: 关键�?
         :param searched: 正则表达式匹配对象，由平台对应的模式匹配得到
         :return: 解析结果
-        :raise ParseException: 未找到匹配的 handler 时抛出
+        :raise ParseException: 未找到匹配的 handler 时抛�?
         """
         handlers = self._handlers.get(keyword)
         if not handlers:
-            raise ParseException(f"未找到关键字 {keyword!r} 对应的 handler")
+            raise ParseException(f"未找到关键字 {keyword!r} 对应�?handler")
 
         text = searched.url
         for pattern, handler in handlers:
-            # pattern 是当初 handle 时 compile 出来的正则
-            # 这里用 search/fullmatch 都可以，search 更宽松
+            # pattern 是当�?handle �?compile 出来的正�?
+            # 这里�?search/fullmatch 都可以，search 更宽�?
             if pattern.search(text):
                 return await handler(self, searched)
 
-        # 理论上不该走到这里，防御性错误
+        # 理论上不该走到这里，防御性错�?
         raise ParseException(
-            f"关键字 {keyword!r} 存在 handler 但无任何模式匹配 {text!r}"
+            f"关键�?{keyword!r} 存在 handler 但无任何模式匹配 {text!r}"
         )
 
     @retry(max_retries=3)
@@ -237,7 +235,7 @@ class BaseParser:
         headers: dict[str, str] | None = None,
         use_curl_cffi: bool = False,
     ) -> ParseResult:
-        """先重定向再解析"""
+        """先重定向再解�?""
         redirect_url = await self.get_final_url(
             url,
             headers=headers or self.headers,
@@ -245,7 +243,7 @@ class BaseParser:
         )
 
         if redirect_url == url:
-            raise ParseException(f"无法重定向 URL: {url}")
+            raise ParseException(f"无法重定�?URL: {url}")
 
         keyword, searched = self.search_url(redirect_url)
         return await self.parse(keyword, searched)
@@ -260,15 +258,15 @@ class BaseParser:
             required = rule.get("required", True)
             value = mwp.params.get(name)
 
-            # 默认值处理
+            # 默认值处�?
             if value is None and "default" in rule:
                 value = rule["default"]
-                mwp.params[name] = value  # 写回，后续 handler 可以直接用
+                mwp.params[name] = value  # 写回，后�?handler 可以直接�?
 
             if value is None:
                 if required:
                     return False
-                # 非必填且无值 -> 略过后续 equals/one_of/as_int 校验
+                # 非必填且无�?-> 略过后续 equals/one_of/as_int 校验
                 continue
 
             # equals
@@ -290,7 +288,7 @@ class BaseParser:
 
     @classmethod
     def search_url(cls, url: str) -> tuple[str, MatchWithParams]:
-        """搜索 URL 匹配模式（支持基于 params 的筛选）"""
+        """搜索 URL 匹配模式（支持基�?params 的筛选）"""
         for keyword, pattern, param_rules in cls._key_patterns:
             if keyword not in url:
                 continue
@@ -340,14 +338,14 @@ class BaseParser:
         use_curl_cffi: bool = False,
     ):
         """
-        创建作者对象
+        创建作者对�?
 
-        :param name: 作者名称
-        :param avatar_url: 作者头像 URL
-        :param description: 作者描述
-        :param id: 作者 ID
+        :param name: 作者名�?
+        :param avatar_url: 作者头�?URL
+        :param description: 作者描�?
+        :param id: 作�?ID
         :param location: 位置信息
-        :param ext_headers: 额外请求头
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载头像
         """
 
@@ -378,8 +376,8 @@ class BaseParser:
         :param cover_url: 封面 URL
         :param duration: 视频时长
         :param video_name: 视频名称
-        :param need_send: 是否发送
-        :param ext_headers: 额外请求头
+        :param need_send: 是否发�?
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载视频/封面
         """
 
@@ -403,7 +401,7 @@ class BaseParser:
         创建视频内容列表
 
         :param video_urls: 视频 URL 列表
-        :param ext_headers: 额外请求头
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         """
 
@@ -423,7 +421,7 @@ class BaseParser:
         创建图片内容列表
 
         :param image_urls: 图片 URL 列表
-        :param ext_headers: 额外请求头
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         """
 
@@ -446,8 +444,8 @@ class BaseParser:
 
         :param url: 图片 URL
         :param img_name: 图片名称
-        :param need_send: 是否发送
-        :param ext_headers: 额外请求头
+        :param need_send: 是否发�?
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         """
 
@@ -474,8 +472,8 @@ class BaseParser:
         :param url: 音频 URL
         :param duration: 音频时长
         :param audio_name: 音频名称
-        :param need_send: 是否发送
-        :param ext_headers: 额外请求头
+        :param need_send: 是否发�?
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         """
 
@@ -498,13 +496,13 @@ class BaseParser:
         use_curl_cffi: bool = False,
     ):
         """
-        图片,此图片不参与九宫格
+        图片,此图片不参与九宫�?
 
         :param url: 图片 URL
         :param img_name: 图片名称
         :param alt: 图片描述
-        :param need_send: 是否发送
-        :param ext_headers: 额外请求头
+        :param need_send: 是否发�?
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         """
 
@@ -530,10 +528,10 @@ class BaseParser:
 
         :param url: 贴纸图片链接
         :param size: 贴纸大小
-            - small: 比文字大一点
-            - medium: 文字大小的两倍大一点
+            - small: 比文字大一�?
+            - medium: 文字大小的两倍大一�?
         :param desc: 贴纸描述
-        :param ext_headers: 额外请求头
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         """
 
@@ -560,8 +558,8 @@ class BaseParser:
         :param video_url: iPhone Live Photo 变化过程视频
         :param image_url: iPhone Live Photo 底图
         :param bgm_url: iPhone Live Photo 背景音乐
-        :param need_send: 是否发送
-        :param ext_headers: 额外请求头
+        :param need_send: 是否发�?
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         """
         return Creator.live_photo(
@@ -585,12 +583,12 @@ class BaseParser:
         """
         创建统计信息
 
-        :param view_count: 浏览数
-        :param like_count: 点赞数
-        :param collect_count: 收藏数
-        :param share_count: 分享数
-        :param comment_count: 评论数
-        :param extra: 额外的信息
+        :param view_count: 浏览�?
+        :param like_count: 点赞�?
+        :param collect_count: 收藏�?
+        :param share_count: 分享�?
+        :param comment_count: 评论�?
+        :param extra: 额外的信�?
         """
         return Creator.stats(
             view_count=view_count,
@@ -613,12 +611,12 @@ class BaseParser:
         """
         创建评论内容
 
-        :param author: 评论作者
+        :param author: 评论作�?
         :param content: 评论内容
-        :param timestamp: 评论时间戳
+        :param timestamp: 评论时间�?
         :param stats: 评论统计信息
         :param replies: 评论回复
-        :param parent_author: 评论的父级作者
+        :param parent_author: 评论的父级作�?
         """
 
         return Creator.comment(

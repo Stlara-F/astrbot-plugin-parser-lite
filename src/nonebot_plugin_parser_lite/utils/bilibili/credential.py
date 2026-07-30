@@ -35,7 +35,7 @@ LAST_CHECK_TIME = 0
 
 class Credential:
     """
-    凭证类，用于各种请求操作的验证
+    凭证类，用于各种请求操作的验�?
     """
 
     def __init__(
@@ -50,12 +50,12 @@ class Credential:
         """
         各字段获取方式查看：https://nemo2011.github.io/bilibili-api/#/get-credential.md
 
-        :param sessdata: 浏览器 Cookies 中的 SESSDATA 字段值, defaults to None
-        :param bili_jct: 浏览器 Cookies 中的 bili_jct 字段值, defaults to None
-        :param buvid3: 浏览器 Cookies 中的 BUVID3 字段值, defaults to None
-        :param buvid4: 浏览器 Cookies 中的 BUVID4 字段值, defaults to None
-        :param dedeuserid: 浏览器 Cookies 中的 DedeUserID 字段值, defaults to None
-        :param ac_time_value: 浏览器 Cookies 中的 ac_time_value 字段值, defaults to None
+        :param sessdata: 浏览�?Cookies 中的 SESSDATA 字段�? defaults to None
+        :param bili_jct: 浏览�?Cookies 中的 bili_jct 字段�? defaults to None
+        :param buvid3: 浏览�?Cookies 中的 BUVID3 字段�? defaults to None
+        :param buvid4: 浏览�?Cookies 中的 BUVID4 字段�? defaults to None
+        :param dedeuserid: 浏览�?Cookies 中的 DedeUserID 字段�? defaults to None
+        :param ac_time_value: 浏览�?Cookies 中的 ac_time_value 字段�? defaults to None
         """
         self.sessdata = (
             None
@@ -89,7 +89,7 @@ class Credential:
 
     async def get_buvid_cookies(self) -> dict[str, str]:
         """
-        获取请求 Cookies 字典，自动补充 buvid 字段
+        获取请求 Cookies 字典，自动补�?buvid 字段
 
         :return: 请求 Cookies 字典
         """
@@ -107,25 +107,25 @@ class Credential:
 
     def has_dedeuserid(self) -> bool:
         """
-        是否提供 dedeuserid。
+        是否提供 dedeuserid�?
 
-        :return: 是否提供 dedeuserid。
+        :return: 是否提供 dedeuserid�?
         """
         return self.dedeuserid is not None and self.dedeuserid != ""
 
     def has_sessdata(self) -> bool:
         """
-        是否提供 sessdata。
+        是否提供 sessdata�?
 
-        :return: 是否提供 sessdata。
+        :return: 是否提供 sessdata�?
         """
         return self.sessdata is not None and self.sessdata != ""
 
     def has_bili_jct(self) -> bool:
         """
-        是否提供 bili_jct。
+        是否提供 bili_jct�?
 
-        :return: 是否提供 bili_jct。
+        :return: 是否提供 bili_jct�?
         """
         return self.bili_jct is not None and self.bili_jct != ""
 
@@ -155,57 +155,57 @@ class Credential:
 
     def raise_for_no_sessdata(self):
         """
-        没有提供 sessdata 则抛出异常。
+        没有提供 sessdata 则抛出异常�?
         """
         if not self.has_sessdata():
             raise BiliHelperException("no sessdata provided")
 
     def raise_for_no_bili_jct(self):
         """
-        没有提供 bili_jct 则抛出异常
+        没有提供 bili_jct 则抛出异�?
         """
         if not self.has_bili_jct():
             raise BiliHelperException("no bili_jct provided")
 
     def raise_for_no_buvid3(self):
         """
-        没有提供 buvid3 时抛出异常
+        没有提供 buvid3 时抛出异�?
         """
         if not self.has_buvid3():
             raise BiliHelperException("no buvid3 provided")
 
     def raise_for_no_buvid4(self):
         """
-        没有提供 buvid3 时抛出异常
+        没有提供 buvid3 时抛出异�?
         """
         if not self.has_buvid4():
             raise BiliHelperException("no buvid4 provided")
 
     def raise_for_no_dedeuserid(self):
         """
-        没有提供 DedeUserID 时抛出异常
+        没有提供 DedeUserID 时抛出异�?
         """
         if not self.has_dedeuserid():
             raise BiliHelperException("no DedeUserID provided")
 
     def raise_for_no_ac_time_value(self):
         """
-        没有提供 ac_time_value 时抛出异常
+        没有提供 ac_time_value 时抛出异�?
         """
         if not self.has_ac_time_value():
             raise BiliHelperException("no ac_time_value provided")
 
     async def check_refresh(self) -> bool:
         """
-        检查是否需要刷新 cookies
+        检查是否需要刷�?cookies
 
-        :return: cookies 是否需要刷新
+        :return: cookies 是否需要刷�?
         """
         return await _check_refresh(self)
 
     async def check_valid(self) -> bool:
         """
-        检查 cookies 是否有效
+        检�?cookies 是否有效
 
         :return: cookies 是否有效
         """
@@ -224,10 +224,10 @@ class Credential:
     @staticmethod
     def from_cookies(cookies: dict | None = None) -> "Credential":
         """
-        从 cookies 新建 Credential
+        �?cookies 新建 Credential
 
         :param cookies: cookies, defaults to None
-        :return: 凭证类
+        :return: 凭证�?
         """
         if cookies is None:
             cookies = {}
@@ -259,11 +259,11 @@ async def _check_valid(credential: Credential) -> bool:
 
 async def _check_refresh(credential: Credential) -> bool:
     """
-    检查cookie是否需要刷新
+    检查cookie是否需要刷�?
 
     :param credential: 凭证
     :raises CredentialInvalidException: cookie无效
-    :return: 是否需要刷新
+    :return: 是否需要刷�?
     """
     global LAST_CHECK_TIME
     if time.time() - LAST_CHECK_TIME > 60 * 30:
@@ -295,12 +295,12 @@ async def _get_refresh_csrf(credential: Credential) -> str:
         cookies=cookies,
     )
     if resp.status_code == 404:
-        raise CookiesRefreshException("correspondPath 过期或错误。")
+        raise CookiesRefreshException("correspondPath 过期或错误�?)
     elif resp.status_code == 200:
         text = resp.text
         return re.findall('<div id="1-name">(.+?)</div>', text)[0]
     else:
-        raise CookiesRefreshException("获取刷新 Cookies 的 csrf 失败。")
+        raise CookiesRefreshException("获取刷新 Cookies �?csrf 失败�?)
 
 
 async def _refresh_cookies(credential: Credential) -> Credential:
@@ -358,9 +358,9 @@ async def _get_spi_buvid() -> dict:
 
 async def get_buvid() -> tuple[str, str]:
     """
-    获取 buvid3 和 buvid4
+    获取 buvid3 �?buvid4
 
-    :return: 第 0 项为 buvid3，第 1 项为 buvid4。
+    :return: �?0 项为 buvid3，第 1 项为 buvid4�?
     """
     global __buvid3, __buvid4
     if not __buvid3 or not __buvid4:
@@ -490,8 +490,7 @@ async def _active_buvid(buvid3: str, buvid4: str):
                 "6527": 0,
                 "7003": 1,
                 "807e": 1,
-                "b8ce": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",  # noqa: E501
-                "641c": 0,
+                "b8ce": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15","641c": 0,
                 "07a4": "en-US",
                 "1c57": "not available",
                 "0bd0": 8,
@@ -635,8 +634,7 @@ async def _active_buvid(buvid3: str, buvid4: str):
                 ],
                 "d02f": "124.04345259929687",
             },
-            "54ef": '{"in_new_ab":true,"ab_version":{"remove_back_version":"REMOVE","login_dialog_version":"V_PLAYER_PLAY_TOAST","open_recommend_blank":"SELF","storage_back_btn":"HIDE","call_pc_app":"FORBID","clean_version_old":"GO_NEW","optimize_fmp_version":"LOADED_METADATA","for_ai_home_version":"V_OTHER","bmg_fallback_version":"DEFAULT","ai_summary_version":"SHOW","weixin_popup_block":"ENABLE","rcmd_tab_version":"DISABLE","in_new_ab":true},"ab_split_num":{"remove_back_version":11,"login_dialog_version":43,"open_recommend_blank":90,"storage_back_btn":87,"call_pc_app":47,"clean_version_old":46,"optimize_fmp_version":28,"for_ai_home_version":38,"bmg_fallback_version":86,"ai_summary_version":466,"weixin_popup_block":45,"rcmd_tab_version":90,"in_new_ab":0},"pageVersion":"new_video","videoGoOldVersion":-1}',  # noqa: E501
-            "8b94": "https%3A%2F%2Fwww.bilibili.com%2F",
+            "54ef": '{"in_new_ab":true,"ab_version":{"remove_back_version":"REMOVE","login_dialog_version":"V_PLAYER_PLAY_TOAST","open_recommend_blank":"SELF","storage_back_btn":"HIDE","call_pc_app":"FORBID","clean_version_old":"GO_NEW","optimize_fmp_version":"LOADED_METADATA","for_ai_home_version":"V_OTHER","bmg_fallback_version":"DEFAULT","ai_summary_version":"SHOW","weixin_popup_block":"ENABLE","rcmd_tab_version":"DISABLE","in_new_ab":true},"ab_split_num":{"remove_back_version":11,"login_dialog_version":43,"open_recommend_blank":90,"storage_back_btn":87,"call_pc_app":47,"clean_version_old":46,"optimize_fmp_version":28,"for_ai_home_version":38,"bmg_fallback_version":86,"ai_summary_version":466,"weixin_popup_block":45,"rcmd_tab_version":90,"in_new_ab":0},"pageVersion":"new_video","videoGoOldVersion":-1}',"8b94": "https%3A%2F%2Fwww.bilibili.com%2F",
             "df35": uuid,
             "07a4": "en-US",
             "5f45": None,

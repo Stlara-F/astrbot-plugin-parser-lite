@@ -54,13 +54,13 @@ class StreamDownloader:
         use_curl_cffi: bool = False,
     ) -> UniResponse:
         """
-        发送 HEAD 请求并返回响应对象。
+        发�?HEAD 请求并返回响应对象�?
 
         :param url: 目标资源地址
-        :param ext_headers: 额外请求头
+        :param ext_headers: 额外请求�?
         :param use_curl_cffi: 是否使用 curl_cffi 发起请求
         :return: UniResponse 对象
-        :raise HTTPStatusError: HEAD 与 GET 均非 2xx 时抛出
+        :raise HTTPStatusError: HEAD �?GET 均非 2xx 时抛�?
         """
         headers = {**self.headers, **(ext_headers or {})}
         resp = await self.client.head(
@@ -71,8 +71,7 @@ class StreamDownloader:
         if 200 <= resp.status_code < 300:
             return resp
         logger.debug(
-            f"[StreamDownloader] HEAD {url} returned {resp.status_code}, fallback to streamed GET"  # noqa: E501
-        )
+            f"[StreamDownloader] HEAD {url} returned {resp.status_code}, fallback to streamed GET")
         async with self.client.stream(
             "GET",
             url,
@@ -88,7 +87,7 @@ class StreamDownloader:
         use_curl_cffi: bool = False,
     ) -> int | None:
         """
-        对给定 url 发送 HEAD 请求，返回 Content-Length
+        对给�?url 发�?HEAD 请求，返�?Content-Length
         """
         response = await self.head(
             url, ext_headers=ext_headers, use_curl_cffi=use_curl_cffi
@@ -113,13 +112,13 @@ class StreamDownloader:
     ) -> Path:
         """
         :param url: 下载文件的链接地址
-        :param file_name: 保存到本地的文件名，为空时根据 url 自动生成
+        :param file_name: 保存到本地的文件名，为空时根�?url 自动生成
         :param ext_headers: 额外的请求头，会与默认请求头合并
         :param cache_type: 缓存类型
         :param use_curl_cffi: 是否使用 curl_cffi 下载
 
         :return: 下载完成后的本地文件路径
-        :raise ZeroSizeException: 资源大小为 0 时抛出
+        :raise ZeroSizeException: 资源大小�?0 时抛�?
         :raise SizeLimitException: 资源大小超过配置的最大限制时抛出
         :raise DownloadException: 重试多次仍失败时抛出
         """
@@ -205,7 +204,7 @@ class StreamDownloader:
                 await asyncio.sleep(delay)
 
         raise DownloadException(
-            f"在 {self.MAX_RETRIES} 次重试后下载失败"
+            f"�?{self.MAX_RETRIES} 次重试后下载失败"
         ) from last_error
 
     def __validate_response(self, response: UniResponse, downloaded: int):
@@ -290,7 +289,7 @@ class StreamDownloader:
 
                         update(advance=len(chunk))
 
-                        # 没有Content-Length时限制大小
+                        # 没有Content-Length时限制大�?
                         if (
                             total_size is None
                             and current_size / 1024 / 1024 > pconfig.max_size
@@ -308,7 +307,7 @@ class StreamDownloader:
                 raise ZeroSizeException
 
             if total_size is not None and final_size != total_size:
-                raise DownloadException(f"文件大小不匹配: {final_size}/{total_size}")
+                raise DownloadException(f"文件大小不匹�? {final_size}/{total_size}")
 
     @auto_task
     async def download_video(
@@ -321,16 +320,16 @@ class StreamDownloader:
         use_curl_cffi: bool = False,
     ) -> Path:
         """
-        下载普通视频
+        下载普通视�?
 
         :param url: 视频下载地址
-        :param video_name: 保存到本地的视频文件名，为空时根据 url 自动生成 mp4 文件名
+        :param video_name: 保存到本地的视频文件名，为空时根�?url 自动生成 mp4 文件�?
         :param ext_headers: 额外的请求头，会与默认请求头合并
         :param cache_type: 缓存类型
         :param use_curl_cffi: 是否使用 curl_cffi 下载
 
         :return: 下载完成后的视频文件路径
-        :raise ZeroSizeException: 资源大小为 0 时抛出
+        :raise ZeroSizeException: 资源大小�?0 时抛�?
         :raise SizeLimitException: 资源大小超过配置的最大限制时抛出
         :raise DownloadException: 重试多次仍失败时抛出
         """
@@ -359,12 +358,12 @@ class StreamDownloader:
         下载 m3u8 视频并合并到 mp4
 
         :param m3u8_url: m3u8 播放列表链接地址
-        :param video_name: 输出的 mp4 文件名，为空时根据 m3u8 链接生成
+        :param video_name: 输出�?mp4 文件名，为空时根�?m3u8 链接生成
         :param ext_headers: 额外的请求头，会与默认请求头合并
         :param cache_type: 缓存类型
         :param use_curl_cffi: 是否使用 curl_cffi 下载
 
-        :return: 最终合并并转封装后的 mp4 文件路径
+        :return: 最终合并并转封装后�?mp4 文件路径
         :raise SizeLimitException: 资源大小超过配置的最大限制时抛出
         :raise DownloadException: m3u8 解析、下载或转封装失败时抛出
         """
@@ -380,7 +379,7 @@ class StreamDownloader:
         if await final_video_path.exists():
             return final_video_path
 
-        logger.info(f"[StreamDownloader] 开始下载 m3u8 视频: {file_id}")
+        logger.info(f"[StreamDownloader] 开始下�?m3u8 视频: {file_id}")
 
         try:
             # 1. 智能解析 m3u8 (自动处理嵌套列表)
@@ -390,7 +389,7 @@ class StreamDownloader:
             if not ts_urls:
                 raise DownloadException("m3u8 解析结果为空")
 
-            # 2. 下载所有 ts 片段到临时文件
+            # 2. 下载所�?ts 片段到临时文�?
             headers = {**self.headers, **(ext_headers or {})}
             downloaded_bytes = await self._download_m3u8_ts_files(
                 ts_urls=ts_urls,
@@ -427,7 +426,7 @@ class StreamDownloader:
         use_curl_cffi: bool = False,
     ) -> int:
         """
-        下载所有 ts 片段并写入临时 ts 文件，返回最终文件实际字节数
+        下载所�?ts 片段并写入临�?ts 文件，返回最终文件实际字节数
         """
 
         async def download_single_ts(
@@ -457,22 +456,20 @@ class StreamDownloader:
                             inc = len(chunk)
                             update_progress(advance=inc)
 
-                            # 基于文件当前实际大小判断总大小限制
+                            # 基于文件当前实际大小判断总大小限�?
                             current_bytes = await f.tell()
                             file_size_mb = current_bytes / 1024 / 1024
                             if file_size_mb > pconfig.max_size:
                                 logger.warning(
-                                    f"m3u8 视频大小 {file_size_mb:.2f} MB 超过 {pconfig.max_size} MB，取消下载"  # noqa: E501
-                                )
+                                    f"m3u8 视频大小 {file_size_mb:.2f} MB 超过 {pconfig.max_size} MB，取消下�?)
                                 raise SizeLimitException(file_size_mb)
                     return
                 except SizeLimitException:
-                    # 超限直接抛出，不再重试
+                    # 超限直接抛出，不再重�?
                     raise
                 except Exception as e:
                     logger.debug(
-                        f"下载 ts 文件失败，重试中 ({retry + 1}/{max_retries}): {ts_url}, error: {e}"  # noqa: E501
-                    )
+                        f"下载 ts 文件失败，重试中 ({retry + 1}/{max_retries}): {ts_url}, error: {e}")
                     await asyncio.sleep(1)
             raise DownloadException(f"多次重试仍失败的 ts 片段: {ts_url}")
 
@@ -481,7 +478,7 @@ class StreamDownloader:
                 for ts_url in ts_urls:
                     await download_single_ts(ts_url, f, update_progress)
 
-                # 所有 ts 下载完成后，取一次实际文件大小返回
+                # 所�?ts 下载完成后，取一次实际文件大小返�?
                 final_size = await f.tell()
 
         return final_size
@@ -493,15 +490,15 @@ class StreamDownloader:
         downloaded_bytes: int,
     ) -> None:
         """
-        校验 ts 汇总大小，并根据 ffmpeg 是否可用输出最终 mp4 文件。
+        校验 ts 汇总大小，并根�?ffmpeg 是否可用输出最�?mp4 文件�?
         """
         # 校验文件大小 (防止空文件送给 FFmpeg)
         if downloaded_bytes < 1024:
             raise DownloadException(
-                f"下载文件过小 ({downloaded_bytes} bytes)，可能下载失败"
+                f"下载文件过小 ({downloaded_bytes} bytes)，可能下载失�?
             )
 
-        # 转封装处理
+        # 转封装处�?
         if await self._has_ffmpeg():
             await self._remux_to_mp4(temp_ts_path, final_video_path)
         elif await temp_ts_path.exists():
@@ -511,7 +508,7 @@ class StreamDownloader:
             not await final_video_path.exists()
             or (await final_video_path.stat()).st_size <= 1024
         ):
-            raise DownloadException("视频下载失败，最终文件不存在或大小过小")
+            raise DownloadException("视频下载失败，最终文件不存在或大小过�?)
 
     async def _smart_parse_m3u8(
         self,
@@ -520,7 +517,7 @@ class StreamDownloader:
         use_curl_cffi: bool = False,
     ) -> list[str]:
         """
-        智能解析 m3u8，支持 Master Playlist (嵌套) 和 Media Playlist
+        智能解析 m3u8，支�?Master Playlist (嵌套) �?Media Playlist
 
         :param m3u8_url: m3u8 播放列表链接地址
 
@@ -528,16 +525,16 @@ class StreamDownloader:
         :raise DownloadException: 解析 m3u8 内容失败或未找到有效子列表时抛出
         """
 
-        logger.info(f"[StreamDownloader] 开始解析 m3u8: {m3u8_url}")
+        logger.info(f"[StreamDownloader] 开始解�?m3u8: {m3u8_url}")
         content = await self.text(
             m3u8_url, ext_headers=ext_headers, use_curl_cffi=use_curl_cffi
         )
         base_url = m3u8_url.rsplit("/", 1)[0] + "/"
 
-        # 检查是否是 Master Playlist (包含子 m3u8 链接)
+        # 检查是否是 Master Playlist (包含�?m3u8 链接)
         if "#EXT-X-STREAM-INF" in content:
             logger.debug(
-                "[StreamDownloader] 检测到 Master Playlist，正在提取最高画质链接..."
+                "[StreamDownloader] 检测到 Master Playlist，正在提取最高画质链�?.."
             )
             lines = content.splitlines()
             sub_playlists = []
@@ -551,17 +548,17 @@ class StreamDownloader:
                     sub_playlists.append(line)
 
             if sub_playlists:
-                # 通常最后一个是最高画质，或者是第一个
-                logger.debug(f"[StreamDownloader] 转向子播放列表: {sub_playlists[-1]}")
+                # 通常最后一个是最高画质，或者是第一�?
+                logger.debug(f"[StreamDownloader] 转向子播放列�? {sub_playlists[-1]}")
                 return await self._smart_parse_m3u8(
                     sub_playlists[-1],
                     ext_headers=ext_headers,
                     use_curl_cffi=use_curl_cffi,
                 )
             else:
-                raise DownloadException("Master Playlist 解析失败，未找到子链接")
+                raise DownloadException("Master Playlist 解析失败，未找到子链�?)
 
-        # 处理 Media Playlist (真正的 TS 列表)
+        # 处理 Media Playlist (真正�?TS 列表)
         ts_urls = []
         lines = content.splitlines()
         for line in lines:
@@ -575,7 +572,7 @@ class StreamDownloader:
                 ts_urls.append(urljoin(base_url, line))
 
         logger.info(
-            f"[StreamDownloader] m3u8 解析完成，共找到 {len(ts_urls)} 个 ts 文件"
+            f"[StreamDownloader] m3u8 解析完成，共找到 {len(ts_urls)} �?ts 文件"
         )
         return ts_urls
 
@@ -593,7 +590,7 @@ class StreamDownloader:
         :param use_curl_cffi: 是否使用 curl_cffi 请求
 
         :return: 响应体的文本内容
-        :raise DownloadException: 请求状态码非 200 时抛出
+        :raise DownloadException: 请求状态码�?200 时抛�?
         """
         headers = {**self.headers, **(ext_headers or {})}
         resp = await self.client.get(
@@ -619,7 +616,7 @@ class StreamDownloader:
         :param use_curl_cffi: 是否使用 curl_cffi 请求
 
         :return: 响应体的内容
-        :raise DownloadException: 请求状态码非 200 时抛出
+        :raise DownloadException: 请求状态码�?200 时抛�?
         """
         headers = {**self.headers, **(ext_headers or {})}
         resp = await self.client.get(
@@ -633,7 +630,7 @@ class StreamDownloader:
 
     async def _has_ffmpeg(self) -> bool:
         """
-        :return: 本机是否可用 ffmpeg 可执行程序
+        :return: 本机是否可用 ffmpeg 可执行程�?
         """
         if self._ffmpeg_available is not None:
             return self._ffmpeg_available
@@ -652,11 +649,11 @@ class StreamDownloader:
 
     async def _remux_to_mp4(self, input_path: Path, output_path: Path):
         """
-        :param input_path: 输入的 ts 或其他容器格式文件路径
-        :param output_path: 转封装后输出的 mp4 文件路径
+        :param input_path: 输入�?ts 或其他容器格式文件路�?
+        :param output_path: 转封装后输出�?mp4 文件路径
         :return: None
         """
-        # 增加 -f mp4 强制格式，增加 probesize 防止开头数据分析失败
+        # 增加 -f mp4 强制格式，增�?probesize 防止开头数据分析失�?
         cmd = (
             f'ffmpeg -y -v error -probesize 50M -analyzeduration 100M -i "{input_path}"'
             f' -c copy -bsf:a aac_adtstoasc "{output_path}"'
@@ -681,7 +678,7 @@ class StreamDownloader:
         下载音频
 
         :param url: 音频下载地址
-        :param audio_name: 保存到本地的音频文件名，为空时根据 url 自动生成 mp3 文件名
+        :param audio_name: 保存到本地的音频文件名，为空时根�?url 自动生成 mp3 文件�?
         :param ext_headers: 额外的请求头，会与默认请求头合并
         :param cache_type: 缓存类型
         :param use_curl_cffi: 是否使用 curl_cffi 下载
@@ -713,7 +710,7 @@ class StreamDownloader:
         下载图片
 
         :param url: 图片下载地址
-        :param img_name: 保存到本地的图片文件名，为空时根据 url 自动生成 jpg 文件名
+        :param img_name: 保存到本地的图片文件名，为空时根�?url 自动生成 jpg 文件�?
         :param ext_headers: 额外的请求头，会与默认请求头合并
         :param cache_type: 缓存类型
         :param use_curl_cffi: 是否使用 curl_cffi 下载
@@ -746,13 +743,13 @@ class StreamDownloader:
 
         :param video_url: 视频流下载地址
         :param audio_url: 音频流下载地址
-        :param merge_name: 合并后输出文件名(不含扩展名)
-        :param video_name: 保存到本地的视频文件名，为空时根据 url 自动生成 mp4 文件名
-        :param audio_name: 保存到本地的音频文件名，为空时根据 url 自动生成 mp3 文件名
+        :param merge_name: 合并后输出文件名(不含扩展�?
+        :param video_name: 保存到本地的视频文件名，为空时根�?url 自动生成 mp4 文件�?
+        :param audio_name: 保存到本地的音频文件名，为空时根�?url 自动生成 mp3 文件�?
         :param ext_headers: 额外的请求头，会与默认请求头合并
         :param use_curl_cffi: 是否使用 curl_cffi 下载
         :return: 合并后的视频文件本地路径(mp4)
-        :raise DownloadException: 下载或合并过程中发生错误时抛出
+        :raise DownloadException: 下载或合并过程中发生错误时抛�?
         """
         cache_dir = await CacheManager.ensure_dir(CacheManager.MEDIA)
         output_path = cache_dir / f"{merge_name}.mp4"
@@ -780,8 +777,8 @@ class StreamDownloader:
         desc: str, total: int | None = None
     ) -> Generator[Callable[..., None], None, None]:
         """
-        :param desc: 进度条描述
-        :param total: 进度条总长度
+        :param desc: 进度条描�?
+        :param total: 进度条总长�?
         :return: progress.update
         """
         with Progress(
