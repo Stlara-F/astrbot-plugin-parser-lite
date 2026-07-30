@@ -758,6 +758,7 @@ def _inject_dynamic_options_static():
                 "type": "list",
                 "options": list(enum_cls.__members__),
                 "default": fallback,
+                "_single": not is_list,  # 从上游 annotation 提取单选标记
             }
     if extra:
         schema.setdefault("parser_extra", {"type": "object", "description": "解析器专属扩展", "items": {}})

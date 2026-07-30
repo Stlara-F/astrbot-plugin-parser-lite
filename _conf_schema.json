@@ -3,7 +3,9 @@
     "type": "list",
     "description": "功能开关",
     "hint": "从上游Config bool字段自动扫描",
-    "options": ["__INJECT__"],
+    "options": [
+      "__INJECT__"
+    ],
     "default": []
   }
 }
