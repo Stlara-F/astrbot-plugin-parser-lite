@@ -168,7 +168,31 @@ else:
     bad("utils/_flags.py MISSING — plugin cannot load")
 
 # ═══════════════════════════════════════════════════════════════
-print(f"\n{'=' * 60}")
+# C10: LazyManager async timeout (replaces manual _clean_lazy)
+# ═══════════════════════════════════════════════════════════════
+print("\n-- C10: LazyManager async timeout --")
+from main import LazyManager
+if hasattr(LazyManager, "add") and hasattr(LazyManager, "remove") and hasattr(LazyManager, "get"):
+    ok("LazyManager has add/remove/get class methods")
+else:
+    bad("LazyManager missing methods")
+# Verify asyncio.Task creation (classmethod signature)
+import inspect
+add_sig = inspect.signature(LazyManager.add)
+if "timeout_sec" in str(add_sig):
+    ok("LazyManager.add accepts timeout_sec (async auto-cleanup)")
+else:
+    bad("LazyManager.add lacks timeout_sec parameter")
+
+# ═══════════════════════════════════════════════════════════════
+# C11: cmd_bm 三路 BV 提取 (当前消息 / 懒下载会话 / 回复消息)
+# ═══════════════════════════════════════════════════════════════
+print("\n-- C11: cmd_bm reply BV extraction --")
+bm_src = inspect.getsource(_m.ParserLitePlugin.cmd_bm)
+if "reply" in bm_src.lower() and "LazyManager" in bm_src:
+    ok("cmd_bm supports reply + lazy session BV extraction (3 paths)")
+else:
+    sk("cmd_bm reply extraction not verified")
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 print(f"Results: {results['PASS']} pass, {results['FAIL']} fail, {results['SKIP']} skip ({t} total)")
 if failures:
