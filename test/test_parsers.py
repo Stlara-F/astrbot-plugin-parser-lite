@@ -8,14 +8,17 @@
 
 未来添加新解析器: 在 TEST_URLS 中新加一条即可.
 """
-import os, asyncio, time, argparse
+import argparse
+import asyncio
 from dataclasses import dataclass, field
-from typing import Callable, ClassVar, Awaitable
+import os
+import time
 
 os.environ["PARSER_LITE_STANDALONE"] = "1"
 os.environ["PARSER_LITE_BASE_DIR"] = str(__import__("pathlib").Path(__file__).parent.parent / "src" / "nonebot_plugin_parser_lite")
 
 import sys
+
 _src = str(__import__("pathlib").Path(__file__).parent.parent / "src")
 if _src not in sys.path:
     sys.path.insert(0, _src)
@@ -23,8 +26,14 @@ _root = str(__import__("pathlib").Path(__file__).parent.parent)
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
+from nonebot_plugin_parser_lite.data import (
+    AudioContent,
+    GraphicContent,
+    ImageContent,
+    ParseResult,
+    VideoContent,
+)
 from nonebot_plugin_parser_lite.parsers.base import BaseParser
-from nonebot_plugin_parser_lite.data import ParseResult, VideoContent, ImageContent, AudioContent, GraphicContent
 
 # ═══════════════════════════════════════════════════════════════
 # 测试用例: 格式 {平台名: [(真实URL, 期望显示名)]}
@@ -46,6 +55,7 @@ _FALLBACK_URLS: list[str] = list({
 })
 
 import json as _json
+
 
 def _load_test_urls() -> list[str]:
     try:
@@ -98,7 +108,7 @@ def test_url_detection(platform: str, url: str, result: TestResult):
         if not p or p.name.lower() != platform.lower():
             continue
         try:
-            kw, mwp = cls.search_url(url)
+            kw, _mwp = cls.search_url(url)
             if kw:
                 matched = True
                 result.ok(f"{cls.__name__}.search_url → matched")
@@ -113,7 +123,7 @@ def test_url_detection(platform: str, url: str, result: TestResult):
 # ═══════════════════════════════════════════════════════════════
 # Phase 2: 在线解析 (需要网络)
 # ═══════════════════════════════════════════════════════════════
-async def test_online_parse(platform: str, url: str, display_name: str, result: TestResult, timeout: int = 60):
+async def test_online_parse(platform: str, url: str, display_name: str, result: TestResult, timeout: int = 60):  # noqa: PT028
     """在线解析 URL, 验证返回结果结构完整性."""
     for cls in BaseParser.get_all_subclass():
         p = getattr(cls, "platform", None)
@@ -242,14 +252,9 @@ async def main():
     overall = TestResult()
     start = time.time()
 
-    print("=" * 60)
-    print(f"Parser Test Standard ({len(urls)} URLs)")
-    print("=" * 60)
 
     # Phase 1: URL Detection (always)
-    print("\n── Phase 1: URL Detection ──")
     for url in urls:
-        print(f"\n[URL] {url[:100]}")
         matched = False
         for cls in BaseParser.get_all_subclass():
             p = getattr(cls, "platform", None)
@@ -264,14 +269,11 @@ async def main():
             overall.fail(f"No parser matched: {url[:60]}")
     # 测试结果说明
     if overall.failed:
-        print(f"\n  提示: {overall.failed} 项失败可能是因为测试 URL 过期或解析器不兼容")
-        print("  通过 AstrBot WebUI → test_urls 配置表添加/替换有效的测试链接")
+        pass
 
     # Phase 2: Online Parse (opt-in)
     if args.online:
-        print("\n\n── Phase 2: Online Parse ──")
         for url in urls:
-            print(f"\n[URL] {url[:80]}")
             for cls in BaseParser.get_all_subclass():
                 try:
                     kw, mwp = cls.search_url(url)
@@ -289,7 +291,6 @@ async def main():
                 break
 
     # Phase 3: Coverage
-    print("\n\n── Phase 3: Coverage ──")
     from nonebot_plugin_parser_lite.constants import PlatformEnum
     all_platforms = {p.name.lower() for p in PlatformEnum}
     tested = set()
@@ -305,10 +306,7 @@ async def main():
     for m in sorted(all_platforms - tested):
         overall.skip(f"  Untested: {m}")
 
-    elapsed = time.time() - start
-    print(f"\n{'=' * 60}")
-    print(f"Results: {overall.passed} passed, {overall.failed} failed, {overall.skipped} skipped ({elapsed:.1f}s)")
-    print(f"{'=' * 60}")
+    time.time() - start
     return 0 if overall.failed == 0 else 1
 
 
