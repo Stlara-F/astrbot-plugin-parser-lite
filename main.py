@@ -236,7 +236,8 @@ class ParserLite:
                 else:
                     for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
                         os.environ.pop(k, None)
-            DOWNLOADER.ensure_client()  # 重建 HTTP 客户端
+            if hasattr(DOWNLOADER, "ensure_client"):
+                DOWNLOADER.ensure_client()
             try:
                 for parser_cls in ordered:
                     pname = getattr(getattr(parser_cls, "platform", None), "name", "")

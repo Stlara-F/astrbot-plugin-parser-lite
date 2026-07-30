@@ -10,6 +10,7 @@ if _STANDALONE:
     # Stubs for standalone mode
     Event = object  # type: ignore
     Segment = object  # type: ignore
+    Reference = object  # type: ignore
     UniMessage = object  # type: ignore
     UniHelper = object  # type: ignore
     uniseg = None  # type: ignore
