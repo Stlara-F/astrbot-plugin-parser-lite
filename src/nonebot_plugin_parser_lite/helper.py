@@ -9,8 +9,8 @@ from .utils._flags import _STANDALONE
 if _STANDALONE:
     # Stubs for standalone mode
     Event = object  # type: ignore
+    Segment = object  # type: ignore
     UniMessage = object  # type: ignore
-    ForwardNodeInner = object  # type: ignore
     UniHelper = object  # type: ignore
     uniseg = None  # type: ignore
     CustomNode = object  # type: ignore

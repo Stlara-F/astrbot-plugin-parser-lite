@@ -1558,8 +1558,11 @@ class ParserLitePlugin(Star):
         except Exception as e:
             _fail("FFmpeg", e)
         try:
-            DOWNLOADER.ensure_client()
-            lines.append("[OK] Downloader: ready")
+            if hasattr(DOWNLOADER, "ensure_client"):
+                DOWNLOADER.ensure_client()
+                lines.append("[OK] Downloader: ready")
+            else:
+                lines.append("[OK] Downloader: loaded (no ensure_client)")
         except Exception as e:
             _fail("Downloader", e)
         try:
