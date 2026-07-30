@@ -1408,8 +1408,17 @@ class ParserLitePlugin(Star):
         await self._handle_card_message(event)
 
     async def _handle_card_message(self, event: AstrMessageEvent):
-        # 二选一门: 同一消息只处理一次 (on_message_group 和 on_url_auto 可能同时匹配)
-        msg_id = getattr(event, "message_id", None) or getattr(getattr(event, "message_obj", None), "message_id", None) or id(event)
+        # 二选一门: 用原始 message_id 去重 (跨 handler 实例)
+        msg_id = None
+        # AstrBot aiocqhttp → event.message_obj.raw_message.message_id
+        msg_obj = getattr(event, "message_obj", None)
+        if msg_obj:
+            raw = getattr(msg_obj, "raw_message", None)
+            if isinstance(raw, dict):
+                msg_id = raw.get("message_id")
+        # fallback: event.get_message_str() 取 hash
+        if msg_id is None:
+            msg_id = hash(event.get_message_str())
         if msg_id in self._recently_processed:
             return
         self._recently_processed.add(msg_id)
