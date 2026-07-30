@@ -7,17 +7,17 @@ PR#205 merged → sokoko-org/main. Runs inside nonebot_plugin_parser_lite/ packa
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import inspect
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import sys
 import time
 import traceback
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
+from typing import ClassVar
 
 os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
 
@@ -27,10 +27,11 @@ _src = os.path.join(_here, "src")
 if os.path.isdir(_src):
     sys.path.insert(0, _src)
 
+from astrbot.api import AstrBotConfig
+from astrbot.api import logger as astrbot_logger
+from astrbot.api.event import AstrMessageEvent, filter
 import astrbot.api.message_components as Comp
-from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
-from astrbot.api import AstrBotConfig, logger as astrbot_logger
 
 # ── Monkey-patch ────────────────────────────────────────────────────────────────
 if not hasattr(logging.Logger, "success"):
@@ -58,6 +59,7 @@ class _LoguruBridge(logging.Handler):
 
 # ── 上游 imports ───────────────────────────────────────────────────────────────
 from nonebot_plugin_parser_lite.config import Config as _UpConfig
+from nonebot_plugin_parser_lite.constants import PlatformEnum
 from nonebot_plugin_parser_lite.data import (
     AudioContent,
     GraphicContent,
@@ -65,12 +67,11 @@ from nonebot_plugin_parser_lite.data import (
     ParseResult,
     VideoContent,
 )
-from nonebot_plugin_parser_lite.parsers.base import BaseParser
 from nonebot_plugin_parser_lite.download import DOWNLOADER
-from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
-from nonebot_plugin_parser_lite.constants import PlatformEnum
-from nonebot_plugin_parser_lite.utils.common import LimitedSizeDict
+from nonebot_plugin_parser_lite.parsers.base import BaseParser
 from nonebot_plugin_parser_lite.utils.cache import CacheManager
+from nonebot_plugin_parser_lite.utils.common import LimitedSizeDict
+from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
 
 URL_RE = re.compile(r"https?://[^\s<>\"{}|\\^`\[\]]+", re.IGNORECASE)
 CACHE_INTERVAL = 24 * 3600
@@ -79,8 +80,8 @@ _DISABLED_GROUPS_FILE = Path(__file__).parent / "data" / "parser_lite" / "disabl
 
 # ── 配置桥接 ──────────────────────────────────────────────────────────────────
 class BridgeConfig:
-    _instance: Optional[_UpConfig] = None
-    _source: Optional[dict] = None
+    _instance: _UpConfig | None = None
+    _source: dict | None = None
     _hash: str = ""
 
     @classmethod
@@ -177,7 +178,7 @@ FEATURE_TABLE: dict[str, str] = {}
 # ── Per-parser config helpers ──────────────────────────────────────────────
 def _load_parsers_config() -> dict:
     try: return (BridgeConfig._source or {}).get("parsers", {})
-    except: return {}
+    except Exception: return {}
 
 def _is_parser_enabled(platform: str) -> bool:
     return platform not in _load_parsers_config().get("disabled", [])
@@ -194,7 +195,7 @@ def _get_cookies_for(platform: str) -> dict:
         cookies = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, dict) else {})
         ck = cookies.get(platform, "").strip()
         if ck: return {"Cookie": ck}
-    except: pass
+    except Exception: pass
     return {}
 
 # ── ParserLite 编排器 ─────────────────────────────────────────────────────────
@@ -270,7 +271,7 @@ class ParserLite:
                     except Exception as e:
                         astrbot_logger.warning(f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
                 raise ValueError(f"Unsupported URL: {url}")
-            except Exception as e1:
+            except Exception:
                 if proxy_url and attempt == 0:
                     mode = "Proxy" if proxy_first else "Direct"
                     fallback = "direct" if proxy_first else "proxy"
@@ -308,7 +309,7 @@ class ParserLite:
 class CustomParser:
     """自定义解析器: 用户通过 WebUI template_list 配置正则提取规则"""
 
-    SCHEMA: list[dict] = [
+    SCHEMA: ClassVar[list[dict]] = [
         {"key": "_header",   "type": "text",   "desc": "── 基础配置 ──",                      "default": ""},
         {"key": "name",      "type": "string", "desc": "解析器ID (唯一标识)"},
         {"key": "display",   "type": "string", "desc": "显示名"},
@@ -338,7 +339,7 @@ class CustomParser:
     """字段声明: key=字段键, type=AstrBot类型, desc=描述, default=默认值 — 注入和 __init__ 共用"""
 
     # 从 SCHEMA 构建默认值查找表
-    _DEFAULTS: dict = {}
+    _DEFAULTS: ClassVar[dict] = {}
     for _s in SCHEMA:
         if "default" in _s:
             _DEFAULTS[_s["key"]] = _s["default"]
@@ -400,7 +401,9 @@ class CustomParser:
         return (url, m)
 
     async def parse(self, keyword: str, searched):
-        import httpx, datetime
+        import datetime
+
+        import httpx
         async with httpx.AsyncClient(headers=self._headers or None, follow_redirects=True) as client:
             if self._ajax and self._ajax_url:
                 resp = await client.post(self._ajax_url, json={"url": keyword}, timeout=self._timeout)
@@ -432,11 +435,13 @@ class CustomParser:
                 t = m.group(1) if m.lastindex else m.group(0)
                 if t: texts.append(t)
 
-        from nonebot_plugin_parser_lite.data import (
-            Author, Stats, ParseResult, Platform,
-            ImageContent, VideoContent, AudioContent,
-        )
         from nonebot_plugin_parser_lite.creator import Creator
+        from nonebot_plugin_parser_lite.data import (
+            Author,
+            ParseResult,
+            Platform,
+            Stats,
+        )
 
         platform_inst = Platform(name=self._name, display_name=self._display)
         author = Author(name=author_name or "未知")
@@ -483,7 +488,8 @@ class CustomParser:
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 def _detect_missing_libs() -> str:
-    import ctypes, ctypes.util
+    import ctypes
+    import ctypes.util
     libs = {"libnspr4.so":"nspr4","libnss3.so":"nss3","libgbm.so.1":"gbm",
             "libasound.so.2":"asound","libxkbcommon.so.0":"xkbcommon"}
     missing = [s for s, n in libs.items()
@@ -491,8 +497,12 @@ def _detect_missing_libs() -> str:
     return "\n".join(missing)
 
 def _try_load(path):
-    try: import ctypes; ctypes.cdll.LoadLibrary(path); return True
-    except OSError: return False
+    import ctypes
+    try:
+        ctypes.cdll.LoadLibrary(path)
+        return True
+    except OSError:
+        return False
 
 def _load_disabled_groups() -> set[str]:
     try:
@@ -551,7 +561,7 @@ _BRIDGE_FIELDS: list[dict] = [
         "type": "string",
         "desc": "Cookie映射(JSON)",
         "default": "{}",
-        "hint": "语法: {\"平台名\":\"key1=val1; key2=val2\"}。例: {\"bilibili\":\"SESSDATA=xxx; bili_jct=yyy\",\"zhihu\":\"z_c0=zzz\"}。B站Cookie从浏览器F12→Application→Cookies→bilibili.com 复制。各平台独立，以分号分隔键值对",
+        "hint": '语法: {"平台名":"key1=val1; key2=val2"}。例: {"bilibili":"SESSDATA=xxx; bili_jct=yyy","zhihu":"z_c0=zzz"}。B站Cookie从浏览器F12→Application→Cookies→bilibili.com 复制。各平台独立，以分号分隔键值对',
     },
     {
         "path": "send_strategy",
@@ -600,7 +610,6 @@ def _extract_slider(finfo) -> dict | None:
 
 def _build_field_entry(fname: str, finfo, is_new: bool) -> dict | None:
     """从 pydantic 字段信息生成 AstrBot schema 条目 (0 hardcode)"""
-    import typing
     ann = finfo.annotation
     default = finfo.default
 
@@ -621,7 +630,6 @@ def _build_field_entry(fname: str, finfo, is_new: bool) -> dict | None:
         default_val = None
 
     entry = {"description": _schema_desc(fname)}
-    is_slider = False
 
     # int → slider 或 纯 int
     if ann is int or (hasattr(ann, "__origin__") and ann.__origin__ is int):
@@ -629,7 +637,6 @@ def _build_field_entry(fname: str, finfo, is_new: bool) -> dict | None:
         slider = _extract_slider(finfo) or _SLIDER_HINTS.get(fname)
         if slider:
             entry["slider"] = slider
-            is_slider = True
     # str
     elif ann is str or (hasattr(ann, "__origin__") and ann.__origin__ is str):
         entry["type"] = "string"
@@ -662,8 +669,9 @@ def _get_parser_extra_mapping() -> dict:
 
 def _inject_dynamic_options_static():
     """0-hardcode 动态注入: 扫描上游 Config 模型 → 填充 _conf_schema.json"""
-    from nonebot_plugin_parser_lite.constants import PlatformEnum
     import typing
+
+    from nonebot_plugin_parser_lite.constants import PlatformEnum
     schema_path = Path(__file__).parent / "_conf_schema.json"
     flag_path = Path(__file__).parent / ".injected"
     if not schema_path.exists():
@@ -895,7 +903,7 @@ class LazyManager:
         task: asyncio.Task[None] | None = None
         deadline: float = 0.0
 
-    _sessions: dict[str, "LazyManager.Session"] = {}
+    _sessions: ClassVar[dict[str, "LazyManager.Session"]] = {}
 
     @classmethod
     def add(cls, key: str, result: "ParseResult", url: str, timeout_sec: float) -> None:
@@ -939,9 +947,9 @@ class ParserLitePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
-        self._log_bridge: Optional[_LoguruBridge] = None
-        self._parser: Optional[ParserLite] = None
-        self._cleanup_task: Optional[asyncio.Task[None]] = None
+        self._log_bridge: _LoguruBridge | None = None
+        self._parser: ParserLite | None = None
+        self._cleanup_task: asyncio.Task[None] | None = None
         self._plugin_start_time: float = time.time()
         self._disabled_groups: set[str] = set()
         self._recently_processed: set[int] = set()
@@ -968,7 +976,7 @@ class ParserLitePlugin(Star):
             self._parser = ParserLite()
             self._plugin_start_time = time.time()
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
-            asyncio.create_task(self._auto_ensure_chromium())
+            self._chromium_task = asyncio.create_task(self._auto_ensure_chromium())
             astrbot_logger.info("[ParserLite] ✓ initialize 完成")
         except Exception:
             astrbot_logger.error(f"[ParserLite] ✗ initialize 失败\n{traceback.format_exc()}")
@@ -1017,7 +1025,7 @@ class ParserLitePlugin(Star):
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable, "-m", "playwright", "install", "chromium",
                     env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
+                _stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
                 if proc.returncode == 0:
                     astrbot_logger.info(f"[ParserLite] Chromium 安装完成 ({name})")
                     return
@@ -1050,7 +1058,7 @@ class ParserLitePlugin(Star):
         return LazyManager.cleanup()
 
     @staticmethod
-    def _url_from_text(event: AstrMessageEvent) -> Optional[str]:
+    def _url_from_text(event: AstrMessageEvent) -> str | None:
         m = URL_RE.search(event.get_message_str().strip())
         return m.group(0) if m else None
 
@@ -1253,7 +1261,7 @@ class ParserLitePlugin(Star):
                 ParserLitePlugin._collect_urls(sub_msgs, urls)
 
     # ── 核心逻辑 ──────────────────────────────────────────────────────────────
-    async def _parse_raw(self, url: str) -> Optional[ParseResult]:
+    async def _parse_raw(self, url: str) -> ParseResult | None:
         if self._parser is None: return None
         if url in _RESULT_CACHE: return _RESULT_CACHE[url]
         try:
@@ -1296,7 +1304,7 @@ class ParserLitePlugin(Star):
             if source_url:
                 try:
                     await event.send(event.chain_result([Comp.Image.fromURL(source_url)]))
-                    astrbot_logger.debug(f"[ParserLite]   image via URL")
+                    astrbot_logger.debug("[ParserLite]   image via URL")
                     return
                 except Exception: pass
 
@@ -1319,7 +1327,7 @@ class ParserLitePlugin(Star):
             if source_url:
                 try:
                     await event.send(event.chain_result([Comp.Video.fromURL(source_url)]))
-                    astrbot_logger.debug(f"[ParserLite]   video via URL")
+                    astrbot_logger.debug("[ParserLite]   video via URL")
                     return
                 except Exception: pass
 
@@ -1342,7 +1350,7 @@ class ParserLitePlugin(Star):
             if source_url:
                 try:
                     await event.send(event.chain_result([Comp.Record.fromURL(source_url)]))
-                    astrbot_logger.debug(f"[ParserLite]   audio via URL")
+                    astrbot_logger.debug("[ParserLite]   audio via URL")
                     return
                 except Exception: pass
             # 最终兜底: 当群文件发送
@@ -1362,6 +1370,7 @@ class ParserLitePlugin(Star):
     async def _compress_image(self, p: Path) -> bytes:
         """压缩超大图片 (JPEG quality 80%, 最大 20MB)"""
         import io
+
         from PIL import Image as PILImage
         img = PILImage.open(str(p))
         if img.mode in ("RGBA", "P"): img = img.convert("RGB")
@@ -1417,8 +1426,11 @@ class ParserLitePlugin(Star):
             astrbot_logger.info(f"[ParserLite] card cache hit ({len(data)} bytes)")
             return
 
+        import uuid
+
+        import jinja2
+
         from nonebot_plugin_parser_lite.render import RENDERER, safe_src
-        import jinja2, uuid
         try:
             from playwright.async_api import async_playwright
             tpl_data = await RENDERER.resolve_parse_result(result)
@@ -1436,7 +1448,7 @@ class ParserLitePlugin(Star):
                     await pg.goto(f"file:///{tmp.as_posix()}", wait_until="networkidle")
                     data = await pg.locator("body").screenshot(type="jpeg", quality=85)
                     await b.close()
-                if len(data) < 1024 or data[:2] != b'\xff\xd8':
+                if len(data) < 1024 or data[:2] != b"\xff\xd8":
                     raise RuntimeError(f"Invalid JPEG: {len(data)} bytes")
                 if len(_CARD_CACHE) >= 10:
                     _CARD_CACHE.clear()
@@ -1609,11 +1621,11 @@ class ParserLitePlugin(Star):
         yield event.plain_result(f"清理完成: {count} files")
 
     async def cmd_status(self, event: AstrMessageEvent):
-        cfg = get_config()
+        get_config()  # ensure initialized
         uptime = int(time.time() - self._plugin_start_time)
         h, m = divmod(uptime, 3600); m2, s = divmod(m, 60)
         lines = [
-            f"ParserLite v1.3.1", f"Uptime: {h}h{m2}m{s}s",
+            "ParserLite v1.3.1", f"Uptime: {h}h{m2}m{s}s",
             f"Cache: {len(_RESULT_CACHE)} entries",
             f"Disabled groups: {len(self._disabled_groups)}",
             f"Lazy: {len(LazyManager._sessions)} sessions",
@@ -1700,7 +1712,7 @@ class ParserLitePlugin(Star):
         broken = []
         for cls in parsers:
             try:
-                inst = cls()
+                cls()  # test instantiation
                 if not getattr(cls, "platform", None):
                     broken.append(f"{cls.__name__}: missing platform")
             except Exception as e:
@@ -1770,8 +1782,9 @@ class ParserLitePlugin(Star):
         except Exception as e:
             _fail("Render import (helper.py no nonebot guard)", e)
         try:
-            import jinja2
-            lines.append("[OK] jinja2: available")
+            import importlib.util
+            if importlib.util.find_spec("jinja2"):
+                lines.append("[OK] jinja2: available")
         except ImportError:
             lines.append("[WARN] jinja2: not installed → card rendering disabled")
         if todo:
