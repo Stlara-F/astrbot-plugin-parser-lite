@@ -498,23 +498,6 @@ def _label(k: str) -> str:
     if s.startswith("bili "): s = "B站" + s[4:]
     return " ".join(w[0].upper() + w[1:] for w in s.split())
 
-def _get_cookies_for(platform: str) -> dict:
-    try:
-        source = BridgeConfig._source or {}
-        raw = source.get("parsers", {}).get("cookies", "{}")
-        if not raw or raw == "{}": return {}
-        data = json.loads(raw) if isinstance(raw, str) else raw
-        return data.get(platform, {})
-    except Exception: return {}
-
-def _use_proxy_for(platform: str) -> bool:
-    try:
-        source = BridgeConfig._source or {}
-        proxied = source.get("parsers", {}).get("proxied", [])
-        if isinstance(proxied, str): proxied = json.loads(proxied)
-        return platform.lower() in [str(p).lower() for p in proxied]
-    except Exception: return False
-
 # ── 动态注入 ──────────────────────────────────────────────────────────────────
 _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
 """parser_extra UI key → (Config field name, enum class, is_list)"""
