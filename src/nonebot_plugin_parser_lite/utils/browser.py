@@ -8,7 +8,6 @@ import tempfile
 from typing import Any, Literal, Self
 
 from anyio import Path, fail_after, sleep
-from anyio import TimeoutError as AnyioTimeoutError
 import httpx
 from nonebot import get_driver
 from nonebot.log import logger
@@ -98,7 +97,7 @@ async def _wait_cdp_ready(ip: str, port: int) -> None:
                             if any(t.get("type") in ("page", "webview") for t in tabs):
                                 return
                     await sleep(0.2)
-    except AnyioTimeoutError as e:
+    except TimeoutError as e:
         raise RuntimeError(f"连接浏览器 CDP 超时: {ip}:{port}") from e
 
 
@@ -337,7 +336,7 @@ class BrowserManager:
 
         with suppress(ProcessLookupError, OSError):
             proc.terminate()
-        with suppress(AnyioTimeoutError):
+        with suppress(TimeoutError):
             with fail_after(_PROCESS_STOP_TIMEOUT):
                 await proc.wait()
             return
