@@ -75,12 +75,44 @@ from nonebot_plugin_parser_lite.data import (
 )
 from nonebot_plugin_parser_lite.download import DOWNLOADER
 
+
+def _resolve_proxy_url(raw: str) -> str:
+    """从用户输入解析代理 URL, 支持:
+    - 完整协议: http://ip:port, socks5://ip:port
+    - 纯地址: ip:port → http://ip:port
+    - socks 关键词: socks ip:port / socks5 ip:port → socks5://ip:port
+    """
+    raw = raw.strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        return raw
+    # socks / socks5 关键字识别
+    _lower = raw.lower()
+    for _kw in ("socks5 ", "socks "):
+        if _lower.startswith(_kw):
+            return "socks5://" + raw[len(_kw):].strip()
+    # 默认 http
+    if ":" in raw and not raw.startswith("["):
+        return "http://" + raw
+    return raw
+
+
+def _extract_config_value(entry) -> str:
+    """从 schema entry 中提取用户值 (dict 取 value/default, 否则取裸值)"""
+    if isinstance(entry, dict):
+        return str(entry.get("value", entry.get("default", "")) or "")
+    if isinstance(entry, str):
+        return entry
+    return ""
+
+
 _last_proxy: str | None = None
 
 def _apply_downloader_proxy(proxy_url: str):
-    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端 (env var 对这两个库无效)"""
+    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端"""
     global _last_proxy
-    proxy_url = proxy_url.strip()
+    proxy_url = _resolve_proxy_url(proxy_url)
     if proxy_url == (_last_proxy or ""):
         return
     _last_proxy = proxy_url
@@ -110,6 +142,7 @@ URL_RE = re.compile(r"https?://[^\s<>\"{}|\\^`\[\]]+", re.IGNORECASE)
 CACHE_INTERVAL = 24 * 3600
 _RESULT_CACHE: LimitedSizeDict[str, ParseResult] = LimitedSizeDict(max_size=50)
 _DISABLED_GROUPS_FILE = Path(__file__).parent / "data" / "parser_lite" / "disabled_groups.json"
+_CONF_SCHEMA_PATH = Path(__file__).parent / "_conf_schema.json"
 
 # ── 配置桥接 ──────────────────────────────────────────────────────────────────
 class BridgeConfig:
@@ -154,7 +187,15 @@ class BridgeConfig:
                 break
         DOWNLOADER.MAX_RETRIES = _cfg.max_retries
         DOWNLOADER.max_size_mb = _cfg.max_size
+        # proxy: _source 优先, 回退读取 schema 文件 (AstrBot 在模块加载前已解析 config,
+        # 注入新增的字段不在 self.config 中, 需直接从文件读取)
         proxy = (cls._source or {}).get("plite_http_proxy", "")
+        if not proxy:
+            try:
+                _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
+                proxy = _extract_config_value(_sf.get("plite_http_proxy", ""))
+            except Exception:
+                pass
         _apply_downloader_proxy(proxy)
         astrbot_logger.debug(f"[ParserLite] configure: {len(valid)} fields, dirty={h != cls._hash}")
 
@@ -266,6 +307,12 @@ class ParserLite:
         # ① 热重载配置 + 代理环境准备
         get_config()
         proxy_url = (BridgeConfig._source or {}).get("plite_http_proxy", "")
+        if not proxy_url:
+            try:
+                _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
+                proxy_url = _sf.get("plite_http_proxy", "")
+            except Exception:
+                pass
         target = self._route_url(url)  # O(1) 特征路由
         proxy_first = _use_proxy_for(target or "")
         # ② 解析器优先级排序: 特征命中排第一
@@ -705,7 +752,7 @@ def _inject_dynamic_options_static():
     import typing
 
     from nonebot_plugin_parser_lite.constants import PlatformEnum
-    schema_path = Path(__file__).parent / "_conf_schema.json"
+    schema_path = _CONF_SCHEMA_PATH
     flag_path = Path(__file__).parent / ".injected"
     if not schema_path.exists():
         return

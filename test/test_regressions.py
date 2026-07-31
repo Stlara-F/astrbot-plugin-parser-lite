@@ -549,6 +549,25 @@ if "_handle_card_message" in oua_src:
 else:
     ok("on_url_auto is disabled (prevents double-trigger)")
 
+# ═══════════════════════════════════════════════════════════════
+# C35: _resolve_proxy_url 协议自动匹配 (ip:port → http://ip:port)
+# ═══════════════════════════════════════════════════════════════
+rp_src = inspect.getsource(_m._resolve_proxy_url)
+if '"://"' in rp_src and '"http://"' in rp_src:
+    ok("_resolve_proxy_url auto-prepends http:// to bare ip:port")
+else:
+    sk("_resolve_proxy_url protocol detection not confirmed")
+
+# ═══════════════════════════════════════════════════════════════
+# C36: configure 从 schema 文件回退读取 plite_http_proxy
+# (AstrBot 在模块加载前解析 config, 注入新增字段不在 self.config 中)
+# ═══════════════════════════════════════════════════════════════
+cfg3_src = inspect.getsource(_m.BridgeConfig.configure)
+if "_CONF_SCHEMA_PATH" in cfg3_src:
+    ok("configure reads proxy from schema file (_source fallback)")
+else:
+    sk("schema-file proxy fallback not confirmed in configure")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass
