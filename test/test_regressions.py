@@ -566,14 +566,14 @@ else:
     bad("_PROXY_PROTOCOLS NOT defined — auto-protocol rotation disabled")
 
 # ═══════════════════════════════════════════════════════════════
-# C36: configure 从 schema 文件回退读取 plite_http_proxy
+# C36: configure 通过 _read_proxy_config 读取代理 (含 schema 回退)
 # (AstrBot 在模块加载前解析 config, 注入新增字段不在 self.config 中)
 # ═══════════════════════════════════════════════════════════════
 cfg3_src = inspect.getsource(_m.BridgeConfig.configure)
-if "_CONF_SCHEMA_PATH" in cfg3_src:
-    ok("configure reads proxy from schema file (_source fallback)")
+if "_read_proxy_config" in cfg3_src:
+    ok("configure uses _read_proxy_config for proxy (with schema fallback)")
 else:
-    bad("configure does NOT read proxy from schema file — AstrBot config lifecycle bug unfixed")
+    bad("configure does NOT use _read_proxy_config — AstrBot config lifecycle bug unfixed")
 
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:

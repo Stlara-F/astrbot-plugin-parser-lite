@@ -79,8 +79,8 @@ from nonebot_plugin_parser_lite.download import DOWNLOADER
 def _resolve_proxy_url(raw: str) -> str:
     """从用户输入解析代理 URL, 支持:
     - 完整协议: http://, https://, socks4://, socks4a://, socks5://, socks5h://
-    - 纯地址: ip:port → http://ip:port
     - 关键词: socks/socks4/socks4a/socks5/socks5h ip:port → protocol://ip:port
+    - 裸地址: ip:port → 原样返回 (由调用方通过 _PROXY_PROTOCOLS 自动匹配)
     """
     raw = raw.strip()
     if not raw:
@@ -94,8 +94,7 @@ def _resolve_proxy_url(raw: str) -> str:
             if _proto == "socks":
                 _proto = "socks5"
             return f"{_proto}://{raw[len(_kw):].strip()}"
-    if ":" in raw and not raw.startswith("["):
-        return "http://" + raw
+    # 裸地址：不添加默认协议，留给调用方自动匹配
     return raw
 
 
@@ -110,6 +109,28 @@ def _resolve_raw_addr(raw: str) -> str:
         if raw.lower().startswith(_pfx):
             return raw[len(_pfx):]
     return raw
+
+
+def _read_proxy_config() -> str:
+    """读取代理配置并输出诊断日志"""
+    _sources = {}
+    px = (BridgeConfig._source or {}).get("plite_http_proxy", "")
+    if px:
+        _sources["_source"] = str(px)[:100]
+    else:
+        try:
+            _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
+            _raw = _sf.get("plite_http_proxy")
+            if _raw:
+                px = _extract_config_value(_raw)
+                _sources[f"schema({type(_raw).__name__})"] = str(px)[:100]
+        except Exception as e:
+            _sources["schema_error"] = str(e)[:80]
+    if not px and not _sources:
+        _sources["_source"] = "(empty)"
+    _log_line = ", ".join(f"{k}={v}" for k, v in _sources.items()) if _sources else "not found"
+    astrbot_logger.info(f"[ParserLite] proxy config: pyx={px or '<not set>'}, sources: {_log_line}")
+    return px
 
 
 def _extract_config_value(entry) -> str:
@@ -140,7 +161,8 @@ def _apply_downloader_proxy(proxy_url: str):
         client._curl = CurlSession(impersonate="chrome146", timeout=240,
                                     verify=False, allow_redirects=True)
     else:
-        _p = proxy_url
+        # 裸地址默认 http:// (parse_url 通过 _PROXY_PROTOCOLS 轮询时会自行加协议)
+        _p = proxy_url if "://" in proxy_url else f"http://{proxy_url}"
         client._httpx = HttpxClient(proxy=_p, verify=False,
                                      follow_redirects=True, timeout=Timeout(timeout=15))
         client._curl = CurlSession(proxies={"http": _p, "https": _p},
@@ -201,16 +223,7 @@ class BridgeConfig:
                 break
         DOWNLOADER.MAX_RETRIES = _cfg.max_retries
         DOWNLOADER.max_size_mb = _cfg.max_size
-        # proxy: _source 优先, 回退读取 schema 文件 (AstrBot 在模块加载前已解析 config,
-        # 注入新增的字段不在 self.config 中, 需直接从文件读取)
-        proxy = (cls._source or {}).get("plite_http_proxy", "")
-        if not proxy:
-            try:
-                _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
-                proxy = _extract_config_value(_sf.get("plite_http_proxy", ""))
-            except Exception:
-                pass
-        _apply_downloader_proxy(proxy)
+        _apply_downloader_proxy(_read_proxy_config())
         astrbot_logger.debug(f"[ParserLite] configure: {len(valid)} fields, dirty={h != cls._hash}")
 
     @classmethod
@@ -344,13 +357,7 @@ class ParserLite:
     async def parse_url(self, url: str) -> ParseResult:
         # ① 热重载配置 + 代理环境准备
         get_config()
-        proxy_url = (BridgeConfig._source or {}).get("plite_http_proxy", "")
-        if not proxy_url:
-            try:
-                _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
-                proxy_url = _extract_config_value(_sf.get("plite_http_proxy", ""))
-            except Exception:
-                pass
+        proxy_url = _read_proxy_config()
         target = self._route_url(url)  # O(1) 特征路由
         proxy_first = _use_proxy_for(target or "")
         # ② 解析器优先级排序: 特征命中排第一
