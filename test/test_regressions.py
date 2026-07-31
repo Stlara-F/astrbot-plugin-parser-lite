@@ -507,6 +507,19 @@ if "nonebot_plugin_parser_lite" in _main_lines_full and "del sys.modules" in _ma
 else:
     sk("sys.modules cache cleanup not confirmed")
 
+# ═══════════════════════════════════════════════════════════════
+# C31: _apply_downloader_proxy 对 curl_cffi 使用 proxies= dict
+# (curl_cffi.AsyncSession 不支持 proxy= 字符串参数, 必须传 proxies=dict
+#  X.com 等使用 curl_cffi 的解析器代理会静默失效)
+# ═══════════════════════════════════════════════════════════════
+proxy_src = inspect.getsource(_m._apply_downloader_proxy)
+if 'proxies={"http"' in proxy_src or 'proxies={\\"http\\"' in proxy_src:
+    ok("_apply_downloader_proxy uses proxies=dict for curl_cffi")
+elif "proxy=proxy_url" in proxy_src or "proxy=_p" in proxy_src:
+    ok("_apply_downloader_proxy uses proxy=string for curl_cffi (verify format)")
+else:
+    sk("curl_cffi proxy format not confirmed")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass

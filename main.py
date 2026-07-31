@@ -93,9 +93,11 @@ def _apply_downloader_proxy(proxy_url: str):
         client._curl = CurlSession(impersonate="chrome146", timeout=240,
                                     verify=False, allow_redirects=True)
     else:
-        client._httpx = HttpxClient(proxy=proxy_url.strip(), verify=False,
+        _p = proxy_url.strip()
+        client._httpx = HttpxClient(proxy=_p, verify=False,
                                      follow_redirects=True, timeout=Timeout(timeout=15))
-        client._curl = CurlSession(proxy=proxy_url.strip(), impersonate="chrome146",
+        client._curl = CurlSession(proxies={"http": _p, "https": _p},
+                                    impersonate="chrome146",
                                     timeout=240, verify=False, allow_redirects=True)
     astrbot_logger.info(f"[ParserLite] downloader proxy: {proxy_url or 'disabled'}")
 from nonebot_plugin_parser_lite.parsers.base import BaseParser
