@@ -481,6 +481,19 @@ if '"plite_http_proxy"' in bf_src and '"HTTP代理"' in bf_src:
 else:
     bad("plite_http_proxy NOT found in _BRIDGE_FIELDS")
 
+# ═══════════════════════════════════════════════════════════════
+# C29: _send_card 模板文件存在性检查用 os.path.exists (非 anyio.Path)
+# (RENDERER.templates_dir 是 anyio.Path, .exists() 返回 coroutine 而非 bool,
+#  导致丢失模板时不触发防护, 仍走 jinja2.get_template → TemplateNotFound)
+# ═══════════════════════════════════════════════════════════════
+card_src2 = inspect.getsource(_m.ParserLitePlugin._send_card)
+if "os.path.exists" in card_src2 and "default.html.jinja" in card_src2:
+    ok("_send_card uses os.path.exists for template check (not anyio.Path)")
+elif "tpl_path.exists" in card_src2 or "Path.exists" in card_src2:
+    bad("_send_card uses anyio.Path.exists (async, always returns coroutine)")
+else:
+    sk("_send_card template existence check not found")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass

@@ -82,18 +82,6 @@ def _apply_downloader_proxy(proxy_url: str):
     from httpx import AsyncClient as HttpxClient
     from httpx import Timeout
     client = DOWNLOADER.client
-    if hasattr(client, "_httpx"):
-        try:
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(client._httpx.aclose())
-        except Exception:
-            pass
-    if hasattr(client, "_curl"):
-        try:
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(client._curl.close())
-        except Exception:
-            pass
     if not proxy_url:
         client._httpx = HttpxClient(verify=False, follow_redirects=True,
                                      timeout=Timeout(timeout=15))
@@ -1468,6 +1456,15 @@ class ParserLitePlugin(Star):
         import jinja2
 
         from nonebot_plugin_parser_lite.render import RENDERER, safe_src
+        # RENDERER.templates_dir 是 anyio.Path, .exists() 是 async — 用 os.path 检查
+        tpl_full = os.path.join(str(RENDERER.templates_dir), "default.html.jinja")
+        if not os.path.exists(tpl_full):
+            astrbot_logger.error(
+                f"[ParserLite] 卡片模板缺失: {tpl_full}。"
+                "请确认 render/templates/default.html.jinja 已部署到服务端。"
+            )
+            await event.send(event.chain_result([Comp.Plain(format_full(result))]))
+            return
         try:
             from playwright.async_api import async_playwright
             tpl_data = await RENDERER.resolve_parse_result(result)
