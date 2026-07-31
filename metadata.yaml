@@ -1,4 +1,4 @@
-name: astrbot-plugin-parser-lite
+name: astrbot_plugin_parser_lite
 display_name: "链接分享自动解析插件"
 short_desc: "多平台社交媒体分享链接自动解析，支持卡片渲染与媒体下载"
 desc: "自动识别并解析 B站、抖音、微博、小红书、X(Twitter)、知乎等 26 个平台的分享链接，解析结果以 Playwright 渲染卡片或合并转发消息发送。支持视频/音频/图片下载、B站音频提取、懒下载模式、自定义解析器、Cookie 认证、HTTP 代理。基于 nonebot-plugin-parser-lite 上游，零侵入 AstrBot 适配。"
