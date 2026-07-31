@@ -111,8 +111,11 @@ def _resolve_raw_addr(raw: str) -> str:
     return raw
 
 
+_schema_proxy_cache: str | None = None
+
 def _read_proxy_config() -> str:
     """读取代理配置并输出诊断日志"""
+    global _schema_proxy_cache
     _sources = {}
     px = (BridgeConfig._source or {}).get("plite_http_proxy", "")
     if px:
@@ -123,6 +126,7 @@ def _read_proxy_config() -> str:
             _raw = _sf.get("plite_http_proxy")
             if _raw:
                 px = _extract_config_value(_raw)
+                _schema_proxy_cache = px
                 _sources[f"schema({type(_raw).__name__})"] = str(px)[:100]
         except Exception as e:
             _sources["schema_error"] = str(e)[:80]
@@ -155,6 +159,16 @@ def _apply_downloader_proxy(proxy_url: str):
     from httpx import AsyncClient as HttpxClient
     from httpx import Timeout
     client = DOWNLOADER.client
+    # 调度旧客户端关闭 (同次解析中可能轮询多个协议, 旧客户端需释放)
+    for _old_attr in ("_httpx", "_curl"):
+        _old = getattr(client, _old_attr, None)
+        if _old is not None:
+            try:
+                import asyncio as _asyncio
+                _asyncio.get_running_loop().create_task(
+                    _old.aclose() if hasattr(_old, "aclose") else _old.close())
+            except RuntimeError:
+                pass  # 无运行中的 event loop (模块加载时)
     if not proxy_url:
         client._httpx = HttpxClient(verify=False, follow_redirects=True,
                                      timeout=Timeout(timeout=15))
@@ -331,6 +345,7 @@ class ParserLite:
                 astrbot_logger.warning(f"[ParserLite] CustomParser init skip: {e}")
 
     async def _try_all_parsers(self, ordered, url: str) -> ParseResult:
+        _matched_err: Exception | None = None
         for parser_cls in ordered:
             pname = getattr(getattr(parser_cls, "platform", None), "name", "")
             if not _is_parser_enabled(pname or parser_cls.__name__.replace("Parser","").lower()):
@@ -351,7 +366,10 @@ class ParserLite:
                         except Exception: pass
                 return await parser.parse(kw, mwp)
             except Exception as e:
+                _matched_err = e
                 astrbot_logger.warning(f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
+        if _matched_err is not None:
+            raise _matched_err
         raise ValueError(f"Unsupported URL: {url}")
 
     async def parse_url(self, url: str) -> ParseResult:
