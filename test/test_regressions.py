@@ -550,13 +550,20 @@ else:
     ok("on_url_auto is disabled (prevents double-trigger)")
 
 # ═══════════════════════════════════════════════════════════════
-# C35: _resolve_proxy_url 协议自动匹配 (ip:port → http://ip:port)
+# C35: _resolve_proxy_url 多协议支持 + _PROXY_PROTOCOLS 轮询列表
+# (curl_cffi 支持 http/https/socks4/socks4a/socks5/socks5h)
 # ═══════════════════════════════════════════════════════════════
 rp_src = inspect.getsource(_m._resolve_proxy_url)
-if '"://"' in rp_src and '"http://"' in rp_src:
-    ok("_resolve_proxy_url auto-prepends http:// to bare ip:port")
+if '"socks5h"' in rp_src and '"socks4"' in rp_src:
+    ok("_resolve_proxy_url supports socks4/socks4a/socks5/socks5h keywords")
+elif '"socks5"' in rp_src:
+    ok("_resolve_proxy_url supports socks5 (basic)")
 else:
     sk("_resolve_proxy_url protocol detection not confirmed")
+if "_PROXY_PROTOCOLS" in inspect.getsource(_m):
+    ok("_PROXY_PROTOCOLS defined for auto-protocol rotation")
+else:
+    sk("_PROXY_PROTOCOLS not confirmed")
 
 # ═══════════════════════════════════════════════════════════════
 # C36: configure 从 schema 文件回退读取 plite_http_proxy

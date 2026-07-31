@@ -78,23 +78,37 @@ from nonebot_plugin_parser_lite.download import DOWNLOADER
 
 def _resolve_proxy_url(raw: str) -> str:
     """从用户输入解析代理 URL, 支持:
-    - 完整协议: http://ip:port, socks5://ip:port
+    - 完整协议: http://, https://, socks4://, socks4a://, socks5://, socks5h://
     - 纯地址: ip:port → http://ip:port
-    - socks 关键词: socks ip:port / socks5 ip:port → socks5://ip:port
+    - 关键词: socks/socks4/socks4a/socks5/socks5h ip:port → protocol://ip:port
     """
     raw = raw.strip()
     if not raw:
         return ""
     if "://" in raw:
         return raw
-    # socks / socks5 关键字识别
     _lower = raw.lower()
-    for _kw in ("socks5 ", "socks "):
+    for _kw in ("socks5h ", "socks5 ", "socks4a ", "socks4 ", "socks "):
         if _lower.startswith(_kw):
-            return "socks5://" + raw[len(_kw):].strip()
-    # 默认 http
+            _proto = _kw.strip()
+            if _proto == "socks":
+                _proto = "socks5"
+            return f"{_proto}://{raw[len(_kw):].strip()}"
     if ":" in raw and not raw.startswith("["):
         return "http://" + raw
+    return raw
+
+
+# 代理协议轮询列表 (curl_cffi 全支持, httpx 需 httpx[socks])
+_PROXY_PROTOCOLS = ("http://", "https://", "socks5://", "socks5h://")
+
+
+def _resolve_raw_addr(raw: str) -> str:
+    """从原始地址提取 host:port (剥离已存在的协议前缀)"""
+    raw = raw.strip()
+    for _pfx in ("http://", "https://", "socks5://", "socks5h://", "socks4://", "socks4a://"):
+        if raw.lower().startswith(_pfx):
+            return raw[len(_pfx):]
     return raw
 
 
@@ -303,6 +317,30 @@ class ParserLite:
             except Exception as e:
                 astrbot_logger.warning(f"[ParserLite] CustomParser init skip: {e}")
 
+    async def _try_all_parsers(self, ordered, url: str) -> ParseResult:
+        for parser_cls in ordered:
+            pname = getattr(getattr(parser_cls, "platform", None), "name", "")
+            if not _is_parser_enabled(pname or parser_cls.__name__.replace("Parser","").lower()):
+                continue
+            try: kw, mwp = parser_cls.search_url(url)
+            except Exception: continue
+            try:
+                parser = self._get_parser(parser_cls)
+                cookies = _get_cookies_for(pname)
+                if cookies and pname == "bilibili":
+                    ck_str = next(iter(cookies.values())) if cookies else ""
+                    if ck_str:
+                        BridgeConfig._source = BridgeConfig._source or {}
+                        BridgeConfig._source["plite_bili_ck"] = ck_str
+                        get_config()
+                        try:
+                            object.__setattr__(get_config(), "plite_bili_ck", ck_str)
+                        except Exception: pass
+                return await parser.parse(kw, mwp)
+            except Exception as e:
+                astrbot_logger.warning(f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
+        raise ValueError(f"Unsupported URL: {url}")
+
     async def parse_url(self, url: str) -> ParseResult:
         # ① 热重载配置 + 代理环境准备
         get_config()
@@ -319,40 +357,33 @@ class ParserLite:
         ordered = list(BaseParser.get_all_subclass())
         if target:
             ordered = [c for c in ordered if c.__name__ == target] + [c for c in ordered if c.__name__ != target]
-        # ③ 双路重试 (代理/直连)
+        # ③ 双路重试 (代理/直连), 代理失败时轮询协议
         for attempt in (0, 1):
             use_proxy_now = (proxy_first and attempt == 0) or (not proxy_first and attempt == 1)
-            _apply_downloader_proxy(proxy_url if use_proxy_now else "")
-            try:
-                for parser_cls in ordered:
-                    pname = getattr(getattr(parser_cls, "platform", None), "name", "")
-                    if not _is_parser_enabled(pname or parser_cls.__name__.replace("Parser","").lower()):
-                        continue
-                    try: kw, mwp = parser_cls.search_url(url)
-                    except Exception: continue
+            if use_proxy_now and proxy_url:
+                _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
+                _sentinel = object()
+                _last_err = _sentinel
+                for _proto in _try_protocols:
+                    _px = _proto + _resolve_raw_addr(proxy_url) if "://" not in proxy_url else proxy_url
+                    _apply_downloader_proxy(_px)
                     try:
-                        parser = self._get_parser(parser_cls)
-                        cookies = _get_cookies_for(pname)
-                        if cookies and pname == "bilibili":
-                            ck_str = next(iter(cookies.values())) if cookies else ""
-                            if ck_str:
-                                BridgeConfig._source = BridgeConfig._source or {}
-                                BridgeConfig._source["plite_bili_ck"] = ck_str
-                                get_config()
-                                try:
-                                    object.__setattr__(get_config(), "plite_bili_ck", ck_str)
-                                except Exception: pass
-                        return await parser.parse(kw, mwp)
-                    except Exception as e:
-                        astrbot_logger.warning(f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
-                raise ValueError(f"Unsupported URL: {url}")
-            except Exception:
-                if proxy_url and attempt == 0:
-                    mode = "Proxy" if proxy_first else "Direct"
-                    fallback = "direct" if proxy_first else "proxy"
-                    astrbot_logger.warning(f"[ParserLite] {mode} failed, retrying via {fallback}...")
-                    continue
-                return await self._try_custom_parsers(url)
+                        return await self._try_all_parsers(ordered, url)
+                    except Exception as _e:
+                        _last_err = _e
+                        astrbot_logger.debug(f"[ParserLite] proxy {_px} failed: {_e}")
+                        continue
+                if _last_err is not _sentinel:
+                    raise _last_err  # type: ignore[misc]
+            else:
+                _apply_downloader_proxy("")
+                try:
+                    return await self._try_all_parsers(ordered, url)
+                except Exception:
+                    if proxy_url and attempt == 0:
+                        astrbot_logger.warning("[ParserLite] Direct failed, retrying via proxy...")
+                        continue
+                    return await self._try_custom_parsers(url)
 
     async def _try_custom_parsers(self, url: str) -> ParseResult:
         self._load_custom_parsers()
