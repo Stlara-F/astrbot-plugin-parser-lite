@@ -482,17 +482,30 @@ else:
     bad("plite_http_proxy NOT found in _BRIDGE_FIELDS")
 
 # ═══════════════════════════════════════════════════════════════
-# C29: _send_card 模板文件存在性检查用 os.path.exists (非 anyio.Path)
-# (RENDERER.templates_dir 是 anyio.Path, .exists() 返回 coroutine 而非 bool,
-#  导致丢失模板时不触发防护, 仍走 jinja2.get_template → TemplateNotFound)
+# C29: _send_card 模板存在性检查 + 多目录共存自动复制回退
+# (RENDERER.templates_dir 是 anyio.Path, .exists() 是 async 返回 coroutine,
+#  同步调用始终 truthy → 防护无效。修复: os.path.exists + src 树复制回退)
 # ═══════════════════════════════════════════════════════════════
 card_src2 = inspect.getsource(_m.ParserLitePlugin._send_card)
-if "os.path.exists" in card_src2 and "default.html.jinja" in card_src2:
-    ok("_send_card uses os.path.exists for template check (not anyio.Path)")
+if "os.path.exists" in card_src2 and "shutil.copy2" in card_src2:
+    ok("_send_card: os.path.exists check + shutil.copy2 fallback for missing templates")
+elif "os.path.exists" in card_src2:
+    ok("_send_card: os.path.exists check (no copy fallback)")
 elif "tpl_path.exists" in card_src2 or "Path.exists" in card_src2:
     bad("_send_card uses anyio.Path.exists (async, always returns coroutine)")
 else:
     sk("_send_card template existence check not found")
+
+# ═══════════════════════════════════════════════════════════════
+# C30: 模块加载时清除上游 sys.modules 缓存
+# (多插件目录共存时, 旧目录的 nonebot_plugin_parser_lite.* 模块先被缓存,
+#  导致 from ... import RENDERER 拿到过期实例, templates_dir 指向错误路径)
+# ═══════════════════════════════════════════════════════════════
+_main_lines_full = _main_path.read_text("utf-8")
+if "nonebot_plugin_parser_lite" in _main_lines_full and "del sys.modules" in _main_lines_full:
+    ok("main.py clears stale nonebot_plugin_parser_lite module cache at load")
+else:
+    sk("sys.modules cache cleanup not confirmed")
 
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:

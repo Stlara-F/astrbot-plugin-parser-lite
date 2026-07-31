@@ -28,6 +28,11 @@ if os.path.isdir(_src):
     sys.path.insert(0, _src)
 sys.path.insert(0, _here)
 
+# 清除上游模块缓存 — 多插件目录并存时防止从旧目录加载过期模块
+for _mod in list(sys.modules):
+    if _mod.startswith("nonebot_plugin_parser_lite"):
+        del sys.modules[_mod]
+
 from astrbot.api import AstrBotConfig
 from astrbot.api import logger as astrbot_logger
 from astrbot.api.event import AstrMessageEvent, filter
@@ -1459,12 +1464,29 @@ class ParserLitePlugin(Star):
         # RENDERER.templates_dir 是 anyio.Path, .exists() 是 async — 用 os.path 检查
         tpl_full = os.path.join(str(RENDERER.templates_dir), "default.html.jinja")
         if not os.path.exists(tpl_full):
-            astrbot_logger.error(
-                f"[ParserLite] 卡片模板缺失: {tpl_full}。"
-                "请确认 render/templates/default.html.jinja 已部署到服务端。"
-            )
-            await event.send(event.chain_result([Comp.Plain(format_full(result))]))
-            return
+            # 尝试从当前插件目录的 src 树复制模板 (多插件目录共存时回退)
+            _fallback_src = os.path.join(_here, "src", "nonebot_plugin_parser_lite",
+                                          "render", "templates")
+            if os.path.isdir(_fallback_src) and os.path.exists(
+                    os.path.join(_fallback_src, "default.html.jinja")):
+                _dst = str(RENDERER.templates_dir)
+                os.makedirs(_dst, exist_ok=True)
+                for _fn in os.listdir(_fallback_src):
+                    _sp = os.path.join(_fallback_src, _fn)
+                    _dp = os.path.join(_dst, _fn)
+                    if os.path.isfile(_sp) and not os.path.exists(_dp):
+                        import shutil
+                        shutil.copy2(_sp, _dp)
+                tpl_full = os.path.join(_dst, "default.html.jinja")
+                astrbot_logger.info(
+                    f"[ParserLite] 模板已从 {_fallback_src} 复制到 {_dst}")
+            else:
+                astrbot_logger.error(
+                    f"[ParserLite] 卡片模板缺失: {tpl_full}。"
+                    "请确认 render/templates/default.html.jinja 已部署到服务端。"
+                )
+                await event.send(event.chain_result([Comp.Plain(format_full(result))]))
+                return
         try:
             from playwright.async_api import async_playwright
             tpl_data = await RENDERER.resolve_parse_result(result)
