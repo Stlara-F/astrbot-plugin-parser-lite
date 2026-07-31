@@ -559,11 +559,11 @@ if '"socks5h"' in rp_src and '"socks4"' in rp_src:
 elif '"socks5"' in rp_src:
     ok("_resolve_proxy_url supports socks5 (basic)")
 else:
-    sk("_resolve_proxy_url protocol detection not confirmed")
+    bad("_resolve_proxy_url: no protocol keywords found (socks4/socks5/etc)")
 if "_PROXY_PROTOCOLS" in inspect.getsource(_m):
     ok("_PROXY_PROTOCOLS defined for auto-protocol rotation")
 else:
-    sk("_PROXY_PROTOCOLS not confirmed")
+    bad("_PROXY_PROTOCOLS NOT defined — auto-protocol rotation disabled")
 
 # ═══════════════════════════════════════════════════════════════
 # C36: configure 从 schema 文件回退读取 plite_http_proxy
@@ -573,7 +573,7 @@ cfg3_src = inspect.getsource(_m.BridgeConfig.configure)
 if "_CONF_SCHEMA_PATH" in cfg3_src:
     ok("configure reads proxy from schema file (_source fallback)")
 else:
-    sk("schema-file proxy fallback not confirmed in configure")
+    bad("configure does NOT read proxy from schema file — AstrBot config lifecycle bug unfixed")
 
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:

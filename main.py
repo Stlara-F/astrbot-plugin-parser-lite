@@ -348,7 +348,7 @@ class ParserLite:
         if not proxy_url:
             try:
                 _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
-                proxy_url = _sf.get("plite_http_proxy", "")
+                proxy_url = _extract_config_value(_sf.get("plite_http_proxy", ""))
             except Exception:
                 pass
         target = self._route_url(url)  # O(1) 特征路由
