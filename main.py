@@ -80,6 +80,7 @@ _last_proxy: str | None = None
 def _apply_downloader_proxy(proxy_url: str):
     """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端 (env var 对这两个库无效)"""
     global _last_proxy
+    proxy_url = proxy_url.strip()
     if proxy_url == (_last_proxy or ""):
         return
     _last_proxy = proxy_url
@@ -93,7 +94,7 @@ def _apply_downloader_proxy(proxy_url: str):
         client._curl = CurlSession(impersonate="chrome146", timeout=240,
                                     verify=False, allow_redirects=True)
     else:
-        _p = proxy_url.strip()
+        _p = proxy_url
         client._httpx = HttpxClient(proxy=_p, verify=False,
                                      follow_redirects=True, timeout=Timeout(timeout=15))
         client._curl = CurlSession(proxies={"http": _p, "https": _p},
@@ -1467,22 +1468,28 @@ class ParserLitePlugin(Star):
         tpl_full = os.path.join(str(RENDERER.templates_dir), "default.html.jinja")
         if not os.path.exists(tpl_full):
             # 尝试从当前插件目录的 src 树复制模板 (多插件目录共存时回退)
-            _fallback_src = os.path.join(_here, "src", "nonebot_plugin_parser_lite",
-                                          "render", "templates")
-            if os.path.isdir(_fallback_src) and os.path.exists(
-                    os.path.join(_fallback_src, "default.html.jinja")):
-                _dst = str(RENDERER.templates_dir)
-                os.makedirs(_dst, exist_ok=True)
-                for _fn in os.listdir(_fallback_src):
-                    _sp = os.path.join(_fallback_src, _fn)
-                    _dp = os.path.join(_dst, _fn)
-                    if os.path.isfile(_sp) and not os.path.exists(_dp):
-                        import shutil
-                        shutil.copy2(_sp, _dp)
-                tpl_full = os.path.join(_dst, "default.html.jinja")
-                astrbot_logger.info(
-                    f"[ParserLite] 模板已从 {_fallback_src} 复制到 {_dst}")
-            else:
+            _fb_src = os.path.join(_here, "src", "nonebot_plugin_parser_lite",
+                                    "render", "templates")
+            _copied = False
+            if os.path.isdir(_fb_src) and os.path.exists(
+                    os.path.join(_fb_src, "default.html.jinja")):
+                try:
+                    _dst = str(RENDERER.templates_dir)
+                    os.makedirs(_dst, exist_ok=True)
+                    for _fn in os.listdir(_fb_src):
+                        _sp = os.path.join(_fb_src, _fn)
+                        _dp = os.path.join(_dst, _fn)
+                        if os.path.isfile(_sp) and not os.path.exists(_dp):
+                            import shutil
+                            shutil.copy2(_sp, _dp)
+                    _copied = True
+                    tpl_full = os.path.join(_dst, "default.html.jinja")
+                    astrbot_logger.info(
+                        f"[ParserLite] 模板已从 {_fb_src} 复制到 {_dst}")
+                except Exception as _e:
+                    astrbot_logger.warning(
+                        f"[ParserLite] 模板复制失败 (src={_fb_src} dst={RENDERER.templates_dir}): {_e}")
+            if not _copied:
                 astrbot_logger.error(
                     f"[ParserLite] 卡片模板缺失: {tpl_full}。"
                     "请确认 render/templates/default.html.jinja 已部署到服务端。"
