@@ -359,38 +359,30 @@ class ParserLite:
         get_config()
         proxy_url = _read_proxy_config()
         target = self._route_url(url)  # O(1) 特征路由
-        proxy_first = _use_proxy_for(target or "")
         # ② 解析器优先级排序: 特征命中排第一
         ordered = list(BaseParser.get_all_subclass())
         if target:
             ordered = [c for c in ordered if c.__name__ == target] + [c for c in ordered if c.__name__ != target]
-        # ③ 双路重试 (代理/直连), 代理失败时轮询协议
-        for attempt in (0, 1):
-            use_proxy_now = (proxy_first and attempt == 0) or (not proxy_first and attempt == 1)
-            if use_proxy_now and proxy_url:
-                _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
-                _sentinel = object()
-                _last_err = _sentinel
-                for _proto in _try_protocols:
-                    _px = _proto + _resolve_raw_addr(proxy_url) if "://" not in proxy_url else proxy_url
-                    _apply_downloader_proxy(_px)
-                    try:
-                        return await self._try_all_parsers(ordered, url)
-                    except Exception as _e:
-                        _last_err = _e
-                        astrbot_logger.debug(f"[ParserLite] proxy {_px} failed: {_e}")
-                        continue
-                if _last_err is not _sentinel:
-                    raise _last_err  # type: ignore[misc]
-            else:
-                _apply_downloader_proxy("")
+        # ③ 代理/直连: proxy 已配置则始终使用 (媒体下载也需要代理, 不能双路切换)
+        if proxy_url:
+            _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
+            _last_err = None
+            for _proto in _try_protocols:
+                _px = _proto + _resolve_raw_addr(proxy_url) if "://" not in proxy_url else proxy_url
+                _apply_downloader_proxy(_px)
                 try:
                     return await self._try_all_parsers(ordered, url)
-                except Exception:
-                    if proxy_url and attempt == 0:
-                        astrbot_logger.warning("[ParserLite] Direct failed, retrying via proxy...")
-                        continue
-                    return await self._try_custom_parsers(url)
+                except Exception as _e:
+                    _last_err = _e
+                    astrbot_logger.debug(f"[ParserLite] proxy {_px} failed: {_e}")
+                    continue
+            if _last_err is not None:
+                raise _last_err  # type: ignore[misc]
+        else:
+            try:
+                return await self._try_all_parsers(ordered, url)
+            except Exception:
+                return await self._try_custom_parsers(url)
 
     async def _try_custom_parsers(self, url: str) -> ParseResult:
         self._load_custom_parsers()
