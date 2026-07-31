@@ -539,6 +539,16 @@ if "_handle_card_message 异常" in hcm_src2:
 else:
     sk("_handle_card_message exception guard not confirmed")
 
+# ═══════════════════════════════════════════════════════════════
+# C34: on_url_auto 禁用 — 防止与 on_message_group 双重触发
+# (AstrBot 先后通过 message-type filter 和 regex filter 分发同一消息)
+# ═══════════════════════════════════════════════════════════════
+oua_src = inspect.getsource(_m.ParserLitePlugin.on_url_auto)
+if "_handle_card_message" in oua_src:
+    bad("on_url_auto still calls _handle_card_message (will double-trigger)")
+else:
+    ok("on_url_auto is disabled (prevents double-trigger)")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass

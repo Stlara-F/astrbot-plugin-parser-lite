@@ -1532,7 +1532,9 @@ class ParserLitePlugin(Star):
 
     # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
     async def on_url_auto(self, event: AstrMessageEvent):
-        await self._handle_card_message(event)
+        # on_message_group/on_message_private 与 regex filter 会先后触发同一条消息,
+        # 导致同一 URL 被解析两次 (dedup 使用 message_id, 两个事件 id 可能不同)
+        return  # 避免重复 — 群聊/私聊由 on_message_group/on_message_private 覆盖
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_message_group(self, event: AstrMessageEvent):
