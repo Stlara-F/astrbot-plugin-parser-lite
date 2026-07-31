@@ -1,3 +1,17 @@
+<div align="center">
+
+![:name](https://count.getloli.com/@astrbot_plugin_parser_lite?name=astrbot_plugin_parser_lite&theme=miku&padding=6&offset=114&align=top&scale=1.3&pixelated=1&darkmode=auto)
+
+[![Code style: djlint](https://img.shields.io/badge/html%20style-djlint-blue.svg)](https://www.djlint.com)
+
+</div>
+
+> [!IMPORTANT]
+>
+> 严禁将本项目用于任何非法用途
+>
+> 由于使用不当造成的一切责任由使用者承担，本项目维护者无任何责任
+
 # ✨ [AstrBot](https://github.com/astrbotdevs/astrbot) 链接分享自动解析插件 ✨
 
 基于 [nonebot-plugin-parser-lite](https://github.com/sokoko-org/nonebot-plugin-parser-lite) 的 AstrBot 适配版。上游核心解析能力完整保留，AstrBot 桥接层零侵入。
