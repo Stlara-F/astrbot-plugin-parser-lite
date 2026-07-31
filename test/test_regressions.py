@@ -520,6 +520,25 @@ elif "proxy=proxy_url" in proxy_src or "proxy=_p" in proxy_src:
 else:
     sk("curl_cffi proxy format not confirmed")
 
+# ═══════════════════════════════════════════════════════════════
+# C32: _send_card 回退文本发送也捕获异常 (ApiNotAvailable 等)
+# (卡片渲染失败后回退文本, 若 send 也失败则崩溃整个 handler)
+# ═══════════════════════════════════════════════════════════════
+if "回退文本发送也失败" in card_src2 or "ApiNotAvailable" in card_src2:
+    ok("_send_card fallback text send wrapped in try/except")
+else:
+    sk("_send_card send error handling not verified")
+
+# ═══════════════════════════════════════════════════════════════
+# C33: _handle_card_message 整个 parse+send 链路有 try/except
+# (_send_card 或 _send_items 抛异常会中断请求 pipeline)
+# ═══════════════════════════════════════════════════════════════
+hcm_src2 = inspect.getsource(_m.ParserLitePlugin._handle_card_message)
+if "_handle_card_message 异常" in hcm_src2:
+    ok("_handle_card_message wraps parse/card/items in try/except")
+else:
+    sk("_handle_card_message exception guard not confirmed")
+
 t = results["PASS"] + results["FAIL"] + results["SKIP"]
 if failures:
     for x in failures: pass

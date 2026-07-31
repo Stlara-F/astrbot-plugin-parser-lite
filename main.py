@@ -1517,7 +1517,11 @@ class ParserLitePlugin(Star):
                 tmp.unlink(missing_ok=True)
         except Exception:
             astrbot_logger.warning(f"[ParserLite] 卡片渲染失败, 回退文本\n{traceback.format_exc()}")
-            await event.send(event.chain_result([Comp.Plain(format_full(result))]))
+            try:
+                await event.send(event.chain_result([Comp.Plain(format_full(result))]))
+            except Exception:
+                astrbot_logger.error(
+                    f"[ParserLite] 回退文本发送也失败 (OneBot API 可能不可用)\n{traceback.format_exc()}")
 
     # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
     async def on_url_auto(self, event: AstrMessageEvent):
@@ -1633,11 +1637,14 @@ class ParserLitePlugin(Star):
         if not urls: return
         if self._disabled(event) or self._blacklisted(event): return
         for url in urls[:3]:
-            result = await self._parse_raw(url)
-            if result is None: continue
-            if self._should_send("card"):
-                await self._send_card(event, result)
-            await self._send_items(event, result.content, result)
+            try:
+                result = await self._parse_raw(url)
+                if result is None: continue
+                if self._should_send("card"):
+                    await self._send_card(event, result)
+                await self._send_items(event, result.content, result)
+            except Exception:
+                astrbot_logger.error(f"[ParserLite] _handle_card_message 异常\n{traceback.format_exc()}")
 
     # ── 命令 ──────────────────────────────────────────────────────────────────
     async def cmd_parse(self, event: AstrMessageEvent):
