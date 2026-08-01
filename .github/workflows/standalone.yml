@@ -21,7 +21,7 @@ jobs:
 
       - name: Install deps + verify
         run: |
-          pip install -r requirements.txt 2>&1 | tail -3
+          pip install -r requirements.txt
           python -c "
           import sys, re
           # ── verify_import ──
@@ -117,10 +117,28 @@ jobs:
               for f in files:
                   if not f.endswith('.py'): continue
                   if f in ('_flags.py', 'env.py', '_standalone_fake.py'): continue
-                  text = open(os.path.join(root, f), encoding='utf-8').read()
-                  for m in re.finditer(r'from (nonebot(?:\.[a-z_]+)?) import (.+)$', text, re.M):
-                      names = [n.strip().split(' as ')[0] for n in m.group(2).split(',')]
-                      for n in names:
+              text = open(os.path.join(root, f), encoding='utf-8').read()
+                  lines = text.split('\n')
+                  buf = ''; in_paren = False
+                  for line in lines:
+                      m = re.match(r'from\s+(nonebot(?:\.[a-z_]+)?)\s+import\s+(.+?)(?:\s*#.*)?$', line)
+                      if m:
+                          buf = m.group(1); raw = m.group(2).strip()
+                          if raw.endswith(','): buf += ' ' + raw[:-1]
+                          elif raw.endswith('('): in_paren = True; buf += ' ' + raw[1:]
+                          else:
+                              for n in raw.split(','):
+                                  n = n.strip().split(' as ')[0]
+                                  if n and not n.startswith('(') and n not in seen:
+                                      seen.add(n); stubs.append(n)
+                      elif in_paren:
+                          raw = line.split('#')[0].strip()
+                          if raw.endswith(')'): in_paren = False; raw = raw[:-1]
+                          if raw.endswith(','): raw = raw[:-1]
+                          for n in raw.split(','):
+                              n = n.strip().split(' as ')[0]
+                              if n and n not in seen:
+                                  seen.add(n); stubs.append(n)
                           if n and not n.startswith('(') and n not in seen:
                               seen.add(n)
                               stubs.append(n)
