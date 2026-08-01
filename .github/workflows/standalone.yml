@@ -30,7 +30,11 @@ jobs:
           os.environ['PARSER_LITE_BASE_DIR'] = 'src/nonebot_plugin_parser_lite'
 
           class _F:
-              def __getattr__(self,k): return _F()
+              def __init__(self, **kw):
+                  object.__setattr__(self, '_d', kw)
+              def __getattr__(self,k):
+                  try: return object.__getattribute__(self, '_d')[k]
+                  except (KeyError, AttributeError): return _F()
               def __call__(self,*a,**kw):
                   if len(a)==1 and isinstance(a[0],type):
                       try: return a[0]()
