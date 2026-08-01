@@ -57,16 +57,6 @@ jobs:
               from typing_extensions import Self
               typing.Self = Self
 
-          class Guard:
-              def find_spec(self,fn,p,t=None):
-                  if fn.startswith('nonebot_plugin_parser_lite'): return None
-                  if fn=='nonebot' or fn.startswith(('nonebot.','nonebot_plugin_')):
-                      if fn not in sys.modules: sys.modules[fn]=_F()
-                      from importlib.machinery import ModuleSpec
-                      return ModuleSpec(fn, None)
-                  return None
-          sys.meta_path.insert(0,Guard())
-
           from pathlib import Path
           D = _F(get_driver=_F(config=_F(nickname=['parser-lite'])),
                  get_plugin_config=lambda cls,**kw: cls(),require=lambda *a:None)
