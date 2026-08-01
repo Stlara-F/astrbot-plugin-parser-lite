@@ -1,19 +1,19 @@
 name: 🐛 Bug 报告
 description: 报告可复现的插件缺陷；使用咨询与配置排查请前往 Discussions
-title: 'Bug: '
-labels: ['bug']
+title: "Bug: "
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
         ## 提交前请先花一分钟确认
 
-        Issue 用于跟踪**可复现、可定位的插件缺陷**。安装咨询、配置求助、平台偶发风控、失效链接等问题，请先查阅[项目文档](https://karin-plugin-kkk-docs.vercel.app)并前往 [Discussions](https://github.com/ikenxuan/karin-plugin-kkk/discussions) 交流。
+        Issue 用于跟踪**可复现、可定位的插件缺陷**。安装咨询、配置求助、平台偶发风控、失效链接等问题，请先查阅[现有issue]((https://github.com/sokoko-org/nonebot-plugin-parser-lite/issues?q=is%3Aissue)并前往 [Discussions](https://github.com/sokoko-org/nonebot-plugin-parser-lite/discussions) 交流。
 
         > 强烈推荐阅读 [《提问的智慧》](https://github.com/ryanhanwu/How-To-Ask-Questions-The-Smart-Way)、[《如何向开源社区提问题》](https://github.com/seajs/seajs/issues/545)、[《如何有效地报告 Bug》](http://www.chiark.greenend.org.uk/%7Esgtatham/bugs-cn.html) 和 [《如何向开源项目提交无法解答的问题》](https://zhuanlan.zhihu.com/p/25795393)。描述越准确、证据越完整，问题越容易得到有效处理。
 
         > [!IMPORTANT]
-        > 请把“发生了什么、如何复现、完整日志、运行环境”一次写清。仅填写“如题”“如图”“报错了”，或使用 `*`、`test` 等内容占位，会被自动标记为 `needs-info`。
+        > 请把“发生了什么、如何复现、完整日志、运行环境”一次写清。仅填写“如题”“如图”“报错了”，或使用 `*`、`test` 等内容占位，会被视为无效issue
 
         > [!CAUTION]
         > 日志、截图和配置必须先脱敏。请勿提交 Cookie、Token、账号、群号、代理认证或其他隐私信息。
@@ -24,7 +24,7 @@ body:
       label: 提交前确认
       description: 以下项目全部完成后再提交；勾选不代表可以省略下方证据。
       options:
-        - label: '我已查阅项目文档，并确认这不是文档已有答案的使用或配置问题 <!-- kkk-issue-form: bug-v2 -->'
+        - label: "我已查阅项目文档，并确认这不是文档已有答案的使用或配置问题"
           required: true
         - label: 我已搜索现有 Issues 和 Discussions，确认没有相同问题
           required: true
