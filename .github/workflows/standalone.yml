@@ -62,7 +62,8 @@ jobs:
                   if fn.startswith('nonebot_plugin_parser_lite'): return None
                   if fn=='nonebot' or fn.startswith(('nonebot.','nonebot_plugin_')):
                       if fn not in sys.modules: sys.modules[fn]=_F()
-                      return None
+                      from importlib.machinery import ModuleSpec
+                      return ModuleSpec(fn, None)
                   return None
           sys.meta_path.insert(0,Guard())
 
@@ -71,6 +72,13 @@ jobs:
                  get_plugin_config=lambda cls,**kw: cls(),require=lambda *a:None)
           sys.modules['nonebot']=D
           PL = Path('src/nonebot_plugin_parser_lite')
+          # Pre-populate ALL known nonebot sub-modules
+          for _sub in ('adapters','adapters.event','log','matcher','params',
+                        'permission','plugin','rule','typing','message','driver'):
+              sys.modules[f'nonebot.{_sub}']=_F()
+          for _sub in ('alconna','alconna.uniseg','uninfo','htmlrender',
+                        'apscheduler','localstore','waiter','scheduler'):
+              sys.modules[f'nonebot_plugin_{_sub}']=_F()
           sys.modules['nonebot_plugin_localstore']=_F(
             get_plugin_cache_dir=lambda:PL/'cache',
             get_plugin_config_dir=lambda:PL/'config',
