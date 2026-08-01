@@ -155,15 +155,22 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B alone
-          git add -f src/nonebot_plugin_parser_lite/utils/_flags.py \
-                     src/nonebot_plugin_parser_lite/utils/env.py \
-                     src/nonebot_plugin_parser_lite/utils/_standalone_fake.py \
-                     src/nonebot_plugin_parser_lite/__init__.py
-          # Strip bridge-only files from alone branch (inherited from workflow checkout)
-          git rm -rf --cached scripts/ .github/ requirements-standalone.txt 2>/dev/null || true
+          # Create alone from clean upstream baseline (no bridge/CI files)
+          git checkout --orphan alone-tmp upstream/main
+          git rm -rf --cached . 2>/dev/null || true
+          git checkout HEAD -- src/ requirements.txt ruff.toml README.md
+          # Apply generated standalone files
+          cp src/nonebot_plugin_parser_lite/__init__.py /tmp/__init__.py
+          cp src/nonebot_plugin_parser_lite/utils/_flags.py /tmp/_flags.py
+          cp src/nonebot_plugin_parser_lite/utils/env.py /tmp/env.py
+          cp src/nonebot_plugin_parser_lite/utils/_standalone_fake.py /tmp/_standalone_fake.py
+          git checkout test-alone -- src/nonebot_plugin_parser_lite/utils/_flags.py \
+                                      src/nonebot_plugin_parser_lite/utils/env.py \
+                                      src/nonebot_plugin_parser_lite/utils/_standalone_fake.py \
+                                      src/nonebot_plugin_parser_lite/__init__.py
+          git add -f src/
           if git commit -m "auto: generate standalone ($(date +%Y-%m-%d))"; then
-              git push origin alone --force
+              git push origin alone-tmp:alone --force
               echo "Pushed standalone to alone branch"
           else
               echo "no changes, skip push"
