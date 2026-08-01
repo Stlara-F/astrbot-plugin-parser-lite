@@ -79,13 +79,34 @@ jobs:
                  get_plugin_config=lambda cls,**kw: cls(),require=lambda *a:None)
           sys.modules['nonebot']=D
           PL = Path('src/nonebot_plugin_parser_lite')
-          # Pre-populate ALL known nonebot sub-modules
+          # Pre-populate ALL nonebot* sub-modules (auto-discovered from site-packages)
           for _sub in ('adapters','adapters.event','log','matcher','params',
-                        'permission','plugin','rule','typing','message','driver'):
+                        'permission','plugin','rule','typing','message','driver', 'internal'):
               sys.modules[f'nonebot.{_sub}']=_F()
-          for _sub in ('alconna','alconna.uniseg','uninfo','htmlrender',
-                        'apscheduler','localstore','waiter','scheduler'):
-              sys.modules[f'nonebot_plugin_{_sub}']=_F()
+          import pkgutil, importlib
+          for _pkg in importlib.util.find_spec('nonebot_plugin_alconna'):
+              pass  # won't work
+          # Scan installed nonebot_plugin_* packages for all sub-modules
+          try:
+              import site, os as _os
+              _sp = [p for p in site.getsitepackages() if _os.path.isdir(p)]
+              _found = set()
+              for _dir in _sp:
+                  for _root, _dirs, _files in _os.walk(_dir):
+                      for _f in _files:
+                          if _f.endswith('.py') or _f.endswith('.so'):
+                              _rp = _os.path.relpath(_os.path.join(_root, _f), _dir)
+                              _parts = _rp.replace(_os.sep, '.').replace('.py','').replace('.so','').split('.')
+                              for _i in range(len(_parts)):
+                                  _candidate = '.'.join(_parts[:_i+1])
+                                  if _candidate.startswith('nonebot_plugin_') or \
+                                     _candidate.startswith('nonebot.') or _candidate == 'nonebot':
+                                      _found.add(_candidate)
+              for _m in sorted(_found):
+                  if _m not in sys.modules: sys.modules[_m]=_F()
+              print(f'Pre-populated {len(_found)} nonebot* modules from site-packages')
+          except Exception as _e:
+              print(f'Warning: could not scan site-packages: {_e}')
           sys.modules['nonebot_plugin_localstore']=_F(
             get_plugin_cache_dir=lambda:PL/'cache',
             get_plugin_config_dir=lambda:PL/'config',
