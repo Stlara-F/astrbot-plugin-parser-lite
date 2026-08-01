@@ -115,7 +115,32 @@ jobs:
               try:
                   __import__(m)
               except Exception as e:
+                  import traceback
                   print(f'FAIL {m}: {e}')
+                  print(f'')
+                  print(f'=== 诊断 & 修复指南 ===')
+                  _msg = str(e).lower()
+                  if 'module named' in _msg:
+                      _mod = str(e).split("'")[1] if "'" in str(e) else str(e)
+                      if _mod.startswith('nonebot'):
+                          print(f'  缺失模块: {_mod}')
+                          print(f'  1. 确认 pip install nonebot2 成功')
+                          print(f'  2. 将 {_mod} 加入 site-packages 扫描排除列表')
+                      else:
+                          print(f'  缺失第三方库: {_mod}')
+                          print(f'  运行: pip install {_mod}')
+                          print(f'  或将其加入 standalone.yml 的 patterns 字典')
+                  elif 'unsupported operand' in _msg or '__' in _msg:
+                      print(f'  _F 类缺少 dunder 方法')
+                      print(f'  在 standalone.yml 的 class _F 中添加对应方法')
+                  elif 'takes 0 positional' in _msg or 'takes 1 positional' in _msg:
+                      print(f'  lambda/func 参数签名不匹配')
+                      print(f'  找到对应的 func 定义并改为 func(*a, **kw)')
+                  else:
+                      print(f'  异常类型: {type(e).__name__}')
+                      print(f'  查看完整 traceback 定位调用链')
+                      traceback.print_exc()
+                  print(f'=========================')
                   sys.exit(1)
           print(f'{len(CHECKS)}/{len(CHECKS)} imports pass')
           "
