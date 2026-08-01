@@ -32,7 +32,10 @@ jobs:
               try: __import__(imp)
               except ImportError: missing.append(pkg)
           if missing:
-              subprocess.run([sys.executable,'-m','pip','install','-q']+missing)
+              r = subprocess.run([sys.executable,'-m','pip','install','-q']+missing)
+              if r.returncode != 0:
+                  print(f'FAIL: pip install failed for {missing}')
+                  sys.exit(1)
               print(f'Installed: {missing}')
           "
 
@@ -50,7 +53,7 @@ jobs:
               def __call__(s, *a, **kw):
                   if len(a)==1 and isinstance(a[0],type):
                       try: return a[0]()
-                      except: pass
+                      except Exception: pass
                   return _F()
               def __str__(s): return ''
               def __fspath__(s): return ''
@@ -215,11 +218,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b alone
+          git checkout -B alone
           git add -f src/nonebot_plugin_parser_lite/utils/_flags.py \
                      src/nonebot_plugin_parser_lite/utils/env.py \
                      src/nonebot_plugin_parser_lite/utils/_standalone_fake.py \
                      src/nonebot_plugin_parser_lite/__init__.py
-          git commit -m "auto: generate standalone ($(date +%Y-%m-%d))" || echo "no changes"
-          git push origin alone --force
-          echo "Pushed standalone to alone branch"
+          if git commit -m "auto: generate standalone ($(date +%Y-%m-%d))"; then
+              git push origin alone --force
+              echo "Pushed standalone to alone branch"
+          else
+              echo "no changes, skip push"
+          fi
