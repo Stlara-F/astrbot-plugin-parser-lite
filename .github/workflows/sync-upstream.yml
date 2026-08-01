@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: brigde2astrbot
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -25,31 +26,58 @@ jobs:
           git remote add upstream https://github.com/sokoko-org/nonebot-plugin-parser-lite.git 2>/dev/null || true
           git fetch upstream main
 
-      - name: Check for upstream changes
+      - name: Check if upstream has new commits
         id: check
         run: |
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "UP_TO_DATE=true" >> $GITHUB_ENV
-          else
+          # Check if upstream/main has commits we don't have
+          BEHIND=$(git rev-list --count HEAD..upstream/main)
+          if [ "$BEHIND" -gt 0 ]; then
+            echo "BEHIND=$BEHIND" >> $GITHUB_ENV
             echo "UP_TO_DATE=false" >> $GITHUB_ENV
+            echo "Upstream ahead by $BEHIND commits, patching needed"
+          else
+            echo "UP_TO_DATE=true" >> $GITHUB_ENV
+            echo "Already up to date with upstream/main"
           fi
 
       - name: Merge upstream & prime standalone files
         if: env.UP_TO_DATE == 'false'
-        continue-on-error: true
-        id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git merge upstream/main --no-commit --no-ff --strategy-option=theirs || true
           rm -f src/nonebot_plugin_parser_lite/utils/_standalone_fake.py
-          touch src/nonebot_plugin_parser_lite/utils/_flags.py
-          echo 'import os' > src/nonebot_plugin_parser_lite/utils/env.py
-          echo 'IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"' >> src/nonebot_plugin_parser_lite/utils/env.py
+          # Write _flags.py with proper implementation
+          cat > src/nonebot_plugin_parser_lite/utils/_flags.py << 'PYEOF'
+          import os
+          _IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE", "") == "1"
+          PARSER_LITE_STANDALONE = _IS_STANDALONE
+          PARSER_LITE_PRE = "plite_"
+          if _IS_STANDALONE:
+              _STANDALONE = True
+              _get_flag = lambda flag: os.environ.get(f"{PARSER_LITE_PRE}{flag}", "")
+          else:
+              from nonebot import get_driver
+              _STANDALONE = False
+              _get_flag = lambda flag: getattr(get_driver().config, f"{PARSER_LITE_PRE}{flag}", "")
+          PYEOF
+          # Write env.py
+          cat > src/nonebot_plugin_parser_lite/utils/env.py << 'PYEOF'
+          import os
+          IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"
+          PYEOF
 
       - name: Run auto-patcher
         if: env.UP_TO_DATE == 'false'
         run: python scripts/auto_patcher.py
+
+      - name: Install upstream deps
+        if: env.UP_TO_DATE == 'false'
+        run: python scripts/install_deps.py
+
+      - name: Verify import
+        if: env.UP_TO_DATE == 'false'
+        run: python scripts/verify_import.py
 
       - name: Commit & push
         if: env.UP_TO_DATE == 'false'
@@ -58,4 +86,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add src/nonebot_plugin_parser_lite/
           git commit -m "sync: merge upstream/main, regenerate patches ($(date +%Y-%m-%d))" || echo "no-op"
-          git push origin "$(git rev-parse --abbrev-ref HEAD)"
+          git push origin HEAD:brigde2astrbot
