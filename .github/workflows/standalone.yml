@@ -19,56 +19,51 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install deps + verify
+      - name: Install & verify
         run: |
           pip install -r requirements.txt
-          # Auto-detect & install transitive deps (httpx, yarl, etc — from nonebot2)
           python -c "
-          import re, subprocess, sys
-          PATTERNS = {
-              'httpx': 'httpx', 'yarl': 'yarl', 'qrcode': 'qrcode',
-              'Cryptodome': 'pycryptodomex', 'typing_extensions': 'typing_extensions',
-              'pydantic': 'pydantic', 'jinja2': 'jinja2', 'apscheduler': 'apscheduler',
-              'DrissionPage': 'DrissionPage', 'PIL': 'pillow',
-          }
+          import subprocess, sys
+          # Auto-install transitive deps
+          patterns = {'httpx':'httpx','yarl':'yarl','qrcode':'qrcode',
+              'Cryptodome':'pycryptodomex','DrissionPage':'DrissionPage','PIL':'pillow'}
           missing = []
-          for imp, pkg in PATTERNS.items():
+          for imp, pkg in patterns.items():
               try: __import__(imp)
               except ImportError: missing.append(pkg)
           if missing:
-              subprocess.run([sys.executable, '-m', 'pip', 'install', '-q'] + missing)
-              print(f'Installed transitive deps: {missing}')
+              subprocess.run([sys.executable,'-m','pip','install','-q']+missing)
+              print(f'Installed: {missing}')
           "
+
           python -c "
-          import sys, re
-          # ── verify_import ──
+          import sys, os, re
           sys.path.insert(0, 'src')
-          import os; os.environ['PARSER_LITE_STANDALONE'] = '1'
+          os.environ['PARSER_LITE_STANDALONE'] = '1'
           os.environ['PARSER_LITE_BASE_DIR'] = 'src/nonebot_plugin_parser_lite'
 
           class _F:
-              def __init__(self, **kw):
-                  object.__setattr__(self, '_d', kw)
-              def __getattr__(self,k):
-                  try: return object.__getattribute__(self, '_d')[k]
+              def __init__(s, **kw): object.__setattr__(s, '_d', kw)
+              def __getattr__(s, k):
+                  try: return object.__getattribute__(s, '_d')[k]
                   except (KeyError, AttributeError): return _F()
-              def __call__(self,*a,**kw):
+              def __call__(s, *a, **kw):
                   if len(a)==1 and isinstance(a[0],type):
                       try: return a[0]()
                       except: pass
                   return _F()
-              def __str__(self): return ''
-              def __fspath__(self): return ''
-              def __bool__(self): return True
-              def __iter__(self): return iter([])
-              def __contains__(self,_): return False
-              def __or__(self,_): return self
-              def __ror__(self,_): return self
-              def __eq__(self,o): return isinstance(o,_F)
-              def __hash__(self): return 0
-              def __int__(self): return 0
-              def __getitem__(self,_): return _F()
-              def __mro_entries__(self, bases): return ()
+              def __str__(s): return ''
+              def __fspath__(s): return ''
+              def __bool__(s): return True
+              def __iter__(s): return iter([])
+              def __contains__(s, _): return False
+              def __or__(s, _): return s
+              def __ror__(s, _): return s
+              def __eq__(s, o): return isinstance(o, _F)
+              def __hash__(s): return 0
+              def __int__(s): return 0
+              def __getitem__(s, _): return _F()
+              def __mro_entries__(s, bases): return ()
 
           import typing
           if not hasattr(typing, 'Self'):
@@ -77,52 +72,48 @@ jobs:
 
           from pathlib import Path
           D = _F(get_driver=_F(config=_F(nickname=['parser-lite'])),
-                 get_plugin_config=lambda cls,**kw: cls(),require=lambda *a:None)
-          sys.modules['nonebot']=D
-          PL = Path('src/nonebot_plugin_parser_lite')
-          # Pre-populate ALL nonebot* sub-modules (auto-discovered from site-packages)
-          for _sub in ('adapters','adapters.event','log','matcher','params',
-                        'permission','plugin','rule','typing','message','driver', 'internal'):
-              sys.modules[f'nonebot.{_sub}']=_F()
-          import pkgutil
-          # Scan installed nonebot_plugin_* packages for all sub-modules
+                 get_plugin_config=lambda cls, *a, **kw: cls(),
+                 require=lambda *a: None)
+          sys.modules['nonebot'] = D
+          # Auto-discover ALL nonebot* sub-modules from site-packages
           try:
-              import site, os as _os
-              _sp = [p for p in site.getsitepackages() if _os.path.isdir(p)]
-              _found = set()
+              import site
+              _sp = [p for p in site.getsitepackages() if os.path.isdir(p)]
               for _dir in _sp:
-                  for _root, _dirs, _files in _os.walk(_dir):
+                  for _root, _dirs, _files in os.walk(_dir):
                       for _f in _files:
-                          if _f.endswith('.py') or _f.endswith('.so'):
-                              _rp = _os.path.relpath(_os.path.join(_root, _f), _dir)
-                              _parts = _rp.replace(_os.sep, '.').replace('.py','').replace('.so','').split('.')
-                              for _i in range(len(_parts)):
-                                  _candidate = '.'.join(_parts[:_i+1])
-                                  if _candidate.startswith('nonebot_plugin_') or \
-                                     _candidate.startswith('nonebot.') or _candidate == 'nonebot':
-                                      _found.add(_candidate)
-              for _m in sorted(_found):
-                  if _m not in sys.modules: sys.modules[_m]=_F()
-              print(f'Pre-populated {len(_found)} nonebot* modules from site-packages')
-          except Exception as _e:
-              print(f'Warning: could not scan site-packages: {_e}')
-          sys.modules['nonebot_plugin_localstore']=_F(
-            get_plugin_cache_dir=lambda *a,**kw:PL/'cache',
-            get_plugin_config_dir=lambda *a,**kw:PL/'config',
-            get_plugin_data_dir=lambda *a,**kw:PL/'data')
-          sys.modules['nonebot_plugin_apscheduler']=_F(
-            scheduler=_F(scheduled_job=lambda *a,**kw: lambda f:f))
+                          rp = os.path.relpath(os.path.join(_root, _f), _dir)
+                          parts = rp.replace(os.sep, '.').replace('.py','').replace('.so','').split('.')
+                          for i in range(len(parts)):
+                              candidate = '.'.join(parts[:i+1])
+                              if (candidate.startswith('nonebot_plugin_') or
+                                  candidate.startswith('nonebot.') or candidate == 'nonebot'):
+                                  if candidate not in sys.modules:
+                                      sys.modules[candidate] = _F()
+          except Exception as e:
+              pass
+          # Add functional overrides
+          PL = Path('src/nonebot_plugin_parser_lite')
+          sys.modules['nonebot_plugin_localstore'] = _F(
+              get_plugin_cache_dir=lambda *a, **kw: PL/'cache',
+              get_plugin_config_dir=lambda *a, **kw: PL/'config',
+              get_plugin_data_dir=lambda *a, **kw: PL/'data')
+          sys.modules['nonebot_plugin_apscheduler'] = _F(
+              scheduler=_F(scheduled_job=lambda *a, **kw: lambda f: f))
 
-          CHECKS=['nonebot_plugin_parser_lite',
-            'nonebot_plugin_parser_lite.config',
-            'nonebot_plugin_parser_lite.data',
-            'nonebot_plugin_parser_lite.parsers.base',
-            'nonebot_plugin_parser_lite.download',
-            'nonebot_plugin_parser_lite.constants',
-            'nonebot_plugin_parser_lite.helper',
-            'nonebot_plugin_parser_lite.render']
+          CHECKS = [
+              'nonebot_plugin_parser_lite',
+              'nonebot_plugin_parser_lite.config',
+              'nonebot_plugin_parser_lite.data',
+              'nonebot_plugin_parser_lite.parsers.base',
+              'nonebot_plugin_parser_lite.download',
+              'nonebot_plugin_parser_lite.constants',
+              'nonebot_plugin_parser_lite.helper',
+              'nonebot_plugin_parser_lite.render',
+          ]
           for m in CHECKS:
-              try: __import__(m)
+              try:
+                  __import__(m)
               except Exception as e:
                   print(f'FAIL {m}: {e}')
                   sys.exit(1)
@@ -131,96 +122,71 @@ jobs:
 
       - name: Generate standalone files
         run: |
-          # ── env.py ──
-          cat > src/nonebot_plugin_parser_lite/utils/env.py << 'PYEOF'
-          import os
-          IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"
-          PYEOF
-
-          # ── _flags.py ──
-          cat > src/nonebot_plugin_parser_lite/utils/_flags.py << 'PYEOF'
-          import os
-          _IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE", "") == "1"
-          PARSER_LITE_STANDALONE = _IS_STANDALONE
-          PARSER_LITE_PRE = "plite_"
-          if _IS_STANDALONE: _STANDALONE = True; _get_flag = lambda f: os.environ.get(f"{PARSER_LITE_PRE}{f}", "")
-          else: from nonebot import get_driver; _STANDALONE = False; _get_flag = lambda f: getattr(get_driver().config, f"{PARSER_LITE_PRE}{f}", "")
-          PYEOF
-
-          # ── _standalone_fake.py (auto-detect all nonebot imports) ──
           python -c "
-          import re, os
-          stubs = []
-          seen = set()
-          for root, dirs, files in os.walk('src/nonebot_plugin_parser_lite'):
-              for f in files:
-                  if not f.endswith('.py'): continue
-                  if f in ('_flags.py', 'env.py', '_standalone_fake.py'): continue
-              text = open(os.path.join(root, f), encoding='utf-8').read()
-                  lines = text.split('\n')
-                  buf = ''; in_paren = False
+          import os, re
+          # ── env.py ──
+          with open('src/nonebot_plugin_parser_lite/utils/env.py', 'w') as f:
+              f.write('import os\nIS_STANDALONE = os.environ.get(\"PARSER_LITE_STANDALONE\") == \"1\"\n')
+          # ── _flags.py ──
+          with open('src/nonebot_plugin_parser_lite/utils/_flags.py', 'w') as f:
+              f.write('import os\n_IS_STANDALONE = os.environ.get(\"PARSER_LITE_STANDALONE\", \"\") == \"1\"\nPARSER_LITE_STANDALONE = _IS_STANDALONE\nPARSER_LITE_PRE = \"plite_\"\nif _IS_STANDALONE: _STANDALONE = True; _get_flag = lambda f: os.environ.get(f\"{PARSER_LITE_PRE}{f}\", \"\")\nelse: from nonebot import get_driver; _STANDALONE = False; _get_flag = lambda f: getattr(get_driver().config, f\"{PARSER_LITE_PRE}{f}\", \"\")\n')
+          # ── _standalone_fake.py ──
+          stubs = []; seen = set()
+          src = 'src/nonebot_plugin_parser_lite'
+          for root, dirs, files in os.walk(src):
+              for fn in files:
+                  if not fn.endswith('.py'): continue
+                  if fn in ('_flags.py', 'env.py', '_standalone_fake.py'): continue
+                  lines = open(os.path.join(root, fn), encoding='utf-8').read().split('\n')
+                  in_paren = False
                   for line in lines:
-                      m = re.match(r'from\s+(nonebot(?:\.[a-z_]+)?)\s+import\s+(.+?)(?:\s*#.*)?$', line)
+                      m = re.match(r'from\s+(nonebot(\.[a-z_]+)?)\s+import\s+(.+?)(?:\s*#.*)?$', line)
                       if m:
-                          buf = m.group(1); raw = m.group(2).strip()
-                          if raw.endswith(','): buf += ' ' + raw[:-1]
-                          elif raw.endswith('('): in_paren = True; buf += ' ' + raw[1:]
-                          else:
-                              for n in raw.split(','):
-                                  n = n.strip().split(' as ')[0]
-                                  if n and not n.startswith('(') and n not in seen:
-                                      seen.add(n); stubs.append(n)
+                          raw = m.group(3).strip()
+                          if raw.endswith('('): in_paren = True; raw = raw[:-1]
+                          for n in raw.split(','):
+                              n = n.strip().split(' as ')[0]
+                              if n and n not in seen: seen.add(n); stubs.append(n)
                       elif in_paren:
                           raw = line.split('#')[0].strip()
                           if raw.endswith(')'): in_paren = False; raw = raw[:-1]
                           if raw.endswith(','): raw = raw[:-1]
                           for n in raw.split(','):
                               n = n.strip().split(' as ')[0]
-                              if n and n not in seen:
-                                  seen.add(n); stubs.append(n)
-                          if n and not n.startswith('(') and n not in seen:
-                              seen.add(n)
-                              stubs.append(n)
-          with open('src/nonebot_plugin_parser_lite/utils/_standalone_fake.py', 'w') as out:
-              out.write('# Auto-generated by standalone workflow. Do not edit.\n')
+                              if n and n not in seen: seen.add(n); stubs.append(n)
+          with open('src/nonebot_plugin_parser_lite/utils/_standalone_fake.py', 'w') as f:
+              f.write('# Auto-generated by standalone workflow. Do not edit.\n')
               for s in sorted(stubs):
-                  out.write(f'{s} = None  # type: ignore\n')
-          print(f'Generated {len(stubs)} stubs: {sorted(stubs)}')
-          "
-
-          # ── auto-patch __init__.py ──
-          python -c "
+                  f.write(f'{s} = None  # type: ignore\n')
+          print(f'{len(stubs)} stubs: {sorted(stubs)}')
+          # ── patch __init__.py ──
           init = 'src/nonebot_plugin_parser_lite/__init__.py'
           text = open(init, encoding='utf-8').read()
           if '_STANDALONE' in text:
               print('__init__.py already patched')
           else:
               guard = '''from .utils._flags import _STANDALONE, _get_flag  # noqa: F401
-
-          if _STANDALONE:
-              from .utils._standalone_fake import *  # noqa: F403
-              from logging import getLogger as _getLogger
-              logger = _getLogger('parser-lite')
-              try:
-                  from apscheduler.schedulers.asyncio import AsyncIOScheduler
-                  scheduler = AsyncIOScheduler()
-                  scheduler.configure({'apscheduler.timezone': 'Asia/Shanghai'})
-                  try: scheduler.start()
-                  except RuntimeError: pass
-              except ImportError:
-                  scheduler = None
-              def clear_result_cache() -> None: pass
-          else:
-          '''
-              indented = '\n'.join(
-                  '    ' + line if line.strip() else ''
-                  for line in text.split('\n')
-              )
+          \nif _STANDALONE:
+          \n    from .utils._standalone_fake import *  # noqa: F403
+          \n    from logging import getLogger as _getLogger
+          \n    logger = _getLogger('parser-lite')
+          \n    try:
+          \n        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+          \n        scheduler = AsyncIOScheduler()
+          \n        scheduler.configure({'apscheduler.timezone': 'Asia/Shanghai'})
+          \n        try: scheduler.start()
+          \n        except RuntimeError: pass
+          \n    except ImportError:
+          \n        scheduler = None
+          \n    def clear_result_cache() -> None: pass
+          \nelse:
+          \n'''
+              indented = '\n'.join('    ' + line if line.strip() else '' for line in text.split('\n'))
               open(init, 'w', encoding='utf-8').write(guard + indented)
               print(f'Patched {init}')
           "
 
-      - name: Push to alone branch
+      - name: Push to alone
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
