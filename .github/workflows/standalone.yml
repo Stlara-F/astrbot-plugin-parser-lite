@@ -83,9 +83,7 @@ jobs:
           for _sub in ('adapters','adapters.event','log','matcher','params',
                         'permission','plugin','rule','typing','message','driver', 'internal'):
               sys.modules[f'nonebot.{_sub}']=_F()
-          import pkgutil, importlib
-          for _pkg in importlib.util.find_spec('nonebot_plugin_alconna'):
-              pass  # won't work
+          import pkgutil
           # Scan installed nonebot_plugin_* packages for all sub-modules
           try:
               import site, os as _os
