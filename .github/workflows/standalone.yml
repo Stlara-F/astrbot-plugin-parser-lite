@@ -22,6 +22,23 @@ jobs:
       - name: Install deps + verify
         run: |
           pip install -r requirements.txt
+          # Auto-detect & install transitive deps (httpx, yarl, etc — from nonebot2)
+          python -c "
+          import re, subprocess, sys
+          PATTERNS = {
+              'httpx': 'httpx', 'yarl': 'yarl', 'qrcode': 'qrcode',
+              'Cryptodome': 'pycryptodomex', 'typing_extensions': 'typing_extensions',
+              'pydantic': 'pydantic', 'jinja2': 'jinja2', 'apscheduler': 'apscheduler',
+              'DrissionPage': 'DrissionPage', 'PIL': 'pillow',
+          }
+          missing = []
+          for imp, pkg in PATTERNS.items():
+              try: __import__(imp)
+              except ImportError: missing.append(pkg)
+          if missing:
+              subprocess.run([sys.executable, '-m', 'pip', 'install', '-q'] + missing)
+              print(f'Installed transitive deps: {missing}')
+          "
           python -c "
           import sys, re
           # ── verify_import ──
