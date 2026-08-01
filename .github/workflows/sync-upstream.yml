@@ -10,11 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: brigde2astrbot
+          ref: sync-upstream
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -29,61 +28,56 @@ jobs:
       - name: Check if upstream has new commits
         id: check
         run: |
-          # Check if upstream/main has commits we don't have
           BEHIND=$(git rev-list --count HEAD..upstream/main)
           if [ "$BEHIND" -gt 0 ]; then
-            echo "BEHIND=$BEHIND" >> $GITHUB_ENV
             echo "UP_TO_DATE=false" >> $GITHUB_ENV
-            echo "Upstream ahead by $BEHIND commits, patching needed"
+            echo "Upstream ahead by $BEHIND commits"
           else
             echo "UP_TO_DATE=true" >> $GITHUB_ENV
-            echo "Already up to date with upstream/main"
           fi
 
-      - name: Merge upstream & prime standalone files
+      - name: Merge upstream + prime files
         if: env.UP_TO_DATE == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge upstream/main --no-commit --no-ff --strategy-option=theirs || true
+          git merge upstream/main --no-edit --strategy-option=theirs || true
           rm -f src/nonebot_plugin_parser_lite/utils/_standalone_fake.py
-          # Write _flags.py with proper implementation
           cat > src/nonebot_plugin_parser_lite/utils/_flags.py << 'PYEOF'
           import os
           _IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE", "") == "1"
           PARSER_LITE_STANDALONE = _IS_STANDALONE
           PARSER_LITE_PRE = "plite_"
-          if _IS_STANDALONE:
-              _STANDALONE = True
-              _get_flag = lambda flag: os.environ.get(f"{PARSER_LITE_PRE}{flag}", "")
-          else:
-              from nonebot import get_driver
-              _STANDALONE = False
-              _get_flag = lambda flag: getattr(get_driver().config, f"{PARSER_LITE_PRE}{flag}", "")
+          if _IS_STANDALONE: _STANDALONE = True; _get_flag = lambda f: os.environ.get(f"{PARSER_LITE_PRE}{f}", "")
+          else: from nonebot import get_driver; _STANDALONE = False; _get_flag = lambda f: getattr(get_driver().config, f"{PARSER_LITE_PRE}{f}", "")
           PYEOF
-          # Write env.py
           cat > src/nonebot_plugin_parser_lite/utils/env.py << 'PYEOF'
-          import os
-          IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"
+          import os; IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"
           PYEOF
 
-      - name: Run auto-patcher
+      - name: Auto-patcher
         if: env.UP_TO_DATE == 'false'
         run: python scripts/auto_patcher.py
-
-      - name: Install upstream deps
-        if: env.UP_TO_DATE == 'false'
-        run: python scripts/install_deps.py
 
       - name: Verify import
         if: env.UP_TO_DATE == 'false'
         run: python scripts/verify_import.py
 
-      - name: Commit & push
+      - name: Push to sync-upstream
         if: env.UP_TO_DATE == 'false'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add src/nonebot_plugin_parser_lite/
-          git commit -m "sync: merge upstream/main, regenerate patches ($(date +%Y-%m-%d))" || echo "no-op"
-          git push origin HEAD:brigde2astrbot
+          git commit -m "sync: upstream/main ($(date +%Y-%m-%d))" || echo "no-op"
+          git push origin HEAD:sync-upstream
+
+      - name: Auto-merge into brigde2astrbot
+        if: env.UP_TO_DATE == 'false'
+        run: |
+          git fetch origin brigde2astrbot || exit 0
+          git checkout -b merge-target origin/brigde2astrbot
+          if git merge sync-upstream --no-edit 2>/dev/null; then
+            git push origin merge-target:brigde2astrbot
+            echo "Merged sync-upstream → brigde2astrbot"
+          else
+            echo "Conflict — skipping auto-merge"
+          fi
