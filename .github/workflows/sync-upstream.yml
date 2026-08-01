@@ -14,11 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 'brigde2astrbot'
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -36,7 +34,7 @@ jobs:
             echo "UP_TO_DATE=false" >> $GITHUB_ENV
           fi
 
-      - name: Merge upstream
+      - name: Merge upstream & prime standalone files
         if: env.UP_TO_DATE == 'false'
         continue-on-error: true
         id: merge
@@ -44,11 +42,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git merge upstream/main --no-commit --no-ff --strategy-option=theirs || true
-          # Remove our stale patched files; auto_patcher regenerates from upstream
-          git rm -f src/nonebot_plugin_parser_lite/utils/_standalone_fake.py 2>/dev/null || true
-          # Ensure _flags.py and env.py exist (git tracked)
-          test -f src/nonebot_plugin_parser_lite/utils/_flags.py || echo "# git tracking" > src/nonebot_plugin_parser_lite/utils/_flags.py
-          test -f src/nonebot_plugin_parser_lite/utils/env.py || echo 'import os\nIS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"' > src/nonebot_plugin_parser_lite/utils/env.py
+          rm -f src/nonebot_plugin_parser_lite/utils/_standalone_fake.py
+          touch src/nonebot_plugin_parser_lite/utils/_flags.py
+          echo 'import os' > src/nonebot_plugin_parser_lite/utils/env.py
+          echo 'IS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"' >> src/nonebot_plugin_parser_lite/utils/env.py
 
       - name: Run auto-patcher
         if: env.UP_TO_DATE == 'false'
@@ -57,13 +54,8 @@ jobs:
       - name: Commit & push
         if: env.UP_TO_DATE == 'false'
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add src/nonebot_plugin_parser_lite/
-          git commit -m "sync: merge upstream/main, regenerate standalone patches ($(date +%Y-%m-%d))" || echo "no-op"
-          git push origin brigde2astrbot
-
-      - name: Create PR on conflicts
-        if: env.UP_TO_DATE == 'false' && steps.merge.outcome == 'failure'
-        run: |
-          echo "Merge conflicts detected. Manual review required."
-          git diff --name-only --diff-filter=U > /tmp/conflicts.txt
-          cat /tmp/conflicts.txt
+          git commit -m "sync: merge upstream/main, regenerate patches ($(date +%Y-%m-%d))" || echo "no-op"
+          git push origin "$(git rev-parse --abbrev-ref HEAD)"
