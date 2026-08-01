@@ -38,8 +38,6 @@ else:
 print("=" * 60)  # noqa: T201
 
 for mod_name in modules:
-    if args.smoke and mod_name not in ("test_regressions",):
-        continue
     t0 = time.time()
     print(f"\n-- {mod_name} --")  # noqa: T201
     try:
