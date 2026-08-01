@@ -68,6 +68,7 @@ jobs:
               def __hash__(self): return 0
               def __int__(self): return 0
               def __getitem__(self,_): return _F()
+              def __mro_entries__(self, bases): return ()
 
           import typing
           if not hasattr(typing, 'Self'):
