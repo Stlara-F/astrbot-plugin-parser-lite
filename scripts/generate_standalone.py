@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate standalone files — called by standalone.yml workflow."""
-import os, re, sys
+import os
+import re
 
 SRC = "src/nonebot_plugin_parser_lite"
 os.makedirs(f"{SRC}/utils", exist_ok=True)
@@ -37,7 +38,7 @@ for root, dirs, files in os.walk(SRC):
             continue
         in_paren = False
         for line in open(os.path.join(root, fn), encoding="utf-8").read().split("\n"):
-            m = re.match(r'from\s+(nonebot(\.[a-z_]+)?)\s+import\s+(.+?)(?:\s*#.*)?$', line)
+            m = re.match(r"from\s+(nonebot(\.[a-z_]+)?)\s+import\s+(.+?)(?:\s*#.*)?$", line)
             if m:
                 raw = m.group(3).strip()
                 if raw.endswith("("):
@@ -92,7 +93,7 @@ else:
     )
     indented = "\n".join("    " + line if line.strip() else "" for line in text.split("\n"))
     open(init_path, "w", encoding="utf-8").write(guard + indented)
-    print(f"  __init__.py patched")
+    print("  __init__.py patched")
 
 # ruff.toml
 if os.path.exists("ruff.toml"):
