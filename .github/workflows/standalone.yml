@@ -121,7 +121,7 @@ jobs:
                   print(f'=== 诊断 & 修复指南 ===')
                   _msg = str(e).lower()
                   if 'module named' in _msg:
-                      _mod = str(e).split("'")[1] if "'" in str(e) else str(e)
+                      _mod = str(e).split('\x27')[1] if '\x27' in str(e) else str(e)
                       if _mod.startswith('nonebot'):
                           print(f'  缺失模块: {_mod}')
                           print(f'  1. 确认 pip install nonebot2 成功')
