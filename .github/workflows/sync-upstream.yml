@@ -1,0 +1,61 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 'brigde2astrbot'
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/sokoko-org/nonebot-plugin-parser-lite.git 2>/dev/null || true
+          git fetch upstream main
+
+      - name: Merge upstream (auto-resolve 5 standalone files)
+        continue-on-error: true
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge upstream/main --no-edit --strategy-option=theirs || true
+          # Force our 5 standalone files (upstream changes merged, our patches preserved)
+          for f in \
+            src/nonebot_plugin_parser_lite/__init__.py \
+            src/nonebot_plugin_parser_lite/config.py \
+            src/nonebot_plugin_parser_lite/helper.py; do
+            git checkout HEAD~1 -- "$f" 2>/dev/null || true
+          done
+          git add src/
+          git commit -m "sync: merge upstream/main" || echo "no-op"
+
+      - name: Push
+        if: steps.merge.outcome != 'failure'
+        run: git push origin brigde2astrbot
+
+      - name: Create PR on conflicts
+        if: steps.merge.outcome == 'failure'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: "sync: upstream/main merge (conflicts)"
+          branch: sync/upstream-main
+          base: brigde2astrbot
+          body: |
+            Auto-merge of `upstream/main` into `brigde2astrbot` produced conflicts.
+            
+            Patched files may need manual adjustment:
+            - `src/.../__init__.py`
+            - `src/.../config.py`
+            - `src/.../helper.py`
+            
+            Pull upstream changes and re-apply bridge modifications as needed.
