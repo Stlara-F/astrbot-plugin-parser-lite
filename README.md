@@ -67,3 +67,7 @@ repo/
 ## 致谢
 
 核心代码来自 [sokoko-org/nonebot-plugin-parser-lite](https://github.com/sokoko-org/nonebot-plugin-parser-lite) 及 [fllesser/nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)。
+
+## 使用说明
+
+详见 [GUIDE.md](GUIDE.md) — 安装、配置、指令、代理设置、测试、排查。
