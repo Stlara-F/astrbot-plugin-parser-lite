@@ -28,6 +28,11 @@ if os.path.isdir(_src):
     sys.path.insert(0, _src)
 sys.path.insert(0, _here)
 
+# 清除上游模块缓存 — 多插件目录并存时防止从旧目录加载过期模块
+for _mod in list(sys.modules):
+    if _mod.startswith("nonebot_plugin_parser_lite"):
+        del sys.modules[_mod]
+
 from astrbot.api import AstrBotConfig
 from astrbot.api import logger as astrbot_logger
 from astrbot.api.event import AstrMessageEvent, filter
@@ -70,11 +75,83 @@ from nonebot_plugin_parser_lite.data import (
 )
 from nonebot_plugin_parser_lite.download import DOWNLOADER
 
+
+def _resolve_proxy_url(raw: str) -> str:
+    """从用户输入解析代理 URL, 支持:
+    - 完整协议: http://, https://, socks4://, socks4a://, socks5://, socks5h://
+    - 关键词: socks/socks4/socks4a/socks5/socks5h ip:port → protocol://ip:port
+    - 裸地址: ip:port → 原样返回 (由调用方通过 _PROXY_PROTOCOLS 自动匹配)
+    """
+    raw = raw.strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        return raw
+    _lower = raw.lower()
+    for _kw in ("socks5h ", "socks5 ", "socks4a ", "socks4 ", "socks "):
+        if _lower.startswith(_kw):
+            _proto = _kw.strip()
+            if _proto == "socks":
+                _proto = "socks5"
+            return f"{_proto}://{raw[len(_kw):].strip()}"
+    # 裸地址：不添加默认协议，留给调用方自动匹配
+    return raw
+
+
+# 代理协议轮询列表 (curl_cffi 全支持, httpx 需 httpx[socks])
+_PROXY_PROTOCOLS = ("http://", "https://", "socks5://", "socks5h://")
+
+
+def _resolve_raw_addr(raw: str) -> str:
+    """从原始地址提取 host:port (剥离已存在的协议前缀)"""
+    raw = raw.strip()
+    for _pfx in ("http://", "https://", "socks5://", "socks5h://", "socks4://", "socks4a://"):
+        if raw.lower().startswith(_pfx):
+            return raw[len(_pfx):]
+    return raw
+
+
+_schema_proxy_cache: str | None = None
+
+def _read_proxy_config() -> str:
+    """读取代理配置并输出诊断日志"""
+    global _schema_proxy_cache
+    _sources = {}
+    px = (BridgeConfig._source or {}).get("plite_http_proxy", "")
+    if px:
+        _sources["_source"] = str(px)[:100]
+    else:
+        try:
+            _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
+            _raw = _sf.get("plite_http_proxy")
+            if _raw:
+                px = _extract_config_value(_raw)
+                _schema_proxy_cache = px
+                _sources[f"schema({type(_raw).__name__})"] = str(px)[:100]
+        except Exception as e:
+            _sources["schema_error"] = str(e)[:80]
+    if not px and not _sources:
+        _sources["_source"] = "(empty)"
+    _log_line = ", ".join(f"{k}={v}" for k, v in _sources.items()) if _sources else "not found"
+    astrbot_logger.info(f"[ParserLite] proxy config: pyx={px or '<not set>'}, sources: {_log_line}")
+    return px
+
+
+def _extract_config_value(entry) -> str:
+    """从 schema entry 中提取用户值 (dict 取 value/default, 否则取裸值)"""
+    if isinstance(entry, dict):
+        return str(entry.get("value", entry.get("default", "")) or "")
+    if isinstance(entry, str):
+        return entry
+    return ""
+
+
 _last_proxy: str | None = None
 
 def _apply_downloader_proxy(proxy_url: str):
-    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端 (env var 对这两个库无效)"""
+    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端"""
     global _last_proxy
+    proxy_url = _resolve_proxy_url(proxy_url)
     if proxy_url == (_last_proxy or ""):
         return
     _last_proxy = proxy_url
@@ -82,27 +159,28 @@ def _apply_downloader_proxy(proxy_url: str):
     from httpx import AsyncClient as HttpxClient
     from httpx import Timeout
     client = DOWNLOADER.client
-    if hasattr(client, "_httpx"):
-        try:
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(client._httpx.aclose())
-        except Exception:
-            pass
-    if hasattr(client, "_curl"):
-        try:
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(client._curl.close())
-        except Exception:
-            pass
+    # 调度旧客户端关闭 (同次解析中可能轮询多个协议, 旧客户端需释放)
+    for _old_attr in ("_httpx", "_curl"):
+        _old = getattr(client, _old_attr, None)
+        if _old is not None:
+            try:
+                import asyncio as _asyncio
+                _asyncio.get_running_loop().create_task(
+                    _old.aclose() if hasattr(_old, "aclose") else _old.close())
+            except RuntimeError:
+                pass  # 无运行中的 event loop (模块加载时)
     if not proxy_url:
         client._httpx = HttpxClient(verify=False, follow_redirects=True,
                                      timeout=Timeout(timeout=15))
         client._curl = CurlSession(impersonate="chrome146", timeout=240,
                                     verify=False, allow_redirects=True)
     else:
-        client._httpx = HttpxClient(proxy=proxy_url.strip(), verify=False,
+        # 裸地址默认 http:// (parse_url 通过 _PROXY_PROTOCOLS 轮询时会自行加协议)
+        _p = proxy_url if "://" in proxy_url else f"http://{proxy_url}"
+        client._httpx = HttpxClient(proxy=_p, verify=False,
                                      follow_redirects=True, timeout=Timeout(timeout=15))
-        client._curl = CurlSession(proxy=proxy_url.strip(), impersonate="chrome146",
+        client._curl = CurlSession(proxies={"http": _p, "https": _p},
+                                    impersonate="chrome146",
                                     timeout=240, verify=False, allow_redirects=True)
     astrbot_logger.info(f"[ParserLite] downloader proxy: {proxy_url or 'disabled'}")
 from nonebot_plugin_parser_lite.parsers.base import BaseParser
@@ -114,6 +192,7 @@ URL_RE = re.compile(r"https?://[^\s<>\"{}|\\^`\[\]]+", re.IGNORECASE)
 CACHE_INTERVAL = 24 * 3600
 _RESULT_CACHE: LimitedSizeDict[str, ParseResult] = LimitedSizeDict(max_size=50)
 _DISABLED_GROUPS_FILE = Path(__file__).parent / "data" / "parser_lite" / "disabled_groups.json"
+_CONF_SCHEMA_PATH = Path(__file__).parent / "_conf_schema.json"
 
 # ── 配置桥接 ──────────────────────────────────────────────────────────────────
 class BridgeConfig:
@@ -158,8 +237,7 @@ class BridgeConfig:
                 break
         DOWNLOADER.MAX_RETRIES = _cfg.max_retries
         DOWNLOADER.max_size_mb = _cfg.max_size
-        proxy = (cls._source or {}).get("plite_http_proxy", "")
-        _apply_downloader_proxy(proxy)
+        _apply_downloader_proxy(_read_proxy_config())
         astrbot_logger.debug(f"[ParserLite] configure: {len(valid)} fields, dirty={h != cls._hash}")
 
     @classmethod
@@ -266,49 +344,62 @@ class ParserLite:
             except Exception as e:
                 astrbot_logger.warning(f"[ParserLite] CustomParser init skip: {e}")
 
+    async def _try_all_parsers(self, ordered, url: str) -> ParseResult:
+        _matched_err: Exception | None = None
+        for parser_cls in ordered:
+            pname = getattr(getattr(parser_cls, "platform", None), "name", "")
+            if not _is_parser_enabled(pname or parser_cls.__name__.replace("Parser","").lower()):
+                continue
+            try: kw, mwp = parser_cls.search_url(url)
+            except Exception: continue
+            try:
+                parser = self._get_parser(parser_cls)
+                cookies = _get_cookies_for(pname)
+                if cookies and pname == "bilibili":
+                    ck_str = next(iter(cookies.values())) if cookies else ""
+                    if ck_str:
+                        BridgeConfig._source = BridgeConfig._source or {}
+                        BridgeConfig._source["plite_bili_ck"] = ck_str
+                        get_config()
+                        try:
+                            object.__setattr__(get_config(), "plite_bili_ck", ck_str)
+                        except Exception: pass
+                return await parser.parse(kw, mwp)
+            except Exception as e:
+                _matched_err = e
+                astrbot_logger.warning(f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
+        if _matched_err is not None:
+            raise _matched_err
+        raise ValueError(f"Unsupported URL: {url}")
+
     async def parse_url(self, url: str) -> ParseResult:
         # ① 热重载配置 + 代理环境准备
         get_config()
-        proxy_url = (BridgeConfig._source or {}).get("plite_http_proxy", "")
+        proxy_url = _read_proxy_config()
         target = self._route_url(url)  # O(1) 特征路由
-        proxy_first = _use_proxy_for(target or "")
         # ② 解析器优先级排序: 特征命中排第一
         ordered = list(BaseParser.get_all_subclass())
         if target:
             ordered = [c for c in ordered if c.__name__ == target] + [c for c in ordered if c.__name__ != target]
-        # ③ 双路重试 (代理/直连)
-        for attempt in (0, 1):
-            use_proxy_now = (proxy_first and attempt == 0) or (not proxy_first and attempt == 1)
-            _apply_downloader_proxy(proxy_url if use_proxy_now else "")
-            try:
-                for parser_cls in ordered:
-                    pname = getattr(getattr(parser_cls, "platform", None), "name", "")
-                    if not _is_parser_enabled(pname or parser_cls.__name__.replace("Parser","").lower()):
-                        continue
-                    try: kw, mwp = parser_cls.search_url(url)
-                    except Exception: continue
-                    try:
-                        parser = self._get_parser(parser_cls)
-                        cookies = _get_cookies_for(pname)
-                        if cookies and pname == "bilibili":
-                            ck_str = next(iter(cookies.values())) if cookies else ""
-                            if ck_str:
-                                BridgeConfig._source = BridgeConfig._source or {}
-                                BridgeConfig._source["plite_bili_ck"] = ck_str
-                                get_config()
-                                try:
-                                    object.__setattr__(get_config(), "plite_bili_ck", ck_str)
-                                except Exception: pass
-                        return await parser.parse(kw, mwp)
-                    except Exception as e:
-                        astrbot_logger.warning(f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
-                raise ValueError(f"Unsupported URL: {url}")
-            except Exception:
-                if proxy_url and attempt == 0:
-                    mode = "Proxy" if proxy_first else "Direct"
-                    fallback = "direct" if proxy_first else "proxy"
-                    astrbot_logger.warning(f"[ParserLite] {mode} failed, retrying via {fallback}...")
+        # ③ 代理/直连: proxy 已配置则始终使用 (媒体下载也需要代理, 不能双路切换)
+        if proxy_url:
+            _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
+            _last_err = None
+            for _proto in _try_protocols:
+                _px = _proto + _resolve_raw_addr(proxy_url) if "://" not in proxy_url else proxy_url
+                _apply_downloader_proxy(_px)
+                try:
+                    return await self._try_all_parsers(ordered, url)
+                except Exception as _e:
+                    _last_err = _e
+                    astrbot_logger.debug(f"[ParserLite] proxy {_px} failed: {_e}")
                     continue
+            if _last_err is not None:
+                raise _last_err  # type: ignore[misc]
+        else:
+            try:
+                return await self._try_all_parsers(ordered, url)
+            except Exception:
                 return await self._try_custom_parsers(url)
 
     async def _try_custom_parsers(self, url: str) -> ParseResult:
@@ -709,7 +800,7 @@ def _inject_dynamic_options_static():
     import typing
 
     from nonebot_plugin_parser_lite.constants import PlatformEnum
-    schema_path = Path(__file__).parent / "_conf_schema.json"
+    schema_path = _CONF_SCHEMA_PATH
     flag_path = Path(__file__).parent / ".injected"
     if not schema_path.exists():
         return
@@ -1468,6 +1559,38 @@ class ParserLitePlugin(Star):
         import jinja2
 
         from nonebot_plugin_parser_lite.render import RENDERER, safe_src
+        # RENDERER.templates_dir 是 anyio.Path, .exists() 是 async — 用 os.path 检查
+        tpl_full = os.path.join(str(RENDERER.templates_dir), "default.html.jinja")
+        if not os.path.exists(tpl_full):
+            # 尝试从当前插件目录的 src 树复制模板 (多插件目录共存时回退)
+            _fb_src = os.path.join(_here, "src", "nonebot_plugin_parser_lite",
+                                    "render", "templates")
+            _copied = False
+            if os.path.isdir(_fb_src) and os.path.exists(
+                    os.path.join(_fb_src, "default.html.jinja")):
+                try:
+                    _dst = str(RENDERER.templates_dir)
+                    os.makedirs(_dst, exist_ok=True)
+                    for _fn in os.listdir(_fb_src):
+                        _sp = os.path.join(_fb_src, _fn)
+                        _dp = os.path.join(_dst, _fn)
+                        if os.path.isfile(_sp) and not os.path.exists(_dp):
+                            import shutil
+                            shutil.copy2(_sp, _dp)
+                    _copied = True
+                    tpl_full = os.path.join(_dst, "default.html.jinja")
+                    astrbot_logger.info(
+                        f"[ParserLite] 模板已从 {_fb_src} 复制到 {_dst}")
+                except Exception as _e:
+                    astrbot_logger.warning(
+                        f"[ParserLite] 模板复制失败 (src={_fb_src} dst={RENDERER.templates_dir}): {_e}")
+            if not _copied:
+                astrbot_logger.error(
+                    f"[ParserLite] 卡片模板缺失: {tpl_full}。"
+                    "请确认 render/templates/default.html.jinja 已部署到服务端。"
+                )
+                await event.send(event.chain_result([Comp.Plain(format_full(result))]))
+                return
         try:
             from playwright.async_api import async_playwright
             tpl_data = await RENDERER.resolve_parse_result(result)
@@ -1496,11 +1619,17 @@ class ParserLitePlugin(Star):
                 tmp.unlink(missing_ok=True)
         except Exception:
             astrbot_logger.warning(f"[ParserLite] 卡片渲染失败, 回退文本\n{traceback.format_exc()}")
-            await event.send(event.chain_result([Comp.Plain(format_full(result))]))
+            try:
+                await event.send(event.chain_result([Comp.Plain(format_full(result))]))
+            except Exception:
+                astrbot_logger.error(
+                    f"[ParserLite] 回退文本发送也失败 (OneBot API 可能不可用)\n{traceback.format_exc()}")
 
     # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
     async def on_url_auto(self, event: AstrMessageEvent):
-        await self._handle_card_message(event)
+        # on_message_group/on_message_private 与 regex filter 会先后触发同一条消息,
+        # 导致同一 URL 被解析两次 (dedup 使用 message_id, 两个事件 id 可能不同)
+        return  # 避免重复 — 群聊/私聊由 on_message_group/on_message_private 覆盖
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_message_group(self, event: AstrMessageEvent):
@@ -1612,11 +1741,14 @@ class ParserLitePlugin(Star):
         if not urls: return
         if self._disabled(event) or self._blacklisted(event): return
         for url in urls[:3]:
-            result = await self._parse_raw(url)
-            if result is None: continue
-            if self._should_send("card"):
-                await self._send_card(event, result)
-            await self._send_items(event, result.content, result)
+            try:
+                result = await self._parse_raw(url)
+                if result is None: continue
+                if self._should_send("card"):
+                    await self._send_card(event, result)
+                await self._send_items(event, result.content, result)
+            except Exception:
+                astrbot_logger.error(f"[ParserLite] _handle_card_message 异常\n{traceback.format_exc()}")
 
     # ── 命令 ──────────────────────────────────────────────────────────────────
     async def cmd_parse(self, event: AstrMessageEvent):
