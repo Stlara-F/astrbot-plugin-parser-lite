@@ -17,45 +17,53 @@ jobs:
           ref: 'brigde2astrbot'
           fetch-depth: 0
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
       - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/sokoko-org/nonebot-plugin-parser-lite.git 2>/dev/null || true
           git fetch upstream main
 
-      - name: Merge upstream (auto-resolve 5 standalone files)
+      - name: Check for upstream changes
+        id: check
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "UP_TO_DATE=true" >> $GITHUB_ENV
+          else
+            echo "UP_TO_DATE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Merge upstream
+        if: env.UP_TO_DATE == 'false'
         continue-on-error: true
         id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge upstream/main --no-edit --strategy-option=theirs || true
-          # Force our 5 standalone files (upstream changes merged, our patches preserved)
-          for f in \
-            src/nonebot_plugin_parser_lite/__init__.py \
-            src/nonebot_plugin_parser_lite/config.py \
-            src/nonebot_plugin_parser_lite/helper.py; do
-            git checkout HEAD~1 -- "$f" 2>/dev/null || true
-          done
-          git add src/
-          git commit -m "sync: merge upstream/main" || echo "no-op"
+          git merge upstream/main --no-commit --no-ff --strategy-option=theirs || true
+          # Remove our stale patched files; auto_patcher regenerates from upstream
+          git rm -f src/nonebot_plugin_parser_lite/utils/_standalone_fake.py 2>/dev/null || true
+          # Ensure _flags.py and env.py exist (git tracked)
+          test -f src/nonebot_plugin_parser_lite/utils/_flags.py || echo "# git tracking" > src/nonebot_plugin_parser_lite/utils/_flags.py
+          test -f src/nonebot_plugin_parser_lite/utils/env.py || echo 'import os\nIS_STANDALONE = os.environ.get("PARSER_LITE_STANDALONE") == "1"' > src/nonebot_plugin_parser_lite/utils/env.py
 
-      - name: Push
-        if: steps.merge.outcome != 'failure'
-        run: git push origin brigde2astrbot
+      - name: Run auto-patcher
+        if: env.UP_TO_DATE == 'false'
+        run: python scripts/auto_patcher.py
+
+      - name: Commit & push
+        if: env.UP_TO_DATE == 'false'
+        run: |
+          git add src/nonebot_plugin_parser_lite/
+          git commit -m "sync: merge upstream/main, regenerate standalone patches ($(date +%Y-%m-%d))" || echo "no-op"
+          git push origin brigde2astrbot
 
       - name: Create PR on conflicts
-        if: steps.merge.outcome == 'failure'
-        uses: peter-evans/create-pull-request@v7
-        with:
-          title: "sync: upstream/main merge (conflicts)"
-          branch: sync/upstream-main
-          base: brigde2astrbot
-          body: |
-            Auto-merge of `upstream/main` into `brigde2astrbot` produced conflicts.
-            
-            Patched files may need manual adjustment:
-            - `src/.../__init__.py`
-            - `src/.../config.py`
-            - `src/.../helper.py`
-            
-            Pull upstream changes and re-apply bridge modifications as needed.
+        if: env.UP_TO_DATE == 'false' && steps.merge.outcome == 'failure'
+        run: |
+          echo "Merge conflicts detected. Manual review required."
+          git diff --name-only --diff-filter=U > /tmp/conflicts.txt
+          cat /tmp/conflicts.txt
