@@ -107,11 +107,11 @@ jobs:
           except Exception as _e:
               print(f'Warning: could not scan site-packages: {_e}')
           sys.modules['nonebot_plugin_localstore']=_F(
-            get_plugin_cache_dir=lambda:PL/'cache',
-            get_plugin_config_dir=lambda:PL/'config',
-            get_plugin_data_dir=lambda:PL/'data')
+            get_plugin_cache_dir=lambda *a,**kw:PL/'cache',
+            get_plugin_config_dir=lambda *a,**kw:PL/'config',
+            get_plugin_data_dir=lambda *a,**kw:PL/'data')
           sys.modules['nonebot_plugin_apscheduler']=_F(
-            scheduler=_F(scheduled_job=lambda **kw: lambda f:f))
+            scheduler=_F(scheduled_job=lambda *a,**kw: lambda f:f))
 
           CHECKS=['nonebot_plugin_parser_lite',
             'nonebot_plugin_parser_lite.config',
