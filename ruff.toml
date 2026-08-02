@@ -7,11 +7,16 @@ line-ending = "lf"
 [lint]
 ignore = [
   "E402", # module-import-not-at-top-of-file
+  "E501", # line-too-long
+  "E701", # multiple-statements-on-one-line-colon (bridge style)
+  "E702", # multiple-statements-on-one-line-semicolon (bridge style)
+  "ASYNC240", # async-pathlib (bridge use of Path in async context)
+  "RUF100", # unused-noqa
+  "E902", # io-error
   "UP037", # quoted-annotation
-  "RUF001", # ambiguous-unicode-character-string
-  "RUF002", # ambiguous-unicode-character-docstring
-  "RUF003", # ambiguous-unicode-character-comment
+  "RUF001", "RUF002", "RUF003", # ambiguous-unicode
   "TID252", # relative-imports
+  "T201", # print-found (test files)
 ]
 select = [
   "F", # Pyflakes
@@ -40,3 +45,10 @@ mark-parentheses = false
 
 [lint.pyupgrade]
 keep-runtime-typing = true
+
+# Per-file ignores for auto-generated standalone files
+[lint.per-file-ignores]
+"src/nonebot_plugin_parser_lite/__init__.py" = ["I001", "Q000", "F405"]
+"src/nonebot_plugin_parser_lite/utils/_flags.py" = ["E731", "I001"]
+"src/nonebot_plugin_parser_lite/utils/env.py" = ["I001"]
+"src/nonebot_plugin_parser_lite/utils/_standalone_fake.py" = ["ALL"]
