@@ -128,20 +128,20 @@ jobs:
                       if _mod.startswith('nonebot'):
                           print(f'  缺失模块: {_mod}')
                           print(f'  1. 确认 pip install nonebot2 成功')
-                          print(f'  2. �?{_mod} 加入 site-packages 扫描排除列表')
+                          print(f'  2. 将 {_mod} 加入 site-packages 扫描排除列表')
                       else:
                           print(f'  缺失第三方库: {_mod}')
                           print(f'  运行: pip install {_mod}')
-                          print(f'  或将其加�?standalone.yml �?patterns 字典')
+                          print(f'  或将其加入 standalone.yml 的 patterns 字典')
                   elif 'unsupported operand' in _msg or '__' in _msg:
-                      print(f'  _F 类缺�?dunder 方法')
-                      print(f'  �?standalone.yml �?class _F 中添加对应方�?)
+                      print(f'  _F 类缺少 dunder 方法')
+                      print(f'  在 standalone.yml 的 class _F 中添加对应方法')
                   elif 'takes 0 positional' in _msg or 'takes 1 positional' in _msg:
-                      print(f'  lambda/func 参数签名不匹�?)
-                      print(f'  找到对应�?func 定义并改�?func(*a, **kw)')
+                      print(f'  lambda/func 参数签名不匹配')
+                      print(f'  找到对应的 func 定义并改为 func(*a, **kw)')
                   else:
                       print(f'  异常类型: {type(e).__name__}')
-                      print(f'  查看完整 traceback 定位调用�?)
+                      print(f'  查看完整 traceback 定位调用链')
                       traceback.print_exc()
                   print(f'=========================')
                   sys.exit(1)
@@ -165,7 +165,7 @@ jobs:
           git checkout --orphan alone-tmp
           git rm -rf --cached . 2>/dev/null || true
           # Only commit src/ and essentials
-          git add -f src/ requirements.txt ruff.toml .gitignore README.md LICENSE .github/ 2>/dev/null || true
+          git add -f src/ requirements.txt ruff.toml .gitignore README.md LICENSE 2>/dev/null || true
           # Restore generated files
           cp /tmp/alone-save/src/__init__.py src/nonebot_plugin_parser_lite/
           cp /tmp/alone-save/src/utils/_flags.py src/nonebot_plugin_parser_lite/utils/
