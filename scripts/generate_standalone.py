@@ -271,6 +271,21 @@ if os.path.exists(rt_path):
 
 # ── Strip NoneBot deps + remove version upper bounds ──
 req_path = "requirements.txt"
+
+# ── Hardening: patch ck2dict to handle malformed cookies ──
+_ck_path = os.path.join(SRC, "utils", "cookie.py")
+if os.path.exists(_ck_path):
+    with open(_ck_path, encoding="utf-8") as f:
+        _ck_text = f.read()
+    if "split_result" not in _ck_text:
+        _ck_text = _ck_text.replace(
+            'name, value = cookie.strip().split("=", 1)',
+            'split_result = cookie.strip().split("=", 1)\n'
+            '        name, value = split_result if len(split_result) > 1 else (split_result[0], "")'
+        )
+        with open(_ck_path, "w", encoding="utf-8") as f:
+            f.write(_ck_text)
+        print("  utils/cookie.py: ck2dict hardened")
 if os.path.exists(req_path):
     with open(req_path, encoding="utf-8") as f:
         req_lines = f.readlines()
