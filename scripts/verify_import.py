@@ -157,7 +157,13 @@ FAKES = {
 for name, obj in FAKES.items():
     sys.modules[name] = obj
 
-# Guard finder: intercept only unknown sub-modules, don't override sys.modules
+# Guard finder: claims all nonebot* imports with proper ModuleSpec
+class _FakeLoader:
+    def create_module(self, spec):
+        return sys.modules.get(spec.name)  # return pre-set _F()
+    def exec_module(self, module):
+        pass  # _F() needs no initialization
+
 class _Guard:
     def find_spec(self, fn, p, t=None):
         if fn.startswith("nonebot_plugin_parser_lite"):
@@ -165,7 +171,8 @@ class _Guard:
         if fn == "nonebot" or fn.startswith(("nonebot.", "nonebot_plugin_")):
             if fn not in sys.modules:
                 sys.modules[fn] = _F()
-            return None
+            from importlib.machinery import ModuleSpec
+            return ModuleSpec(fn, _FakeLoader())
         return None
 sys.meta_path.insert(0, _Guard())
 
