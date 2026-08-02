@@ -17,136 +17,10 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      - name: Install & verify
-        run: |
-          pip install -r requirements.txt
-          python -c "
-          import subprocess, sys
-          # Auto-install transitive deps
-          patterns = {'httpx':'httpx','yarl':'yarl','qrcode':'qrcode',
-              'Cryptodome':'pycryptodomex','DrissionPage':'DrissionPage','PIL':'pillow'}
-          missing = []
-          for imp, pkg in patterns.items():
-              try: __import__(imp)
-              except ImportError: missing.append(pkg)
-          if missing:
-              r = subprocess.run([sys.executable,'-m','pip','install','-q']+missing)
-              if r.returncode != 0:
-                  print(f'FAIL: pip install failed for {missing}')
-                  sys.exit(1)
-              print(f'Installed: {missing}')
-          "
-
-          python -c "
-          import sys, os, re
-          sys.path.insert(0, 'src')
-          os.environ['PARSER_LITE_STANDALONE'] = '1'
-          os.environ['PARSER_LITE_BASE_DIR'] = 'src/nonebot_plugin_parser_lite'
-
-          class _F:
-              def __init__(s, **kw): object.__setattr__(s, '_d', kw)
-              def __getattr__(s, k):
-                  try: return object.__getattribute__(s, '_d')[k]
-                  except (KeyError, AttributeError): return _F()
-              def __call__(s, *a, **kw):
-                  if len(a)==1 and isinstance(a[0],type):
-                      try: return a[0]()
-                      except Exception: pass
-                  return _F()
-              def __str__(s): return ''
-              def __fspath__(s): return ''
-              def __bool__(s): return True
-              def __iter__(s): return iter([])
-              def __contains__(s, _): return False
-              def __or__(s, _): return s
-              def __ror__(s, _): return s
-              def __eq__(s, o): return isinstance(o, _F)
-              def __hash__(s): return 0
-              def __int__(s): return 0
-              def __getitem__(s, _): return _F()
-              def __mro_entries__(s, bases): return ()
-
-          import typing
-          if not hasattr(typing, 'Self'):
-              from typing_extensions import Self
-              typing.Self = Self
-
-          from pathlib import Path
-          D = _F(get_driver=_F(config=_F(nickname=['parser-lite'])),
-                 get_plugin_config=lambda cls, *a, **kw: cls(),
-                 require=lambda *a: None)
-          sys.modules['nonebot'] = D
-          # Auto-discover ALL nonebot* sub-modules from site-packages
-          try:
-              import site
-              _sp = [p for p in site.getsitepackages() if os.path.isdir(p)]
-              for _dir in _sp:
-                  for _root, _dirs, _files in os.walk(_dir):
-                      for _f in _files:
-                          rp = os.path.relpath(os.path.join(_root, _f), _dir)
-                          parts = rp.replace(os.sep, '.').replace('.py','').replace('.so','').split('.')
-                          for i in range(len(parts)):
-                              candidate = '.'.join(parts[:i+1])
-                              if (candidate.startswith('nonebot_plugin_') or
-                                  candidate.startswith('nonebot.') or candidate == 'nonebot'):
-                                  if candidate not in sys.modules:
-                                      sys.modules[candidate] = _F()
-          except Exception as e:
-              print(f"[warn] site-packages scan failed: {e}")
-          # Add functional overrides
-          PL = Path('src/nonebot_plugin_parser_lite')
-          sys.modules['nonebot_plugin_localstore'] = _F(
-              get_plugin_cache_dir=lambda *a, **kw: PL/'cache',
-              get_plugin_config_dir=lambda *a, **kw: PL/'config',
-              get_plugin_data_dir=lambda *a, **kw: PL/'data')
-          sys.modules['nonebot_plugin_apscheduler'] = _F(
-              scheduler=_F(scheduled_job=lambda *a, **kw: lambda f: f))
-
-          CHECKS = [
-              'nonebot_plugin_parser_lite',
-              'nonebot_plugin_parser_lite.config',
-              'nonebot_plugin_parser_lite.data',
-              'nonebot_plugin_parser_lite.parsers.base',
-              'nonebot_plugin_parser_lite.download',
-              'nonebot_plugin_parser_lite.constants',
-              'nonebot_plugin_parser_lite.helper',
-              'nonebot_plugin_parser_lite.render',
-          ]
-          for m in CHECKS:
-              try:
-                  __import__(m)
-              except Exception as e:
-                  import traceback
-                  print(f'FAIL {m}: {e}')
-                  print(f'')
-                  print(f'=== 诊断 & 修复指南 ===')
-                  _msg = str(e).lower()
-                  if 'module named' in _msg:
-                      _mod = str(e).split('\x27')[1] if '\x27' in str(e) else str(e)
-                      if _mod.startswith('nonebot'):
-                          print(f'  缺失模块: {_mod}')
-                          print(f'  1. 确认 pip install nonebot2 成功')
-                          print(f'  2. 将 {_mod} 加入 site-packages 扫描排除列表')
-                      else:
-                          print(f'  缺失第三方库: {_mod}')
-                          print(f'  运行: pip install {_mod}')
-                          print(f'  或将其加入 standalone.yml 的 patterns 字典')
-                  elif 'unsupported operand' in _msg or '__' in _msg:
-                      print(f'  _F 类缺少 dunder 方法')
-                      print(f'  在 standalone.yml 的 class _F 中添加对应方法')
-                  elif 'takes 0 positional' in _msg or 'takes 1 positional' in _msg:
-                      print(f'  lambda/func 参数签名不匹配')
-                      print(f'  找到对应的 func 定义并改为 func(*a, **kw)')
-                  else:
-                      print(f'  异常类型: {type(e).__name__}')
-                      print(f'  查看完整 traceback 定位调用链')
-                      traceback.print_exc()
-                  print(f'=========================')
-                  sys.exit(1)
-          print(f'{len(CHECKS)}/{len(CHECKS)} imports pass')
-          "
+      - name: Verify import (auto-installs deps)
+        run: python scripts/verify_import.py
 
       - name: Generate standalone files
         run: python scripts/generate_standalone.py
@@ -155,19 +29,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Save generated standalone files
           mkdir -p /tmp/alone-save/src/utils
           cp src/nonebot_plugin_parser_lite/__init__.py /tmp/alone-save/src/
           cp src/nonebot_plugin_parser_lite/utils/_flags.py /tmp/alone-save/src/utils/
           cp src/nonebot_plugin_parser_lite/utils/env.py /tmp/alone-save/src/utils/
           cp src/nonebot_plugin_parser_lite/utils/_standalone_fake.py /tmp/alone-save/src/utils/
-          # Create alone from current source + generated files (strip bridge/CI)
           git checkout --orphan alone-tmp
           git rm -rf --cached . 2>/dev/null || true
-          # Only commit src/ and essentials
           git add -f src/ requirements.txt ruff.toml .gitignore README.md LICENSE
           git add -f .github/ISSUE_TEMPLATE .github/release-drafter.yml .github/workflows/linting.yml .github/workflows/ruff.yml .github/workflows/release_drafter.yml 2>/dev/null || true
-          # Restore generated files
           cp /tmp/alone-save/src/__init__.py src/nonebot_plugin_parser_lite/
           cp /tmp/alone-save/src/utils/_flags.py src/nonebot_plugin_parser_lite/utils/
           cp /tmp/alone-save/src/utils/env.py src/nonebot_plugin_parser_lite/utils/
