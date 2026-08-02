@@ -498,7 +498,7 @@ class BaseParser:
         use_curl_cffi: bool = False,
     ):
         """
-        图片,此图片不参与九宫格
+        图片,此图片不参与九宫格且无高度限制
 
         :param url: 图片 URL
         :param img_name: 图片名称
