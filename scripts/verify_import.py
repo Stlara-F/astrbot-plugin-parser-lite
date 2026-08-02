@@ -12,8 +12,11 @@ os.environ["PARSER_LITE_BASE_DIR"] = str(HERE / "src" / "nonebot_plugin_parser_l
 # Python 3.10 compat: upstream uses typing.Self (added in 3.11)
 import typing as _typing
 if not hasattr(_typing, "Self"):
-    from typing_extensions import Self as _Self
-    _typing.Self = _Self  # type: ignore
+    try:
+        from typing_extensions import Self as _Self
+        _typing.Self = _Self  # type: ignore
+    except ImportError:
+        pass  # will be installed by pip below
 
 # ── Step 0: ensure deps ────────────────────────────────────────
 print(f"[deps] Python: {sys.executable}")
