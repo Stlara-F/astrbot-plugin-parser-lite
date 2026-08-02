@@ -97,7 +97,6 @@ if _to_install:
 
 # ── Step 1: _F class + fakes ────────────────────────────────────
 class _F:
-    __path__: list = []
     def __init__(self, **kw):
         object.__setattr__(self, "_d", kw)
     def __getattr__(self, k):
