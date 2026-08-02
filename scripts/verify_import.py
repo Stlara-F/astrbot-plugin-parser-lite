@@ -85,39 +85,13 @@ if _to_install:
         sys.exit(1)
     print("[deps] all auto-detected modules now importable")
 
-# Python 3.10 compat: typing.Self (pip has installed typing_extensions above)
+# Python 3.10 compat
 import typing as _typing
 if not hasattr(_typing, "Self"):
     from typing_extensions import Self as _Self
     _typing.Self = _Self  # type: ignore
 
-# ── Pre-populate ALL nonebot* sub-modules from site-packages ────
-# (must run BEFORE any imports — even deeply nested sub-modules)
-try:
-    import site as _site_mod
-    _sp_dirs = [p for p in _site_mod.getsitepackages() if os.path.isdir(p)]
-    _pre_fake_count = 0
-    for _dir in _sp_dirs:
-        for _root, _dirs, _files in os.walk(_dir):
-            for _f in _files:
-                # Build full module path from file
-                _rp = os.path.relpath(os.path.join(_root, _f), _dir)
-                _parts = _rp.replace(os.sep, ".").replace(".py", "").replace(".so", "").split(".")
-                if not _parts[0].startswith("nonebot"):
-                    continue
-                # Register every intermediate sub-module path
-                for _i in range(len(_parts)):
-                    _candidate = ".".join(_parts[:_i + 1])
-                    if _candidate not in sys.modules and \
-                       not _candidate.startswith("nonebot_plugin_parser_lite"):
-                        sys.modules[_candidate] = _F()
-                        _pre_fake_count += 1
-    if _pre_fake_count:
-        print(f"[fakes] pre-populated {_pre_fake_count} nonebot* sub-modules from site-packages")
-except Exception as _e:
-    print(f"[fakes] site-packages scan failed: {_e}")
-
-# ── Step 1: _F class + fakes ────────────────────────────────────
+# ── _F class (defined early — needed by site-packages scan) ─────
 class _F:
     def __init__(self, **kw):
         object.__setattr__(self, "_d", kw)
@@ -132,7 +106,6 @@ class _F:
         return _F()
     def __str__(self): return ""
     def __fspath__(self): return ""
-    def __repr__(self): return "_F()"
     def __bool__(self): return True
     def __iter__(self): return iter([])
     def __contains__(self, _): return False
@@ -147,7 +120,30 @@ class _F:
     def __enter__(self): return self
     def __exit__(self, *a): pass
 
-# Pre-populate known modules
+# ── Pre-populate ALL nonebot* sub-modules from site-packages ────
+try:
+    import site as _site_mod
+    _sp_dirs = [p for p in _site_mod.getsitepackages() if os.path.isdir(p)]
+    _pre_fake_count = 0
+    for _dir in _sp_dirs:
+        for _root, _dirs, _files in os.walk(_dir):
+            for _f in _files:
+                _rp = os.path.relpath(os.path.join(_root, _f), _dir)
+                _parts = _rp.replace(os.sep, ".").replace(".py", "").replace(".so", "").split(".")
+                if not _parts[0].startswith("nonebot"):
+                    continue
+                for _i in range(len(_parts)):
+                    _candidate = ".".join(_parts[:_i + 1])
+                    if _candidate not in sys.modules and \
+                       not _candidate.startswith("nonebot_plugin_parser_lite"):
+                        sys.modules[_candidate] = _F()
+                        _pre_fake_count += 1
+    if _pre_fake_count:
+        print(f"[fakes] pre-populated {_pre_fake_count} nonebot* sub-modules from site-packages")
+except Exception as _e_sc:
+    print(f"[fakes] site-packages scan failed: {_e_sc}")
+
+# Pre-populate known modules (functional overrides for site-packages scan)
 FAKES = {
     "nonebot": _F(get_driver=_F(config=_F(nickname=["parser-lite"])),
                    get_plugin_config=lambda cls, **kw: cls(),
