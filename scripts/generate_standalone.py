@@ -109,11 +109,14 @@ class _NonebotMock:
 _m = _NonebotMock()
 '''
     for s in sorted(stubs):
+        if s == "get_plugin_config":
+            continue  # defined manually below as a real function
         _nb_stub += f'{s} = _m\n'
 
     # get_plugin_config override: return a real Config instance using defaults
     # so that pconfig.zhihu_ck is None (falsy) instead of a truthy mock
     _nb_stub += '''
+get_plugin_config = None  # reset stub — defined below
 def get_plugin_config(config_cls):
     """Standalone: instantiate the config class with defaults (no nonebot driver)."""
     try:
