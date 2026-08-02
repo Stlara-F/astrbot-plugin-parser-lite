@@ -96,18 +96,22 @@ class MatchWithParams:
         """当前匹配对应的 ParamRules（由 BaseParser / rule 填充）"""
 
     def __getitem__(self, key) -> str:
-        if isinstance(key, str) and key in self.params:
-            return self.params[key]
+        if isinstance(key, str) and (value := self.params.get(key)) is not None:
+            return value
         return self.match[key]
 
     @overload
     def get(self, key: str) -> str | None: ...
 
     @overload
-    def get(self, key: str, default: _TDefault) -> _TDefault: ...
+    def get(self, key: str, default: _TDefault) -> str | _TDefault: ...
 
     def get(self, key: str, default: _TDefault | None = None) -> str | _TDefault | None:
-        return self.params.get(key, default)
+        try:
+            value = self[key]
+        except IndexError:
+            return default
+        return default if value is None else value
 
     @property
     def re(self):
