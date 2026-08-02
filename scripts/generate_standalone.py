@@ -116,7 +116,6 @@ _m = _NonebotMock()
     # get_plugin_config override: return a real Config instance using defaults
     # so that pconfig.zhihu_ck is None (falsy) instead of a truthy mock
     _nb_stub += '''
-get_plugin_config = None  # reset stub — defined below
 def get_plugin_config(config_cls):
     """Standalone: instantiate the config class with defaults (no nonebot driver)."""
     try:
