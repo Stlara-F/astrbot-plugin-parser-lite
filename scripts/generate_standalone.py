@@ -142,7 +142,7 @@ req_path = "requirements.txt"
 if os.path.exists(req_path):
     with open(req_path, encoding="utf-8") as f:
         req_lines = f.readlines()
-    clean_lines = [ln for ln in req_lines if "nonebot" not in l.lower() and "cryptography" not in l.lower()]
+    clean_lines = [ln for ln in req_lines if "nonebot" not in ln.lower() and "cryptography" not in ln.lower()]
     if len(clean_lines) < len(req_lines):
         with open(req_path, "w", encoding="utf-8") as f:
             f.writelines(clean_lines)
