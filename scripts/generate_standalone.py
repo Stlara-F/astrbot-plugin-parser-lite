@@ -136,3 +136,14 @@ if os.path.exists(rt_path):
     with open(rt_path, "w", encoding="utf-8") as f:
         f.write(full)
     print(f"  ruff.toml injected ({len(GENERATED_FILES)} files)")
+
+# ── Strip NoneBot deps from requirements.txt ──
+req_path = "requirements.txt"
+if os.path.exists(req_path):
+    with open(req_path, encoding="utf-8") as f:
+        req_lines = f.readlines()
+    clean_lines = [l for l in req_lines if "nonebot" not in l.lower() and "cryptography" not in l.lower()]
+    if len(clean_lines) < len(req_lines):
+        with open(req_path, "w", encoding="utf-8") as f:
+            f.writelines(clean_lines)
+        print(f"  requirements.txt: stripped {len(req_lines) - len(clean_lines)} NoneBot deps")
