@@ -76,6 +76,71 @@ stub_content += "\n".join(f"{s} = None  # type: ignore" for s in sorted(stubs)) 
 _write("utils/_standalone_fake.py", stub_content)
 print(f"  ({len(stubs)} stubs: {', '.join(sorted(stubs))})")
 
+# ── nonebot stub package ──
+# Upstream files do `from nonebot import ...` which fails if nonebot is not installed.
+# This stub package provides recursive mocks so all imports and calls succeed silently.
+_SRC_DIR = os.path.dirname(SRC)  # src/
+_nb_dir = os.path.join(_SRC_DIR, "nonebot")
+os.makedirs(_nb_dir, exist_ok=True)
+_nb_init = os.path.join(_nb_dir, "__init__.py")
+if not os.path.exists(_nb_init):
+    _nb_stub = '''# Auto-generated standalone stub for nonebot
+class _NonebotMock:
+    """Recursive mock: attribute → self, call → self, iter → [self]."""
+    def __getattr__(self, name):
+        return self
+    def __call__(self, *args, **kwargs):
+        return self
+    def __iter__(self):
+        return iter([self])
+    def __repr__(self):
+        return "nonebot-mock"
+    def __contains__(self, item):
+        return True
+
+_m = _NonebotMock()
+'''
+    for s in sorted(stubs):
+        _nb_stub += f'{s} = _m\n'
+    _nb_stub += '''
+import logging
+logger = logging.getLogger("parser-lite")
+'''
+    # Submodule fallback: `from nonebot.adapters import X` calls __getattr__ on module
+    _nb_stub += '''
+import sys as _sys
+
+def __getattr__(name):
+    sub = _NonebotMock()
+    setattr(_sys.modules[__name__], name, sub)
+    return sub
+'''
+    with open(_nb_init, "w", encoding="utf-8") as f:
+        f.write(_nb_stub)
+    GENERATED_FILES.append("src/nonebot/__init__.py")
+    print(f"  nonebot/__init__.py ({len(stubs)} stubs)")
+
+# ── nonebot_plugin_localstore stub ──
+_nls_dir = os.path.join(_SRC_DIR, "nonebot_plugin_localstore")
+os.makedirs(_nls_dir, exist_ok=True)
+_nls_init = os.path.join(_nls_dir, "__init__.py")
+if not os.path.exists(_nls_init):
+    _nls_stub = '''# Auto-generated standalone stub for nonebot_plugin_localstore
+from pathlib import Path as _Path
+
+_base = _Path("data")
+def get_plugin_cache_dir():
+    return _base / "cache"
+def get_plugin_config_dir():
+    return _base / "config"
+def get_plugin_data_dir():
+    return _base / "data"
+'''
+    with open(_nls_init, "w", encoding="utf-8") as f:
+        f.write(_nls_stub)
+    GENERATED_FILES.append("src/nonebot_plugin_localstore/__init__.py")
+    print("  nonebot_plugin_localstore/__init__.py")
+
 # ── __init__.py ──
 init_path = f"{SRC}/__init__.py"
 text = open(init_path, encoding="utf-8").read()
