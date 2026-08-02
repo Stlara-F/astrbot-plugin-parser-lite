@@ -114,7 +114,8 @@ if os.path.exists(rt_path):
     with open(rt_path, encoding="utf-8") as f:
         full = f.read()
     # Always inject bridge-compatible ignores
-    if "  \"E501\"" not in full:
+    BRIDGE_IGNORES = ["E501", "E701", "E702", "ASYNC240", "RUF100", "E902", "T201"]
+    if '  "E501"' not in full:
         full = full.replace(
             "ignore = [",
             "ignore = [\n  " + ", ".join(f'"{r}"' for r in BRIDGE_IGNORES) + ","
