@@ -165,7 +165,7 @@ jobs:
           git checkout --orphan alone-tmp
           git rm -rf --cached . 2>/dev/null || true
           # Only commit src/ and essentials
-          git add -f src/ requirements.txt ruff.toml .gitignore README.md LICENSE 2>/dev/null || true
+          git add -f src/ requirements.txt ruff.toml .gitignore README.md LICENSE .github/ 2>/dev/null || true
           # Restore generated files
           cp /tmp/alone-save/src/__init__.py src/nonebot_plugin_parser_lite/
           cp /tmp/alone-save/src/utils/_flags.py src/nonebot_plugin_parser_lite/utils/
