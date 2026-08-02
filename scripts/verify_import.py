@@ -9,15 +9,6 @@ HERE = Path(__file__).resolve().parent.parent
 os.environ["PARSER_LITE_STANDALONE"] = "1"
 os.environ["PARSER_LITE_BASE_DIR"] = str(HERE / "src" / "nonebot_plugin_parser_lite")
 
-# Python 3.10 compat: upstream uses typing.Self (added in 3.11)
-import typing as _typing
-if not hasattr(_typing, "Self"):
-    try:
-        from typing_extensions import Self as _Self
-        _typing.Self = _Self  # type: ignore
-    except ImportError:
-        pass  # will be installed by pip below
-
 # ── Step 0: ensure deps ────────────────────────────────────────
 print(f"[deps] Python: {sys.executable}")
 _req = HERE / "requirements.txt"
@@ -93,7 +84,12 @@ if _to_install:
         print("[deps] Run: pip install " + " ".join(set(_KNOWN[n.split("(")[0]] for n in _still_missing)))
         sys.exit(1)
     print("[deps] all auto-detected modules now importable")
-    print("[deps] no requirements.txt, skipping")
+
+# Python 3.10 compat: typing.Self (pip has installed typing_extensions above)
+import typing as _typing
+if not hasattr(_typing, "Self"):
+    from typing_extensions import Self as _Self
+    _typing.Self = _Self  # type: ignore
 
 # ── Step 1: _F class + fakes ────────────────────────────────────
 class _F:
