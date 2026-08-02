@@ -143,6 +143,7 @@ FAKES = {
     "nonebot.rule": _F(),
     "nonebot.typing": _F(),
     "nonebot_plugin_alconna": _F(),
+    "nonebot_plugin_alconna.extension": _F(),
     "nonebot_plugin_alconna.uniseg": _F(),
     "nonebot_plugin_uninfo": _F(),
     "nonebot_plugin_htmlrender": _F(),
