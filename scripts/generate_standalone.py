@@ -90,13 +90,15 @@ _nb_init = os.path.join(_nb_dir, "__init__.py")
 if not os.path.exists(_nb_init):
     _nb_stub = '''# Auto-generated standalone stub for nonebot
 class _NonebotMock:
-    """Recursive mock: attribute → self, call → self, iter → [self]."""
+    """Recursive mock: attribute → self, call → self, iter → [self], falsy."""
     def __getattr__(self, name):
         return self
     def __call__(self, *args, **kwargs):
         return self
     def __iter__(self):
         return iter([self])
+    def __bool__(self):
+        return False
     def __repr__(self):
         return "nonebot-mock"
     def __contains__(self, item):
@@ -162,6 +164,8 @@ class _NonebotMock:
         return self
     def __iter__(self):
         return iter([self])
+    def __bool__(self):
+        return False
     def __repr__(self):
         return "nonebot-mock"
     def __contains__(self, item):
