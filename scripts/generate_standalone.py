@@ -46,6 +46,7 @@ _write("utils/_flags.py",
 
 # ── _standalone_fake.py ──
 stubs, seen = [], set()
+submods: set[str] = set()  # e.g. {"nonebot.log", "nonebot.adapters"}
 for root, dirs, files in os.walk(SRC):
     for fn in files:
         if not fn.endswith(".py") or fn in ("_flags.py", "env.py", "_standalone_fake.py"):
@@ -56,6 +57,9 @@ for root, dirs, files in os.walk(SRC):
         for line in _text.split("\n"):
             m = re.match(r"from\s+(nonebot(\.[a-z_]+)?)\s+import\s+(.+?)(?:\s*#.*)?$", line)
             if m:
+                path = m.group(1)  # e.g. "nonebot.log" or "nonebot"
+                if "." in path:
+                    submods.add(path)
                 raw = m.group(3).strip()
                 if raw.endswith("("): in_paren = True; raw = raw[:-1]
                 for n in raw.split(","):
@@ -140,6 +144,41 @@ def get_plugin_data_dir():
         f.write(_nls_stub)
     GENERATED_FILES.append("src/nonebot_plugin_localstore/__init__.py")
     print("  nonebot_plugin_localstore/__init__.py")
+
+# ── nonebot submodule stubs ──
+# `from nonebot.log import logger` requires actual nonebot/log/__init__.py stub,
+# not just __getattr__ on the parent module.
+for _sm in sorted(submods):
+    _parts = _sm.split(".")
+    _sm_dir = os.path.join(_SRC_DIR, *_parts)
+    os.makedirs(_sm_dir, exist_ok=True)
+    _sm_init = os.path.join(_sm_dir, "__init__.py")
+    if not os.path.exists(_sm_init):
+        _sm_stub = f'''# Auto-generated standalone stub for {_sm}
+class _NonebotMock:
+    def __getattr__(self, name):
+        return self
+    def __call__(self, *args, **kwargs):
+        return self
+    def __iter__(self):
+        return iter([self])
+    def __repr__(self):
+        return "nonebot-mock"
+    def __contains__(self, item):
+        return True
+
+_m = _NonebotMock()
+'''
+        for s in sorted(stubs):
+            _sm_stub += f'{s} = _m\n'
+        _sm_stub += '''
+import logging
+logger = logging.getLogger("parser-lite")
+'''
+        with open(_sm_init, "w", encoding="utf-8") as f:
+            f.write(_sm_stub)
+        GENERATED_FILES.append("src/" + "/".join(_parts) + "/__init__.py")
+        print(f"  {'/'.join(_parts)}/__init__.py")
 
 # ── __init__.py ──
 init_path = f"{SRC}/__init__.py"
