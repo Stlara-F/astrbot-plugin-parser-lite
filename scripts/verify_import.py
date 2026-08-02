@@ -93,7 +93,7 @@ if not hasattr(_typing, "Self"):
 
 # ── _F class (defined early — needed by site-packages scan) ─────
 class _F:
-    def __init__(self, **kw):
+    def __init__(self, *a, **kw):
         object.__setattr__(self, "_d", kw)
     def __getattr__(self, k):
         if k.startswith("_"): raise AttributeError(k)
