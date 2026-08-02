@@ -99,6 +99,8 @@ class _NonebotMock:
         return iter([self])
     def __bool__(self):
         return False
+    def __len__(self):
+        return 0
     def __repr__(self):
         return "nonebot-mock"
     def __contains__(self, item):
@@ -108,7 +110,17 @@ _m = _NonebotMock()
 '''
     for s in sorted(stubs):
         _nb_stub += f'{s} = _m\n'
+
+    # get_plugin_config override: return a real Config instance using defaults
+    # so that pconfig.zhihu_ck is None (falsy) instead of a truthy mock
     _nb_stub += '''
+def get_plugin_config(config_cls):
+    """Standalone: instantiate the config class with defaults (no nonebot driver)."""
+    try:
+        return config_cls()
+    except Exception:
+        return _m
+
 import logging
 logger = logging.getLogger("parser-lite")
 '''
