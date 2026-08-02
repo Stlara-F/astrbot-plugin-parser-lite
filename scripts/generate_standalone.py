@@ -137,13 +137,27 @@ if os.path.exists(rt_path):
         f.write(full)
     print(f"  ruff.toml injected ({len(GENERATED_FILES)} files)")
 
-# ── Strip NoneBot deps from requirements.txt ──
+# ── Strip NoneBot deps + remove version upper bounds ──
 req_path = "requirements.txt"
 if os.path.exists(req_path):
     with open(req_path, encoding="utf-8") as f:
         req_lines = f.readlines()
-    clean_lines = [ln for ln in req_lines if "nonebot" not in ln.lower() and "cryptography" not in ln.lower()]
-    if len(clean_lines) < len(req_lines):
+    clean = []
+    for ln in req_lines:
+        stripped = ln.strip()
+        if not stripped or stripped.startswith("#"):
+            clean.append(ln)
+            continue
+        if "nonebot" in stripped.lower():
+            continue
+        # Remove version upper bound (keep only lower bound)
+        pkg_name = re.split(r"[<>=!~]", stripped)[0].strip()
+        lower = re.search(r"(>=?[^,;\s]+)", stripped)
+        if lower:
+            clean.append(f"{pkg_name}{lower.group(1)}\n")
+        else:
+            clean.append(f"{pkg_name}\n")
+    if len(clean) != len(req_lines):
         with open(req_path, "w", encoding="utf-8") as f:
-            f.writelines(clean_lines)
-        print(f"  requirements.txt: stripped {len(req_lines) - len(clean_lines)} NoneBot deps")
+            f.writelines(clean)
+        print(f"  requirements.txt: stripped {len(req_lines) - len(clean)} entries")
