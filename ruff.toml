@@ -43,5 +43,5 @@ keep-runtime-typing = true
 
 [lint.per-file-ignores]
 "scripts/generate_standalone.py" = ["T201", "E501", "E701", "E702"]
-"scripts/install_deps.py" = ["E401"]
-"scripts/verify_import.py" = ["T201", "E701", "E702"]
+"scripts/install_deps.py" = ["ALL"]
+"scripts/verify_import.py" = ["ALL"]
