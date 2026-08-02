@@ -102,23 +102,40 @@ class _F:
     def __call__(self, *a, **kw):
         if len(a) == 1 and isinstance(a[0], type):
             try: return a[0]()
-            except: pass
+            except Exception: pass
         return _F()
     def __str__(self): return ""
     def __fspath__(self): return ""
+    def __repr__(self): return "_F()"
     def __bool__(self): return True
     def __iter__(self): return iter([])
     def __contains__(self, _): return False
     def __or__(self, _): return self
     def __ror__(self, _): return self
     def __eq__(self, o): return isinstance(o, _F)
+    def __ne__(self, o): return not isinstance(o, _F)
     def __hash__(self): return 0
     def __int__(self): return 0
     def __float__(self): return 0.0
     def __len__(self): return 0
     def __getitem__(self, _): return _F()
+    def __delitem__(self, _): pass
+    def __setitem__(self, k, v): pass
     def __enter__(self): return self
     def __exit__(self, *a): pass
+    def __aenter__(self): return self
+    def __aexit__(self, *a): pass
+    def __neg__(self): return 0
+    def __pos__(self): return 0
+    def __lt__(self, o): return False
+    def __le__(self, o): return True
+    def __gt__(self, o): return False
+    def __ge__(self, o): return True
+    def __add__(self, o): return self
+    def __sub__(self, o): return self
+    def __mul__(self, o): return self
+    def __truediv__(self, o): return self
+    def __mro_entries__(self, bases): return ()
 
 # ── Pre-populate ALL nonebot* sub-modules from site-packages ────
 try:
@@ -146,11 +163,11 @@ except Exception as _e_sc:
 # Pre-populate known modules (functional overrides for site-packages scan)
 FAKES = {
     "nonebot": _F(get_driver=_F(config=_F(nickname=["parser-lite"])),
-                   get_plugin_config=lambda cls, **kw: cls(),
-                   require=lambda *a: None,
+                   get_plugin_config=lambda *a, **kw: a[0]() if a else _F(),
+                   require=lambda *a, **kw: None,
                    plugin=_F()),
     "nonebot.plugin": _F(PluginMetadata=lambda *a, **kw: None,
-                          inherit_supported_adapters=lambda *a: []),
+                          inherit_supported_adapters=lambda *a, **kw: []),
     "nonebot.adapters": _F(),
     "nonebot.adapters.event": _F(),
     "nonebot.adapters.event.Event": _F(),
@@ -166,11 +183,11 @@ FAKES = {
     "nonebot_plugin_uninfo": _F(),
     "nonebot_plugin_htmlrender": _F(),
     "nonebot_plugin_apscheduler": _F(
-        scheduler=_F(scheduled_job=lambda **kw: lambda f: f)),
+        scheduler=_F(scheduled_job=lambda *a, **kw: lambda f: f)),
     "nonebot_plugin_localstore": _F(
-        get_plugin_cache_dir=lambda: Path(HERE) / "cache",
-        get_plugin_config_dir=lambda: Path(HERE) / "config",
-        get_plugin_data_dir=lambda: Path(HERE) / "data",
+        get_plugin_cache_dir=lambda *a, **kw: Path(HERE) / "cache",
+        get_plugin_config_dir=lambda *a, **kw: Path(HERE) / "config",
+        get_plugin_data_dir=lambda *a, **kw: Path(HERE) / "data",
     ),
 }
 for name, obj in FAKES.items():
