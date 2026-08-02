@@ -40,3 +40,6 @@ mark-parentheses = false
 
 [lint.pyupgrade]
 keep-runtime-typing = true
+
+[lint.per-file-ignores]
+"scripts/generate_standalone.py" = ["T201", "E501", "E701", "E702"]
