@@ -155,14 +155,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Save generated files, reset to upstream, restore + commit
+          # Save generated standalone files
           mkdir -p /tmp/alone-save/src/utils
           cp src/nonebot_plugin_parser_lite/__init__.py /tmp/alone-save/src/
           cp src/nonebot_plugin_parser_lite/utils/_flags.py /tmp/alone-save/src/utils/
           cp src/nonebot_plugin_parser_lite/utils/env.py /tmp/alone-save/src/utils/
           cp src/nonebot_plugin_parser_lite/utils/_standalone_fake.py /tmp/alone-save/src/utils/
-          BASE=$(git rev-parse upstream/main 2>/dev/null || git rev-parse HEAD)
-          git reset --hard "$BASE"
+          # Create alone from current source + generated files (strip bridge/CI)
+          git checkout --orphan alone-tmp
+          git rm -rf --cached . 2>/dev/null || true
+          # Only commit src/ and essentials
+          git add -f src/ requirements.txt ruff.toml .gitignore README.md LICENSE 2>/dev/null || true
           # Restore generated files
           cp /tmp/alone-save/src/__init__.py src/nonebot_plugin_parser_lite/
           cp /tmp/alone-save/src/utils/_flags.py src/nonebot_plugin_parser_lite/utils/
@@ -170,4 +173,4 @@ jobs:
           cp /tmp/alone-save/src/utils/_standalone_fake.py src/nonebot_plugin_parser_lite/utils/
           git add -f src/
           git commit -m "auto: generate standalone ($(date +%Y-%m-%d))" || echo "no changes"
-          git push origin HEAD:alone --force
+          git push origin alone-tmp:alone --force
