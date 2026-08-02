@@ -198,6 +198,16 @@ if os.path.exists(rt_path):
     for gf in GENERATED_FILES:
         if gf != f"{SRC_PREFIX}/utils/_standalone_fake.py":
             full += f'"{gf}" = ["I001"]\n'
+    # Scan all upstream Python files and add I001 ignores (they often have
+    # unsorted imports due to conditional nonebot imports at module level)
+    for root, dirs, files in os.walk(SRC):
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            rel = os.path.relpath(os.path.join(root, fn)).replace("\\", "/")
+            if any(rel.startswith(gf.replace("\\", "/")) for gf in GENERATED_FILES):
+                continue
+            full += f'"{rel}" = ["I001"]\n'
     with open(rt_path, "w", encoding="utf-8") as f:
         f.write(full)
     print(f"  ruff.toml injected ({len(GENERATED_FILES)} files)")
