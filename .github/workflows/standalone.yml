@@ -51,8 +51,8 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git fetch origin standalone:refs/remotes/origin/alonstandalonee || true
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          git fetch origin +refs/heads/standalone:refs/remotes/origin/standalone || true
 
           source_main="$(git rev-parse HEAD)"
           latest_main="$(git rev-parse origin/main)"
@@ -64,11 +64,13 @@ jobs:
           git add --all
           tree="$(git write-tree)"
           main_parent="$source_main"
-          parents=(-p "$main_parent")
+          expected_standalone=""
           if git rev-parse --verify refs/remotes/origin/standalone >/dev/null 2>&1; then
-            standalone_parent="$(git rev-parse refs/remotes/origin/standalone)"
-            parents=(-p "$standalone_parent" -p "$main_parent")
+            expected_standalone="$(git rev-parse refs/remotes/origin/standalone)"
           fi
           commit="$(printf '%s\n' "auto: publish standalone for ${main_parent:0:12}" |
-            git commit-tree "$tree" "${parents[@]}")"
-          git push origin "$commit:refs/heads/standalone"
+            git commit-tree "$tree" -p "$main_parent")"
+          echo "publishing standalone as one snapshot commit on ${main_parent:0:12}"
+          git push origin \
+            --force-with-lease="refs/heads/standalone:${expected_standalone}" \
+            "$commit:refs/heads/standalone"
