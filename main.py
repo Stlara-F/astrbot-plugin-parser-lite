@@ -1148,6 +1148,7 @@ class ParserLitePlugin(Star):
         except Exception: pass
         astrbot_logger.info("[ParserLite] Chromium 未安装, 异步安装中...")
         pb = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
+        installed = False
         for url, name in [("https://npmmirror.com/mirrors/playwright","npmmirror"),
                           ("https://playwright.azureedge.net","Azure")]:
             env = os.environ.copy(); env["PLAYWRIGHT_DOWNLOAD_HOST"] = url
@@ -1159,14 +1160,71 @@ class ParserLitePlugin(Star):
                 _stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
                 if proc.returncode == 0:
                     astrbot_logger.info(f"[ParserLite] Chromium 安装完成 ({name})")
-                    return
+                    installed = True
+                    break
                 err = stderr.decode(errors="replace").strip()[-300:]
                 astrbot_logger.warning(f"[ParserLite] Chromium 安装失败 ({name}): rc={proc.returncode} {err}")
             except asyncio.TimeoutError:
                 astrbot_logger.warning(f"[ParserLite] Chromium 安装超时 ({name})")
             except Exception as e:
                 astrbot_logger.warning(f"[ParserLite] Chromium 安装异常 ({name}): {e}")
-        astrbot_logger.error("[ParserLite] Chromium 自动安装失败")
+        if not installed:
+            # 浏览器二进制已下载但缺系统库 → 尝试 apt-get 自动补齐
+            missing = _detect_missing_libs()
+            if missing:
+                astrbot_logger.warning(f"[ParserLite] 检测到缺失系统库, 尝试 apt-get 安装:\n{missing}")
+                try:
+                    _apt_proc = await asyncio.create_subprocess_exec(
+                        "apt-get", "update",
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    await asyncio.wait_for(_apt_proc.communicate(), timeout=300)
+                    _apt_proc = await asyncio.create_subprocess_exec(
+                        "apt-get", "install", "-y", "--no-install-recommends",
+                        "libnspr4", "libnss3", "libgbm1", "libasound2", "libxkbcommon0",
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    _out, _err = await asyncio.wait_for(_apt_proc.communicate(), timeout=600)
+                    if _apt_proc.returncode == 0:
+                        astrbot_logger.info("[ParserLite] 系统库安装完成, 验证 Chromium...")
+                        try:
+                            from playwright.async_api import async_playwright
+                            async with async_playwright() as pw:
+                                b = await pw.chromium.launch(headless=True); await b.close()
+                            astrbot_logger.info("[ParserLite] Chromium 已就绪 (系统库补齐后)")
+                            return
+                        except Exception as _e2:
+                            astrbot_logger.error(
+                                f"[ParserLite] ✗ 系统库已安装但 Chromium 仍无法启动: {_e2}")
+                    else:
+                        astrbot_logger.error(
+                            f"[ParserLite] ✗ apt-get 安装系统库失败: rc={_apt_proc.returncode} "
+                            f"{_err.decode(errors='replace').strip()[-300:]}")
+                except asyncio.TimeoutError:
+                    astrbot_logger.error("[ParserLite] ✗ apt-get 安装系统库超时")
+                except Exception as _e3:
+                    astrbot_logger.error(f"[ParserLite] ✗ apt-get 异常: {_e3}")
+            # 显式报错: 列出缺失库 + 修复指引
+            _missing_now = _detect_missing_libs()
+            astrbot_logger.error(
+                "[ParserLite] ✗✗ Chromium 环境自动组装失败, 卡片渲染将回退为文本 ✗✗\n"
+                f"缺失系统库:\n{_missing_now or '(未检测到缺失库, 请检查 playwright 安装)'}\n"
+                "修复方式(需容器 root):\n"
+                "  1) apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0\n"
+                "  2) 或运行: python -m playwright install-deps chromium\n"
+                "  3) 或发送指令 /parse_install_chromium 重试浏览器下载")
+            return
+        # 二进制就绪后仍验证启动 (apt 补库可能仍失败)
+        try:
+            from playwright.async_api import async_playwright
+            async with async_playwright() as pw:
+                b = await pw.chromium.launch(headless=True); await b.close()
+            astrbot_logger.info("[ParserLite] Chromium 已就绪")
+        except Exception as _e:
+            _missing_after = _detect_missing_libs()
+            astrbot_logger.error(
+                f"[ParserLite] ✗ Chromium 已下载但无法启动: {_e}\n"
+                f"缺失系统库: {_missing_after or '(none detected)'}\n"
+                "请运行: apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0"
+                " 或 python -m playwright install-deps chromium")
 
     # ── OneBot 适配 ───────────────────────────────────────────────────────────
     def _gid(self, event: AstrMessageEvent) -> str:
@@ -1984,6 +2042,7 @@ class ParserLitePlugin(Star):
         except Exception: pass
         yield event.plain_result("开始安装 Chromium (耗时较长, 请等待)...")
         pb = str(Path(get_config().data_dir) / "playwright_browsers")
+        installed = False
         for url, name in [("https://npmmirror.com/mirrors/playwright","npmmirror"),
                           ("https://playwright.azureedge.net","Azure")]:
             env = os.environ.copy(); env["PLAYWRIGHT_BROWSERS_PATH"] = pb
@@ -1993,15 +2052,51 @@ class ParserLitePlugin(Star):
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable, "-m", "playwright", "install", "chromium", env=env)
                 await asyncio.wait_for(proc.wait(), timeout=600)
-                missing = _detect_missing_libs()
-                yield event.plain_result(f"Chromium 安装完成 ({name})!"
-                                         + (f"\n缺失系统库: {missing}" if missing else ""))
-                return
+                if proc.returncode != 0:
+                    yield event.plain_result(f"{name} 安装失败 (rc={proc.returncode}), 切换镜像...")
+                    continue
+                installed = True
+                break
             except asyncio.TimeoutError:
                 yield event.plain_result(f"{name} 超时, 切换镜像...")
             except Exception as e:
                 yield event.plain_result(f"{name} 失败: {e}\n切换镜像...")
-        yield event.plain_result("所有镜像均失败, 请手动安装")
+        if not installed:
+            yield event.plain_result("✗ 浏览器下载失败, 请检查网络或手动执行: python -m playwright install chromium")
+            return
+        # 浏览器就绪 → 检查/补齐系统库
+        missing = _detect_missing_libs()
+        if missing:
+            yield event.plain_result(f"检测到缺失系统库, 尝试 apt-get 安装:\n{missing}")
+            try:
+                _apt1 = await asyncio.create_subprocess_exec(
+                    "apt-get", "update",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                await asyncio.wait_for(_apt1.communicate(), timeout=300)
+                _apt2 = await asyncio.create_subprocess_exec(
+                    "apt-get", "install", "-y", "--no-install-recommends",
+                    "libnspr4", "libnss3", "libgbm1", "libasound2", "libxkbcommon0",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                _o2, _e2 = await asyncio.wait_for(_apt2.communicate(), timeout=600)
+                if _apt2.returncode != 0:
+                    yield event.plain_result(
+                        f"✗ apt-get 安装失败: rc={_apt2.returncode} {_e2.decode(errors='replace').strip()[-300:]}")
+                    yield event.plain_result(
+                        "请手动执行: apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0")
+                    return
+            except Exception as e:
+                yield event.plain_result(f"✗ apt-get 异常: {e}\n请手动安装系统库后重试")
+                return
+        # 最终验证
+        try:
+            from playwright.async_api import async_playwright
+            async with async_playwright() as pw:
+                b = await pw.chromium.launch(headless=True); await b.close()
+            yield event.plain_result("✓ Chromium 安装完成且可启动!")
+        except Exception as e:
+            yield event.plain_result(
+                f"✗ Chromium 仍无法启动: {e}\n缺失库: {_detect_missing_libs() or '(none)'}\n"
+                "请运行: python -m playwright install-deps chromium")
 
     async def cmd_bm(self, event: AstrMessageEvent):
         """下载 B站音频: 从当前消息 / 懒下载会话 / 回复消息 三路提取 BV 号"""
