@@ -48,12 +48,11 @@ def static_checks(root: Path) -> None:
                 modules = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom) and node.module:
                 modules = [node.module]
-            for module in modules:
-                if is_nonebot_module(module):
-                    errors.append(
-                        f"{path.relative_to(root)}:{node.lineno} imports {module}"
-                    )
-
+            errors.extend(
+                f"{path.relative_to(root)}:{node.lineno} imports {module}"  # pyright: ignore[reportAttributeAccessIssue]
+                for module in modules
+                if is_nonebot_module(module)
+            )
     for manifest in (root / "requirements.txt",):
         manifest_lines = manifest.read_text(encoding="utf-8").splitlines()
         for lineno, line in enumerate(manifest_lines, 1):
@@ -110,14 +109,10 @@ def import_checks(root: Path) -> None:
     if ParseStep.MATCH.value != "match":
         fail(["ParseStep export is invalid"])
     parser = Parser([BilibiliParser])
-    matched = parser.match(
-        "分享 https://www.bilibili.com/video/BV1xx411c7mD 给你"
-    )
+    matched = parser.match("分享 https://www.bilibili.com/video/BV1xx411c7mD 给你")
     if matched.parser_type is not BilibiliParser or "bilibili.com" not in matched.url:
         fail(["text matching returned an unexpected result"])
-    discovered = Parser().match(
-        "分享 https://www.bilibili.com/video/BV1xx411c7mD 给你"
-    )
+    discovered = Parser().match("分享 https://www.bilibili.com/video/BV1xx411c7mD 给你")
     if discovered.parser_type is not BilibiliParser:
         fail(["lazy all-platform discovery returned an unexpected parser"])
     try:

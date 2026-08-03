@@ -141,10 +141,11 @@ def rewrite_requirements(root: Path) -> list[str]:
         "typing-extensions": "typing-extensions>=4.12.0",
         "yarl": "yarl>=1.9.0,<2.0.0",
     }
-    for normalized, requirement in direct.items():
-        if normalized not in seen:
-            lines.append(requirement)
-
+    lines.extend(
+        requirement
+        for normalized, requirement in direct.items()
+        if normalized not in seen
+    )
     requirements = [
         line for line in lines if line and not line.lstrip().startswith("#")
     ]
@@ -171,11 +172,11 @@ def audit(root: Path) -> None:
                 modules = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom) and node.module:
                 modules = [node.module]
-            for module in modules:
-                if is_nonebot_module(module):
-                    violations.append(
-                        f"{path.relative_to(root)}:{node.lineno}: {module}"
-                    )
+            violations.extend(
+                f"{path.relative_to(root)}:{node.lineno}: {module}"  # pyright: ignore[reportAttributeAccessIssue]
+                for module in modules
+                if is_nonebot_module(module)
+            )
     if violations:
         joined = "\n  ".join(violations)
         raise RuntimeError(f"standalone source still imports NoneBot:\n  {joined}")
@@ -190,7 +191,7 @@ def generate(root: Path) -> None:
     version_match = re.search(r'"version"\s*:\s*"([^"]+)"', original_init)
     if version_match is None:
         raise RuntimeError("could not determine the package version from __init__.py")
-    version = version_match.group(1)
+    version = version_match[1]
 
     rewrite_config(root)
     rewrite_logging(root)
@@ -210,9 +211,12 @@ def generate(root: Path) -> None:
         "README.md.tmpl": Path("README.md"),
     }
     for template, destination in replacements.items():
-        replacements = {"{{VERSION}}": version} if "{{VERSION}}" in (
-            root / TEMPLATES / template
-        ).read_text(encoding="utf-8") else None
+        replacements = (
+            {"{{VERSION}}": version}
+            if "{{VERSION}}"
+            in (root / TEMPLATES / template).read_text(encoding="utf-8")
+            else None
+        )
         copy_template(root, template, destination, replacements)
 
     requirements = rewrite_requirements(root)
