@@ -47,3 +47,7 @@ mark-parentheses = false
 
 [lint.pyupgrade]
 keep-runtime-typing = true
+
+[lint.per-file-ignores]
+"scripts/auto_patcher.py" = ["ALL"]
+"scripts/verify_import.py" = ["ALL"]
