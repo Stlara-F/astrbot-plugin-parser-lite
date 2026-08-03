@@ -1,6 +1,6 @@
 # Parser Lite Standalone
 
-这是从 `main` 自动生成的独立模块版本，发布在 `alone` 分支。它保留
+这是从 `main` 自动生成的独立模块版本，发布在 `standalone` 分支。它保留
 `nonebot_plugin_parser_lite` 包路径与各平台 Parser 路径，但不依赖 NoneBot、适配器或
 任何 NoneBot 插件。
 
@@ -12,7 +12,7 @@
 
 ## 复制到项目中使用
 
-将 `src/nonebot_plugin_parser_lite` 整个目录复制到目标项目的模块搜索路径即可。目标
+将 `src/nonebot_plugin_parser_lite` 整个目录复制到目标项目中。目标
 项目需要安装 `requirements.txt` 中列出的普通 Python 运行依赖，但不需要安装 NoneBot、
 适配器或任何 NoneBot 插件，也不依赖本仓库中的其他目录。
 
@@ -24,7 +24,19 @@ your_project/
 │   ├── parsers/
 │   ├── render/
 │   ├── utils/
-│   └── __init__.py
+│   ├── __init__.py
+│   └── ...
+└── your_code.py
+```
+或
+```text
+your_project/
+├── uitls/nonebot_plugin_parser_lite/
+│         ├── parsers/
+│         ├── render/
+│         ├── utils/
+│         ├── __init__.py
+│         └── ...
 └── your_code.py
 ```
 
