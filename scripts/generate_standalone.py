@@ -191,7 +191,7 @@ _nls_init = os.path.join(_nls_dir, "__init__.py")
 _nls_stub = '''# Auto-generated standalone stub for nonebot_plugin_localstore
 from pathlib import Path as _Path
 
-_base = _Path("data")
+_base = _Path("data").resolve()
 def get_plugin_cache_dir():
     return _base / "cache"
 def get_plugin_config_dir():
