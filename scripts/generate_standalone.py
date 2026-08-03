@@ -13,6 +13,10 @@ PACKAGE = Path("src/nonebot_plugin_parser_lite")
 TEMPLATES = Path("scripts/standalone_templates")
 
 
+def migration_log(message: str) -> None:
+    print(f"[standalone] {message}")  # noqa: T201
+
+
 def is_nonebot_module(module: str) -> bool:
     top_level = module.split(".", 1)[0]
     return top_level != "nonebot_plugin_parser_lite" and (
@@ -43,11 +47,12 @@ def copy_template(
     target.parent.mkdir(parents=True, exist_ok=True)
     if replacements is None:
         shutil.copyfile(source, target)
-        return
-    content = source.read_text(encoding="utf-8")
-    for marker, value in replacements.items():
-        content = content.replace(marker, value)
-    target.write_text(content, encoding="utf-8")
+    else:
+        content = source.read_text(encoding="utf-8")
+        for marker, value in replacements.items():
+            content = content.replace(marker, value)
+        target.write_text(content, encoding="utf-8")
+    migration_log(f"写入独立实现: {destination.as_posix()}")
 
 
 def rewrite_config(root: Path) -> None:
@@ -73,6 +78,7 @@ from pydantic import BaseModel
     footer = root / TEMPLATES / "config_footer.py.tmpl"
     text = text.split(marker, 1)[0] + footer.read_text(encoding="utf-8")
     path.write_text(text, encoding="utf-8")
+    migration_log(f"迁移配置运行时: {path.relative_to(root).as_posix()}")
 
 
 def rewrite_logging(root: Path) -> None:
@@ -83,24 +89,24 @@ def rewrite_logging(root: Path) -> None:
     )
     for path in package.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
+        original = text
+        parent_parts = path.parent.relative_to(package).parts
+        target_parts = ("utils", "log")
+        common = 0
+        for current, target in zip(parent_parts, target_parts, strict=False):
+            if current != target:
+                break
+            common += 1
+        level = len(parent_parts) - common + 1
+        suffix = ".".join(target_parts[common:])
+        module = "." * level + suffix
         for pattern in patterns:
-            text = pattern.sub(
-                "from nonebot_plugin_parser_lite.utils.log import logger", text
-            )
+            text = pattern.sub(f"from {module} import logger", text)
         path.write_text(text, encoding="utf-8")
-
-
-def rewrite_browser(root: Path) -> None:
-    path = root / PACKAGE / "utils/browser.py"
-    text = path.read_text(encoding="utf-8")
-    text = replace_once(text, "from nonebot import get_driver\n", "", path)
-    text = replace_once(text, "driver = get_driver()\n", "", path)
-    shutdown = """@driver.on_shutdown
-async def _close_browser() -> None:
-    await BrowserManager.quit()
-"""
-    text = replace_once(text, shutdown, "", path)
-    path.write_text(text, encoding="utf-8")
+        if text != original:
+            migration_log(
+                f"迁移日志导入: {path.relative_to(root).as_posix()} -> {module}"
+            )
 
 
 def rewrite_bilibili_scheduler(root: Path) -> None:
@@ -114,8 +120,23 @@ def rewrite_bilibili_scheduler(root: Path) -> None:
     if end not in tail:
         raise RuntimeError(f"{path}: Bilibili scheduler end marker changed")
     _, after = tail.split(end, 1)
-    text = before + end + after
+    replacement = """            # 首次成功加载黑名单后注册小时刷新任务
+            if not self._black_list_job_added:
+                from ...utils.scheduler import scheduler
+
+                scheduler.add_job(
+                    self.load_black_list,
+                    seconds=60 * 60,
+                    id="sync-bili-black-list",
+                )
+                self._black_list_job_added = True
+                logger.info("已注册 B 站黑名单异步同步任务（每 1 小时刷新一次）")
+"""
+    text = before + replacement + end + after
     path.write_text(text, encoding="utf-8")
+    migration_log(
+        f"迁移定时任务: {path.relative_to(root).as_posix()} -> asyncio scheduler"
+    )
 
 
 def rewrite_requirements(root: Path) -> list[str]:
@@ -130,6 +151,7 @@ def rewrite_requirements(root: Path) -> list[str]:
         name = re.split(r"[<>=!~\[; ]", stripped, maxsplit=1)[0]
         normalized = re.sub(r"[-_.]+", "-", name).lower()
         if is_nonebot_distribution(name):
+            migration_log(f"移除 NoneBot 依赖: {stripped}")
             continue
         seen.add(normalized)
         lines.append(stripped)
@@ -141,11 +163,10 @@ def rewrite_requirements(root: Path) -> list[str]:
         "typing-extensions": "typing-extensions>=4.12.0",
         "yarl": "yarl>=1.9.0,<2.0.0",
     }
-    lines.extend(
-        requirement
-        for normalized, requirement in direct.items()
-        if normalized not in seen
-    )
+    for normalized, requirement in direct.items():
+        if normalized not in seen:
+            lines.append(requirement)
+            migration_log(f"补充直接依赖: {requirement}")
     requirements = [
         line for line in lines if line and not line.lstrip().startswith("#")
     ]
@@ -160,6 +181,7 @@ def write_pyproject(root: Path, requirements: list[str], version: str) -> None:
         content.replace("{{DEPENDENCIES}}", deps).replace("{{VERSION}}", version),
         encoding="utf-8",
     )
+    migration_log("生成可安装元数据: pyproject.toml")
 
 
 def audit(root: Path) -> None:
@@ -180,10 +202,12 @@ def audit(root: Path) -> None:
     if violations:
         joined = "\n  ".join(violations)
         raise RuntimeError(f"standalone source still imports NoneBot:\n  {joined}")
+    migration_log("审计通过: 未发现 NoneBot 模块导入")
 
 
 def generate(root: Path) -> None:
     root = root.resolve()
+    migration_log(f"开始迁移工作树: {root}")
     if not (root / PACKAGE / "parsers/base.py").is_file():
         raise RuntimeError(f"{root} is not a parser-lite main working tree")
 
@@ -195,7 +219,6 @@ def generate(root: Path) -> None:
 
     rewrite_config(root)
     rewrite_logging(root)
-    rewrite_browser(root)
     rewrite_bilibili_scheduler(root)
 
     replacements = {
@@ -203,6 +226,8 @@ def generate(root: Path) -> None:
         "pipeline.py.tmpl": PACKAGE / "pipeline.py",
         "parsers_init.py.tmpl": PACKAGE / "parsers/__init__.py",
         "log.py.tmpl": PACKAGE / "utils/log.py",
+        "browser.py.tmpl": PACKAGE / "utils/browser.py",
+        "scheduler.py.tmpl": PACKAGE / "utils/scheduler.py",
         "render.py.tmpl": PACKAGE / "render/__init__.py",
         "helper.py.tmpl": PACKAGE / "helper.py",
         "matchers_init.py.tmpl": PACKAGE / "matchers/__init__.py",
@@ -222,7 +247,7 @@ def generate(root: Path) -> None:
     requirements = rewrite_requirements(root)
     write_pyproject(root, requirements, version)
     audit(root)
-    print(f"Generated standalone tree at {root}")  # noqa: T201
+    migration_log(f"迁移完成: {root}")
 
 
 def main() -> None:

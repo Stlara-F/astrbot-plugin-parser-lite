@@ -6,15 +6,54 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from importlib import import_module
-from typing import TYPE_CHECKING, Any, Self, overload
+from typing import Any, Self, overload
 
 from .config import pconfig
 from .constants import MatchWithParams
+from .data import ParseResult
 from .exception import ParseException
 from .parsers.base import BaseParser
+from .utils.common import LimitedSizeDict
+from .utils.log import logger
+from .utils.scheduler import scheduler
 
-if TYPE_CHECKING:
-    from .data import ParseResult
+_RESULT_CACHE = LimitedSizeDict[str, ParseResult](max_size=50)
+_CACHE_JOB_ID = "parser-clean-local-cache"
+
+
+def clear_result_cache() -> None:
+    _RESULT_CACHE.clear()
+
+
+async def _clean_runtime_cache() -> None:
+    from .utils.browser import BrowserManager
+    from .utils.cache import CacheManager
+
+    try:
+        await CacheManager.clean_expired()
+    except Exception:
+        logger.exception("清理缓存文件时发生异常")
+    clear_result_cache()
+    await BrowserManager.clear_cache()
+    await BrowserManager.reconnect()
+
+
+def _ensure_runtime_started() -> None:
+    scheduler.add_job(
+        _clean_runtime_cache,
+        seconds=2 * 60 * 60,
+        id=_CACHE_JOB_ID,
+    )
+
+
+async def shutdown_runtime() -> None:
+    from .download import DOWNLOADER
+    from .utils.browser import BrowserManager
+
+    await scheduler.shutdown()
+    await BrowserManager.quit()
+    await DOWNLOADER.aclose()
+    clear_result_cache()
 
 
 class ParseStep(str, Enum):
@@ -105,13 +144,19 @@ class Parser:
     async def parse(
         self, text: str, *, until: ParseStep | str = ParseStep.PARSE
     ) -> Any:
+        _ensure_runtime_started()
         step = ParseStep(until)
         matched = self.match(text)
         if step is ParseStep.MATCH:
             return matched
 
-        parser = self._instance(matched.parser_type)
-        result = await parser.parse(matched.keyword, matched.searched)
+        result = _RESULT_CACHE.get(matched.cache_key)
+        if result is None:
+            parser = self._instance(matched.parser_type)
+            result = await parser.parse(matched.keyword, matched.searched)
+            _RESULT_CACHE[matched.cache_key] = result
+        else:
+            logger.debug("命中解析结果缓存: %s", matched.cache_key)
         if step is ParseStep.PARSE:
             return result
 

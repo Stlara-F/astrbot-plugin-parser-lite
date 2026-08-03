@@ -1,6 +1,6 @@
 # Parser Lite Standalone
 
-这是从 `main` 自动生成的独立模块版本，发布在 `standalone` 分支。它保留
+这是从 `main` 自动生成的独立模块版本，发布在 `alone` 分支。它保留
 `nonebot_plugin_parser_lite` 包路径与各平台 Parser 路径，但不依赖 NoneBot、适配器或
 任何 NoneBot 插件。
 
@@ -31,12 +31,13 @@ your_project/
 或
 ```text
 your_project/
-├── uitls/nonebot_plugin_parser_lite/
-│         ├── parsers/
-│         ├── render/
-│         ├── utils/
-│         ├── __init__.py
-│         └── ...
+├── utils/
+│   └── nonebot_plugin_parser_lite/
+│       ├── parsers/
+│       ├── render/
+│       ├── utils/
+│       ├── __init__.py
+│       └── ...
 └── your_code.py
 ```
 
@@ -54,8 +55,7 @@ async with Parser() as parser:
     template_data = await parser.parse(text, until=ParseStep.RESOLVE)
     image_bytes = await parser.parse(text, until=ParseStep.RENDER)
 
-# 若非必要，不建议使用 async with 方式初始化解析器，这样会使解析结果缓存失效
-# 建议使用 parser = Parser() 初始化
+# 长期运行的应用可以复用 Parser 实例，并在退出前调用 await parser.aclose()
 ```
 
 只使用一个平台时应直接导入对应 Parser，避免加载其他平台模块：
@@ -92,9 +92,11 @@ configure(plite_max_comments=10, plite_disabled_platforms=["x"])
 
 缓存根目录默认是当前目录的 `.parser-lite`，可通过 `PARSER_LITE_BASE_DIR` 修改。
 图片渲染需要 Playwright 可用的 Chromium，或通过 `PLITE_BROWSER_PATH` 指定浏览器。
+解析结果会保留最近 50 项；首次进入异步解析时会在当前事件循环注册每两小时执行一次
+的缓存清理任务。应用退出前可调用 `await shutdown_runtime()` 关闭定时任务和浏览器。
 
 ## 独立版边界
 
-消息发送、权限、事件、回复、表情回应和定时任务属于机器人框架职责，不包含在独立版
-中。解析结果中的媒体任务仍是惰性的：只有显式等待媒体路径或进入解析/渲染的相应阶段
-时才会下载。
+消息发送、权限、事件、回复和表情回应属于机器人框架职责，不包含在独立版中。独立版
+仅保留解析运行所需的 asyncio 周期任务。解析结果中的媒体任务仍是惰性的：只有显式
+等待媒体路径或进入解析/渲染的相应阶段时才会下载。

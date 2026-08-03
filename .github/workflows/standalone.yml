@@ -52,7 +52,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git fetch origin standalone:refs/remotes/origin/standalone || true
+          git fetch origin standalone:refs/remotes/origin/alonstandalonee || true
 
           source_main="$(git rev-parse HEAD)"
           latest_main="$(git rev-parse origin/main)"
