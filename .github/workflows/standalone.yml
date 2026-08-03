@@ -47,6 +47,8 @@ jobs:
 
       - name: Generate standalone files
         run: |
+          rm -rf scripts
+          mkdir -p scripts
           cp /tmp/upstream-scripts/generate_standalone.py scripts/
           python scripts/generate_standalone.py
 
