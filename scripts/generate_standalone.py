@@ -404,9 +404,12 @@ for _pm in plugin_mods:
     _nb_sm_dirs.add("src/" + _pm.replace(".", "/"))
 for d in sorted(_nb_sm_dirs):
     _mf_lines.append(d + "/")
-# Generated files (from _write) + patched __init__.py
+# Generated files (from _write) — exclude in-place patched source files
 for gf in sorted(GENERATED_FILES):
-    _mf_lines.append(gf.replace("\\", "/"))
+    _gf = gf.replace("\\", "/")
+    if _gf.endswith("__init__.py") and not _gf.startswith("src/nonebot"):
+        continue  # __init__.py is a source file patched in-place — never delete
+    _mf_lines.append(_gf)
 _mf_lines.append(_MANIFEST.replace("\\", "/"))
 _mf_content = (
     "# Auto-generated files — do not edit manually.\n"
