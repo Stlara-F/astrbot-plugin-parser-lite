@@ -1,5 +1,0 @@
-@import "tailwindcss";
-
-@source "../src/nonebot_plugin_parser_lite/render/templates/*.jinja";
-
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));

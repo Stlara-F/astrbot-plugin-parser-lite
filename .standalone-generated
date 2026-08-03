@@ -1,0 +1,28 @@
+# Auto-generated files — do not edit manually.
+# Each line is a path relative to repo root (forward slashes).
+# Directories end with /.  Delete these entries to trigger a clean regeneration.
+src/nonebot/
+src/nonebot/adapters/
+src/nonebot/log/
+src/nonebot/matcher/
+src/nonebot/params/
+src/nonebot/permission/
+src/nonebot/plugin/
+src/nonebot/rule/
+src/nonebot/typing/
+src/nonebot_plugin_localstore/
+src/nonebot/__init__.py
+src/nonebot/adapters/__init__.py
+src/nonebot/log/__init__.py
+src/nonebot/matcher/__init__.py
+src/nonebot/params/__init__.py
+src/nonebot/permission/__init__.py
+src/nonebot/plugin/__init__.py
+src/nonebot/rule/__init__.py
+src/nonebot/typing/__init__.py
+src/nonebot_plugin_localstore/__init__.py
+src/nonebot_plugin_parser_lite/__init__.py
+src/nonebot_plugin_parser_lite/utils/_flags.py
+src/nonebot_plugin_parser_lite/utils/_standalone_fake.py
+src/nonebot_plugin_parser_lite/utils/env.py
+.standalone-generated

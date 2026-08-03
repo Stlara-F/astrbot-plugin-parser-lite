@@ -9,6 +9,7 @@ def ck2dict(cookies_str: str) -> dict[str, str]:
     if not cookies_str:
         return res
     for cookie in cookies_str.split(";"):
-        name, value = cookie.strip().split("=", 1)
+        split_result = cookie.strip().split("=", 1)
+        name, value = split_result if len(split_result) > 1 else (split_result[0], "")
         res[name] = value
     return res
