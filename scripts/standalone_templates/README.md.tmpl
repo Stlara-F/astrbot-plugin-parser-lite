@@ -4,7 +4,11 @@
 `nonebot_plugin_parser_lite` 包路径与各平台 Parser 路径，但不依赖 NoneBot、适配器或
 任何 NoneBot 插件。
 
-> 严禁将本项目用于任何非法用途。由于使用不当造成的一切责任由使用者承担。
+> [!IMPORTANT]
+>
+> 严禁将本项目用于任何非法用途
+>
+> 由于使用不当造成的一切责任由使用者承担，本项目维护者无任何责任
 
 ## 复制到项目中使用
 
@@ -26,8 +30,8 @@ your_project/
 
 ## 文本解析流水线
 
-所有公共解析入口只接受文本。`until` 可停在匹配、结构化解析、模板数据解析或图片
-渲染阶段：
+解析入口只接受文本。`until` 可停在匹配、结构化解析、模板数据解析或图片
+渲染阶段，默认停留在解析阶段，不会进行渲染
 
 ```python
 from nonebot_plugin_parser_lite import ParseStep, Parser
@@ -37,6 +41,9 @@ async with Parser() as parser:
     result = await parser.parse(text, until=ParseStep.PARSE)
     template_data = await parser.parse(text, until=ParseStep.RESOLVE)
     image_bytes = await parser.parse(text, until=ParseStep.RENDER)
+
+# 若非必要，不建议使用 async with 方式初始化解析器，这样会使解析结果缓存失效
+# 建议使用 parser = Parser() 初始化
 ```
 
 只使用一个平台时应直接导入对应 Parser，避免加载其他平台模块：
