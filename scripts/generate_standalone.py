@@ -1,15 +1,43 @@
 #!/usr/bin/env python3
 """
 Generate standalone files — called by standalone.yml workflow.
-Zero-hardcode design: tracks generated files for auto ruff exclusion.
+Zero-hardcode design: clean → generate → manifest.
 """
 import os
 import re
+from pathlib import Path
 
 SRC = os.environ.get("PATCHER_SRC", "src/nonebot_plugin_parser_lite")
 SRC_PREFIX = SRC
-os.makedirs(f"{SRC}/utils", exist_ok=True)
+_MANIFEST = ".standalone-generated"
 GENERATED_FILES: list[str] = []
+
+
+def _clean_generated():
+    """Delete all files and directories listed in the manifest from last run."""
+    manifest = Path(_MANIFEST)
+    if not manifest.exists():
+        return
+    removed = 0
+    for line in manifest.read_text("utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        path = Path(line)
+        if path.is_dir() and line.endswith("/"):
+            import shutil
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+        elif path.exists():
+            path.unlink()
+            removed += 1
+    manifest.unlink(missing_ok=True)
+    if removed:
+        print(f"  cleaned {removed} generated entries")
+
+
+_clean_generated()
+os.makedirs(f"{SRC}/utils", exist_ok=True)
 
 
 def _write(path: str, content: str):
@@ -87,8 +115,7 @@ _SRC_DIR = os.path.dirname(SRC)  # src/
 _nb_dir = os.path.join(_SRC_DIR, "nonebot")
 os.makedirs(_nb_dir, exist_ok=True)
 _nb_init = os.path.join(_nb_dir, "__init__.py")
-if not os.path.exists(_nb_init):
-    _nb_stub = '''# Auto-generated standalone stub for nonebot
+_nb_stub = '''# Auto-generated standalone stub for nonebot
 class _NonebotMock:
     """Recursive mock: attribute → self, call → self, iter → [self], falsy."""
     def __getattr__(self, name):
@@ -108,14 +135,14 @@ class _NonebotMock:
 
 _m = _NonebotMock()
 '''
-    for s in sorted(stubs):
-        if s == "get_plugin_config":
-            continue  # defined manually below as a real function
-        _nb_stub += f'{s} = _m\n'
+for s in sorted(stubs):
+    if s == "get_plugin_config":
+        continue  # defined manually below as a real function
+    _nb_stub += f'{s} = _m\n'
 
-    # get_plugin_config override: return a real Config instance using defaults
-    # so that pconfig.zhihu_ck is None (falsy) instead of a truthy mock
-    _nb_stub += '''
+# get_plugin_config override: return a real Config instance using defaults
+# so that pconfig.zhihu_ck is None (falsy) instead of a truthy mock
+_nb_stub += '''
 def get_plugin_config(config_cls):
     """Standalone: instantiate the config class with defaults (no nonebot driver)."""
     try:
@@ -126,8 +153,8 @@ def get_plugin_config(config_cls):
 import logging
 logger = logging.getLogger("parser-lite")
 '''
-    # Submodule fallback: `from nonebot.adapters import X` calls __getattr__ on module
-    _nb_stub += '''
+# Submodule fallback: `from nonebot.adapters import X` calls __getattr__ on module
+_nb_stub += '''
 import sys as _sys
 
 def __getattr__(name):
@@ -135,17 +162,16 @@ def __getattr__(name):
     setattr(_sys.modules[__name__], name, sub)
     return sub
 '''
-    with open(_nb_init, "w", encoding="utf-8") as f:
-        f.write(_nb_stub)
-    GENERATED_FILES.append("src/nonebot/__init__.py")
-    print(f"  nonebot/__init__.py ({len(stubs)} stubs)")
+with open(_nb_init, "w", encoding="utf-8") as f:
+    f.write(_nb_stub)
+GENERATED_FILES.append("src/nonebot/__init__.py")
+print(f"  nonebot/__init__.py ({len(stubs)} stubs)")
 
 # ── nonebot_plugin_localstore stub ──
 _nls_dir = os.path.join(_SRC_DIR, "nonebot_plugin_localstore")
 os.makedirs(_nls_dir, exist_ok=True)
 _nls_init = os.path.join(_nls_dir, "__init__.py")
-if not os.path.exists(_nls_init):
-    _nls_stub = '''# Auto-generated standalone stub for nonebot_plugin_localstore
+_nls_stub = '''# Auto-generated standalone stub for nonebot_plugin_localstore
 from pathlib import Path as _Path
 
 _base = _Path("data")
@@ -156,10 +182,10 @@ def get_plugin_config_dir():
 def get_plugin_data_dir():
     return _base / "data"
 '''
-    with open(_nls_init, "w", encoding="utf-8") as f:
-        f.write(_nls_stub)
-    GENERATED_FILES.append("src/nonebot_plugin_localstore/__init__.py")
-    print("  nonebot_plugin_localstore/__init__.py")
+with open(_nls_init, "w", encoding="utf-8") as f:
+    f.write(_nls_stub)
+GENERATED_FILES.append("src/nonebot_plugin_localstore/__init__.py")
+print("  nonebot_plugin_localstore/__init__.py")
 
 # ── nonebot submodule stubs ──
 # `from nonebot.log import logger` requires actual nonebot/log/__init__.py stub,
@@ -169,8 +195,7 @@ for _sm in sorted(submods):
     _sm_dir = os.path.join(_SRC_DIR, *_parts)
     os.makedirs(_sm_dir, exist_ok=True)
     _sm_init = os.path.join(_sm_dir, "__init__.py")
-    if not os.path.exists(_sm_init):
-        _sm_stub = f'''# Auto-generated standalone stub for {_sm}
+    _sm_stub = f'''# Auto-generated standalone stub for {_sm}
 class _NonebotMock:
     def __getattr__(self, name):
         return self
@@ -187,16 +212,16 @@ class _NonebotMock:
 
 _m = _NonebotMock()
 '''
-        for s in sorted(stubs):
-            _sm_stub += f'{s} = _m\n'
-        _sm_stub += '''
+    for s in sorted(stubs):
+        _sm_stub += f'{s} = _m\n'
+    _sm_stub += '''
 import logging
 logger = logging.getLogger("parser-lite")
 '''
-        with open(_sm_init, "w", encoding="utf-8") as f:
-            f.write(_sm_stub)
-        GENERATED_FILES.append("src/" + "/".join(_parts) + "/__init__.py")
-        print(f"  {'/'.join(_parts)}/__init__.py")
+    with open(_sm_init, "w", encoding="utf-8") as f:
+        f.write(_sm_stub)
+    GENERATED_FILES.append("src/" + "/".join(_parts) + "/__init__.py")
+    print(f"  {'/'.join(_parts)}/__init__.py")
 
 # ── __init__.py ──
 init_path = f"{SRC}/__init__.py"
@@ -308,3 +333,24 @@ if os.path.exists(req_path):
         with open(req_path, "w", encoding="utf-8") as f:
             f.writelines(clean)
         print(f"  requirements.txt: stripped {len(req_lines) - len(clean)} entries")
+
+# ── Manifest: .standalone-generated ──
+_mf_lines = []
+# Generated directories: nonebot/ + submodules + nonebot_plugin_localstore
+_nb_sm_dirs = {f"src/{d.replace('.', '/')}" for d in submods}
+_nb_sm_dirs.add("src/nonebot")
+_nb_sm_dirs.add("src/nonebot_plugin_localstore")
+for d in sorted(_nb_sm_dirs):
+    _mf_lines.append(d + "/")
+# Generated files (from _write) + patched __init__.py
+for gf in sorted(GENERATED_FILES):
+    _mf_lines.append(gf.replace("\\", "/"))
+_mf_lines.append(_MANIFEST.replace("\\", "/"))
+_mf_content = (
+    "# Auto-generated files — do not edit manually.\n"
+    "# Each line is a path relative to repo root (forward slashes).\n"
+    "# Directories end with /.  Delete these entries to trigger a clean regeneration.\n"
+    + "\n".join(_mf_lines) + "\n"
+)
+Path(_MANIFEST).write_text(_mf_content, "utf-8")
+print(f"  {_MANIFEST} ({len(_mf_lines)} entries)")
