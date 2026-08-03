@@ -75,6 +75,7 @@ _write("utils/_flags.py",
 # ── _standalone_fake.py ──
 stubs, seen = [], set()
 submods: set[str] = set()  # e.g. {"nonebot.log", "nonebot.adapters"}
+plugin_mods: set[str] = set()  # e.g. {"nonebot_plugin_htmlrender", "nonebot_plugin_alconna.uniseg"}
 for root, dirs, files in os.walk(SRC):
     for fn in files:
         if not fn.endswith(".py") or fn in ("_flags.py", "env.py", "_standalone_fake.py"):
@@ -84,11 +85,20 @@ for root, dirs, files in os.walk(SRC):
             _text = _f.read()
         for line in _text.split("\n"):
             m = re.match(r"from\s+(nonebot(\.[a-z_]+)?)\s+import\s+(.+?)(?:\s*#.*)?$", line)
+            pm = re.match(r"from\s+(nonebot_plugin_[a-z_]+(?:\.[a-z_]+)*)\s+import\s+(.+?)(?:\s*#.*)?$", line)
             if m:
                 path = m.group(1)  # e.g. "nonebot.log" or "nonebot"
                 if "." in path:
                     submods.add(path)
                 raw = m.group(3).strip()
+                if raw.endswith("("): in_paren = True; raw = raw[:-1]
+                for n in raw.split(","):
+                    n = n.strip().split(" as ")[0]
+                    if n and n not in seen:
+                        seen.add(n); stubs.append(n)
+            elif pm:
+                plugin_mods.add(pm.group(1))
+                raw = pm.group(2).strip()
                 if raw.endswith("("): in_paren = True; raw = raw[:-1]
                 for n in raw.split(","):
                     n = n.strip().split(" as ")[0]
@@ -223,6 +233,56 @@ logger = logging.getLogger("parser-lite")
     GENERATED_FILES.append("src/" + "/".join(_parts) + "/__init__.py")
     print(f"  {'/'.join(_parts)}/__init__.py")
 
+# ── nonebot_plugin_* stub packages ──
+# Upstream imports third-party nonebot plugins at module level
+# (htmlrender/alconna/apscheduler/uninfo). Bridge only needs them importable;
+# actual calls are handled by bridge's own implementations.
+for _pm in sorted(plugin_mods):
+    _parts = _pm.split(".")
+    _pm_dir = os.path.join(_SRC_DIR, *_parts)
+    os.makedirs(_pm_dir, exist_ok=True)
+    _pm_init = os.path.join(_pm_dir, "__init__.py")
+    _pm_stub = f'''# Auto-generated standalone stub for {_pm}
+class _StubMeta(type):
+    """Metaclass: class-level attribute access + isinstance always True."""
+    def __getattr__(cls, name):
+        return cls
+    def __instancecheck__(cls, inst):
+        return True
+
+class _Stub(metaclass=_StubMeta):
+    """Stub usable as type alias (X | Y), class (X(...)), and namespace."""
+    def __init__(self, *args, **kwargs):
+        pass
+    def __getattr__(self, name):
+        return self
+    def __call__(self, *args, **kwargs):
+        return self
+    def __iter__(self):
+        return iter(())
+    def __bool__(self):
+        return False
+    def __repr__(self):
+        return "nonebot-plugin-stub"
+    def __contains__(self, item):
+        return True
+    def __or__(self, other):
+        return other
+    def __ror__(self, other):
+        return self
+
+'''
+    for s in sorted(stubs):
+        _pm_stub += f'{s} = _Stub\n'
+    _pm_stub += '''
+import logging
+logger = logging.getLogger("parser-lite")
+'''
+    with open(_pm_init, "w", encoding="utf-8") as f:
+        f.write(_pm_stub)
+    GENERATED_FILES.append("src/" + "/".join(_parts) + "/__init__.py")
+    print(f"  {'/'.join(_parts)}/__init__.py")
+
 # ── __init__.py ──
 init_path = f"{SRC}/__init__.py"
 text = open(init_path, encoding="utf-8").read()
@@ -336,10 +396,12 @@ if os.path.exists(req_path):
 
 # ── Manifest: .standalone-generated ──
 _mf_lines = []
-# Generated directories: nonebot/ + submodules + nonebot_plugin_localstore
+# Generated directories: nonebot/ + submodules + nonebot_plugin_* + nonebot_plugin_localstore
 _nb_sm_dirs = {f"src/{d.replace('.', '/')}" for d in submods}
 _nb_sm_dirs.add("src/nonebot")
 _nb_sm_dirs.add("src/nonebot_plugin_localstore")
+for _pm in plugin_mods:
+    _nb_sm_dirs.add("src/" + _pm.replace(".", "/"))
 for d in sorted(_nb_sm_dirs):
     _mf_lines.append(d + "/")
 # Generated files (from _write) + patched __init__.py
