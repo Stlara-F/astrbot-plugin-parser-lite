@@ -18,10 +18,17 @@ def _clean_generated():
     manifest = Path(_MANIFEST)
     if not manifest.exists():
         return
+    # Never delete these — real source files that the generator patches in-place
+    _PROTECTED = {
+        "src/nonebot_plugin_parser_lite/__init__.py",
+        "src/nonebot_plugin_parser_lite/utils/cookie.py",
+    }
     removed = 0
     for line in manifest.read_text("utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
+            continue
+        if line.rstrip("/") in _PROTECTED:
             continue
         path = Path(line)
         if path.is_dir() and line.endswith("/"):
