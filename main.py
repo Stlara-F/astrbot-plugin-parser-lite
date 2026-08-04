@@ -713,7 +713,7 @@ class ParserLitePlugin(Star):
             self._pusher = None
             try:
                 from bridge.push import make_pusher
-                _push_raw = (BridgeConfig._source or {}).get("push", []) or []
+                _push_raw = _bridge_cfg("push", []) or []
                 _base_dir = os.environ.get("PARSER_LITE_BASE_DIR", str(Path.cwd() / "data"))
                 self._pusher = make_pusher(Path(_base_dir) / "parser_lite")
                 # template_list: [{uid, groups("1,2"), enabled}]
@@ -752,13 +752,13 @@ class ParserLitePlugin(Star):
             self._cookie_health = None
             try:
                 from bridge.cookie_health import make_cookie_health
-                _ck_cfg = (BridgeConfig._source or {}).get("cookie_health", {}) or {}
+                _ck_cfg = _bridge_cfg("cookie_health", {}) or {}
                 _base_dir = os.environ.get("PARSER_LITE_BASE_DIR", str(Path.cwd() / "data"))
                 self._cookie_health = make_cookie_health(Path(_base_dir) / "parser_lite")
                 _ck_interval = float(_ck_cfg.get("interval_sec", 3600) or 3600)
                 _cookies = {
-                    "bilibili": (BridgeConfig._source or {}).get("plite_bili_ck", "") or "",
-                    "zhihu": (BridgeConfig._source or {}).get("plite_zhihu_ck", "") or "",
+                    "bilibili": _bridge_cfg("plite_bili_ck", "") or "",
+                    "zhihu": _bridge_cfg("plite_zhihu_ck", "") or "",
                 }
 
                 async def _ck_notify(msg: str):
@@ -1062,7 +1062,7 @@ class ParserLitePlugin(Star):
                     return
                 except Exception: pass
             # F7: 大视频延迟发送 — 先发提示, 表情回应后触发
-            _dl_cfg = (BridgeConfig._source or {}).get("delay_send", {}) or {}
+            _dl_cfg = _bridge_cfg("delay_send", {}) or {}
             if _dl_cfg.get("enabled", False) and self._delay_sender is not None:
                 _threshold = int(_dl_cfg.get("threshold_mb", 20) or 20) * 1024 * 1024
                 _msg_id = getattr(getattr(event, "message_obj", None), "raw_message", None)
@@ -1234,7 +1234,7 @@ class ParserLitePlugin(Star):
     def _should_send(self, media_type: str) -> bool:
         """发送策略门: 从配置读取, 默认从 _send_any 自动扫描的全部类型"""
         try:
-            s = (BridgeConfig._source or {}).get("send_strategy", _get_sendable_types())
+            s = _bridge_cfg("send_strategy", _get_sendable_types())
             if isinstance(s, str):
                 try: s = json.loads(s)
                 except Exception: s = _get_sendable_types()
@@ -1407,7 +1407,7 @@ class ParserLitePlugin(Star):
                     msg_id, emoji_id = parsed
                     # F7: 延迟发送触发 (先于仲裁, 互不冲突)
                     if self._delay_sender is not None:
-                        _dl_cfg = (BridgeConfig._source or {}).get("delay_send", {}) or {}
+                        _dl_cfg = _bridge_cfg("delay_send", {}) or {}
                         _want = [str(x) for x in (_dl_cfg.get("emoji_ids", []) or [])]
                         if self._delay_sender.on_emoji_like(msg_id, emoji_id, _want):
                             astrbot_logger.info(f"[ParserLite] 延迟发送触发: msg={msg_id}")
@@ -1440,7 +1440,7 @@ class ParserLitePlugin(Star):
             cutoff = now - _dedup_ttl
             self._recently_processed = {k: v for k, v in self._recently_processed.items() if v > cutoff}
         # E6: 多 Bot 仲裁 — 武装竞争窗口 (参数动态, 默认关闭)
-        _arbiter_cfg = (BridgeConfig._source or {}).get("arbiter", {}) or {}
+        _arbiter_cfg = _bridge_cfg("arbiter", {}) or {}
         if _arbiter_cfg.get("enabled", False):
             try:
                 from bridge.arbiter import arm

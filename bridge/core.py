@@ -41,7 +41,6 @@ from nonebot_plugin_parser_lite.utils.common import LimitedSizeDict
 _load_all_parsers()  # 新版 parsers 惰性发现 → 显式注册全部平台解析器
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_CONF_SCHEMA_PATH = Path(_HERE).parent / "_conf_schema.json"
 _DISABLED_GROUPS_FILE = Path(_HERE).parent / "data" / "parser_lite" / "disabled_groups.json"
 
 def _label(k: str) -> str:
@@ -76,48 +75,13 @@ def _resolve_proxy_url(raw: str) -> str:
 _PROXY_PROTOCOLS = ("http://", "https://", "socks5://", "socks5h://")
 
 
-def _resolve_raw_addr(raw: str) -> str:
-    """从原始地址提取 host:port (剥离已存在的协议前缀)"""
-    raw = raw.strip()
-    for _pfx in ("http://", "https://", "socks5://", "socks5h://", "socks4://", "socks4a://"):
-        if raw.lower().startswith(_pfx):
-            return raw[len(_pfx):]
-    return raw
-
-
-_schema_proxy_cache: str | None = None
-
 def _read_proxy_config() -> str:
-    """读取代理配置并输出诊断日志"""
-    global _schema_proxy_cache
-    _sources = {}
-    px = (BridgeConfig._source or {}).get("plite_http_proxy", "")
-    if px:
-        _sources["_source"] = str(px)[:100]
-    else:
-        try:
-            _sf = json.loads(_CONF_SCHEMA_PATH.read_text("utf-8"))
-            _raw = _sf.get("plite_http_proxy")
-            if _raw:
-                px = _extract_config_value(_raw)
-                _schema_proxy_cache = px
-                _sources[f"schema({type(_raw).__name__})"] = str(px)[:100]
-        except Exception as e:
-            _sources["schema_error"] = str(e)[:80]
-    if not px and not _sources:
-        _sources["_source"] = "(empty)"
-    _log_line = ", ".join(f"{k}={v}" for k, v in _sources.items()) if _sources else "not found"
-    astrbot_logger.info(f"[ParserLite] proxy config: pyx={px or '<not set>'}, sources: {_log_line}")
+    """读取代理配置 (单一来源: read_cfg, 消除 schema 双源重复)."""
+    from bridge.cfg import read_cfg
+
+    px = read_cfg(BridgeConfig._source or {}, "plite_http_proxy", "") or ""
+    astrbot_logger.info(f"[ParserLite] proxy config: pyx={px or '<not set>'}")
     return px
-
-
-def _extract_config_value(entry) -> str:
-    """从 schema entry 中提取用户值 (dict 取 value/default, 否则取裸值)"""
-    if isinstance(entry, dict):
-        return str(entry.get("value", entry.get("default", "")) or "")
-    if isinstance(entry, str):
-        return entry
-    return ""
 
 
 _last_proxy: str | None = None
@@ -422,7 +386,7 @@ class ParserLite:
             _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
             _last_err = None
             for _proto in _try_protocols:
-                _px = _proto + _resolve_raw_addr(proxy_url) if "://" not in proxy_url else proxy_url
+                _px = _proto + proxy_url if "://" not in proxy_url else proxy_url
                 _apply_downloader_proxy(_px)
                 try:
                     return await self._try_all_parsers(ordered, url)

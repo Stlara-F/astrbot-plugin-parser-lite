@@ -12,12 +12,17 @@ from typing import Any
 def read_cfg(source: dict | None, key: str, default: Any = None) -> Any:
     """从配置源读取值, 缺失或 None 回退默认.
 
+    支持点路径嵌套: "delay_send.enabled", "push.interval".
     注意: 0 是合法值 (如 TTL=0 表示禁用), 不被回退覆盖.
     """
     if not source:
         return default
     try:
-        v = source.get(key)
+        v: Any = source
+        for part in key.split("."):
+            if not isinstance(v, dict):
+                return default
+            v = v.get(part)
         return v if v is not None else default
     except Exception:
         return default
