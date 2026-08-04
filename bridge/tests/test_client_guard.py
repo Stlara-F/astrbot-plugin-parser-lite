@@ -59,11 +59,12 @@ def test_ensure_parser_httpx_rebuilds_closed():
         __name__ = "FakeParserCls"
 
     class FakeParser:
-        headers = {"User-Agent": "t"}
+        headers: dict = None  # type: ignore[assignment]
         timeout = 15
         httpx = None
 
     p = FakeParser()
+    p.headers = {"User-Agent": "t"}
     p.httpx = AsyncClient(timeout=15)
     asyncio.run(p.httpx.aclose())
     assert p.httpx.is_closed is True
