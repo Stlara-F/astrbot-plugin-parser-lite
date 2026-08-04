@@ -368,15 +368,21 @@ def _get_parser_extra_mapping() -> dict:
     return dict(_PARSER_EXTRA_MAP)
 
 def _inject_dynamic_options_static():
-    """0-hardcode 动态注入: 扫描上游 Config 模型 → 填充 _conf_schema.json"""
+    """0-hardcode 动态注入: 扫描上游 Config 模型 → 填充 _conf_schema.json
+
+    无硬编码保证:
+    - 无文件时从空 dict 启动 (运行时生成, 不入库)
+    - 输出顺序按 _BRIDGE_FIELDS 使用频率重排 (高频在前)
+    """
     import typing
 
     from nonebot_plugin_parser_lite.constants import PlatformEnum
     schema_path = _CONF_SCHEMA_PATH
     flag_path = Path(__file__).parent / ".injected"
-    if not schema_path.exists():
-        return
-    schema = json.loads(schema_path.read_text("utf-8"))
+    if schema_path.exists():
+        schema = json.loads(schema_path.read_text("utf-8"))
+    else:
+        schema = {}
     has_markers = "__INJECT__" in json.dumps(schema)
     if flag_path.exists() and not has_markers:
         _rebuild_parser_extra_map()
@@ -427,9 +433,10 @@ def _inject_dynamic_options_static():
     # 1) features: bool 字段
     bool_fields = sorted(k for k, f in _UpConfig.model_fields.items()
                          if f.annotation is bool and k.startswith("plite_"))
-    if schema.get("features", {}).get("options") == ["__INJECT__"] or not schema["features"].get("options"):
-        schema["features"]["options"] = [_label(k) for k in bool_fields]
-        schema["features"]["default"] = [
+    _features = schema.setdefault("features", {"type": "list", "options": [], "default": []})
+    if _features.get("options") == ["__INJECT__"] or not _features.get("options"):
+        _features["options"] = [_label(k) for k in bool_fields]
+        _features["default"] = [
             _label(k) for k in bool_fields if _UpConfig.model_fields[k].default is True
         ]
         updated = True; injected.append("features")
@@ -550,6 +557,16 @@ def _inject_dynamic_options_static():
         updated = True; injected.append("test_urls")
 
     if updated or not flag_path.exists():
+        # 顺序重排: bridge 字段按 _BRIDGE_FIELDS 使用频率序 (高频在前), 其余保持
+        _ordered = {}
+        _bridge_paths = [bf["path"] for bf in _BRIDGE_FIELDS]
+        for _key in _bridge_paths:
+            if _key in schema:
+                _ordered[_key] = schema[_key]
+        for _k, _v in schema.items():
+            if _k not in _ordered:
+                _ordered[_k] = _v
+        schema = _ordered
         schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), "utf-8")
         flag_path.write_text("1")
         astrbot_logger.info(f"[ParserLite] schema injected: {', '.join(injected) if injected else '(defaults sync)'}")

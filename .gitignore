@@ -7,3 +7,6 @@ data/
 .parser-lite-test/
 .standalone-generated
 .injected
+
+# Runtime-generated UI schema (injected at first run)
+_conf_schema.json
