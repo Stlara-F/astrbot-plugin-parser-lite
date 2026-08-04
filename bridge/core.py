@@ -139,8 +139,14 @@ def _apply_downloader_proxy(proxy_url: str):
         if _old is not None:
             try:
                 import asyncio as _asyncio
-                _asyncio.get_running_loop().create_task(
-                    _old.aclose() if hasattr(_old, "aclose") else _old.close())
+
+                async def _safe_close(_c):
+                    try:
+                        await _c.aclose() if hasattr(_c, "aclose") else _c.close()
+                    except Exception:
+                        pass  # curl_cffi 未初始化会话关闭会抛 TypeError — 忽略
+
+                _asyncio.get_running_loop().create_task(_safe_close(_old))
             except RuntimeError:
                 pass  # 无运行中的 event loop (模块加载时)
     if not proxy_url:

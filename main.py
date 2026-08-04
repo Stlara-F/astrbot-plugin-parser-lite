@@ -656,6 +656,12 @@ class ParserLitePlugin(Star):
 
     async def initialize(self) -> None:
         try:
+            # 上游 render 兼容补丁: safe_src 默认 method (模板省略调用)
+            try:
+                from bridge.render_patch import apply_render_patch
+                apply_render_patch()
+            except Exception:
+                pass
             self._log_bridge = _LoguruBridge()
             self._log_bridge.setFormatter(logging.Formatter("%(name)s | %(message)s"))
             sdk = logging.getLogger("nonebot_plugin_parser_lite")
