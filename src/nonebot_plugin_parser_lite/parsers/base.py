@@ -311,9 +311,12 @@ class BaseParser:
         content: list[ContentItem],
         **kwargs: Unpack[ParseResultKwargs],
     ) -> ParseResult:
-        """构建解析结果"""
+        """创建解析结果"""
+        from ..creator import Creator
+
         return ParseResult(
-            platform=cls.platform, author=author, url=url, content=content, **kwargs
+            platform=cls.platform, author=author, url=url,
+            content=Creator._clean_html_in_items(content), **kwargs,
         )
 
     @staticmethod
