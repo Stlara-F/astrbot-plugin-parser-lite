@@ -19,6 +19,25 @@ import traceback
 
 os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
 
+# ── 防重复导入守卫 ──────────────────────────────────────────────────────────
+# 若本文件已被以另一模块名加载 (如顶层 `main` 与 `data.plugins.X.main` 并存),
+# 再次执行模块体会重复注册全部指令 → WebUI 指令冲突 (cmd_blogin 等).
+# 检测到重复时直接拒绝, 只保留首次加载的注册集.
+_PL_THIS_FILE = os.path.abspath(__file__)
+_PL_DUPLICATE_IMPORTS = [
+    m.__name__
+    for m in list(sys.modules.values())
+    if m is not sys.modules.get(__name__)
+    and getattr(m, "__file__", None)
+    and os.path.abspath(m.__file__) == _PL_THIS_FILE
+]
+if _PL_DUPLICATE_IMPORTS:
+    raise ImportError(
+        "[ParserLite] main.py 已被重复加载: 首次加载于 "
+        f"{_PL_DUPLICATE_IMPORTS[0]!r}, 本次加载于 {__name__!r}. "
+        "为防指令重复注册冲突, 拒绝二次注册. 请检查 AstrBot 插件目录是否存在多个副本. "
+    )
+
 # AstrBot 插件根目录 → src/ 加入 sys.path (上游包 nonebot_plugin_parser_lite 在里面)
 _here = os.path.dirname(os.path.abspath(__file__))
 _src = os.path.join(_here, "src")
