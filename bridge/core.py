@@ -402,6 +402,8 @@ class ParserLite:
         ordered = list(BaseParser.get_all_subclass())
         if target:
             ordered = [c for c in ordered if c.__name__ == target] + [c for c in ordered if c.__name__ != target]
+        # ②⑤ 解析器 httpx 可用性守卫: 插件重载/terminate 后 self.httpx 可能已关闭
+        self._ensure_parser_httpx(ordered)
         # ③ 代理/直连: proxy 已配置则始终使用 (媒体下载也需要代理, 不能双路切换)
         if proxy_url:
             _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
@@ -433,6 +435,23 @@ class ParserLite:
             except Exception as e:
                 astrbot_logger.warning(f"[ParserLite] CustomParser failed: {e}")
         raise ValueError(f"Unsupported URL: {url}")
+
+    def _ensure_parser_httpx(self, ordered: list) -> None:
+        """重建已关闭的解析器 httpx 客户端 (插件重载/terminate 后残留)."""
+        from httpx import AsyncClient
+
+        for cls in ordered:
+            try:
+                parser = self._get_parser(cls)
+                h = getattr(parser, "httpx", None)
+                if h is not None and getattr(h, "is_closed", False):
+                    parser.httpx = AsyncClient(
+                        headers=getattr(parser, "headers", None),
+                        timeout=getattr(parser, "timeout", 15),
+                        follow_redirects=True,
+                    )
+            except Exception:
+                continue
 
     def _get_parser(self, parser_cls):
         name = parser_cls.__name__
