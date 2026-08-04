@@ -65,10 +65,38 @@ def _clean_items(items: list[Any]) -> None:
             items[i] = strip_html_to_text(item)
 
 
+def lyric_to_text(lyric) -> str:
+    """歌词 dict/list → 文本 (网易云新格式 {t, c:[{tx}]} / 标准 lrc)."""
+    if isinstance(lyric, str):
+        return lyric
+    if isinstance(lyric, list):
+        lines = []
+        for item in lyric:
+            if isinstance(item, dict):
+                c = item.get("c")
+                if isinstance(c, list):
+                    lines.append("".join(x.get("tx", "") for x in c
+                                          if isinstance(x, dict) and x.get("tx")))
+                elif isinstance(c, str):
+                    lines.append(c)
+            elif isinstance(item, str):
+                lines.append(item)
+        return "\n".join(lines)
+    if isinstance(lyric, dict):
+        if isinstance(lyric.get("lyric"), str):
+            return lyric["lyric"]
+        if isinstance(lyric.get("c"), list):
+            return lyric_to_text(lyric["c"])
+    return ""
+
+
 def clean_result_html(result: Any) -> None:
     """就地清洗 ParseResult 的 content / comments / replies / repost. 幂等."""
     if result is None:
         return
+    extra = getattr(result, "extra", None)
+    if isinstance(extra, dict) and "lyric" in extra:
+        extra["lyric"] = lyric_to_text(extra["lyric"])
     if getattr(result, "content", None):
         try:
             _clean_items(result.content)

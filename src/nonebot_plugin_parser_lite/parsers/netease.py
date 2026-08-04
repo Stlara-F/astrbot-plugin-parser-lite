@@ -80,7 +80,18 @@ class NCMParser(BaseParser):
         duration = parse_duration_to_seconds(song.get("duration", "0"))
         lyric = ""
         with contextlib.suppress(Exception):
-            lyric = (await self.fetch("getSongLyric", {"id": ncm_id})).get("lrc")
+            lrc_data = (await self.fetch("getSongLyric", {"id": ncm_id})).get("lrc")
+            if isinstance(lrc_data, dict):
+                # 标准: {"lyric": "[00:00.00]..."} / 新版: {"t": 0, "c": [{"tx": "..."}]}
+                if isinstance(lrc_data.get("lyric"), str):
+                    lyric = lrc_data["lyric"]
+                elif isinstance(lrc_data.get("c"), list):
+                    lyric = "\n".join(
+                        "".join(x.get("tx", "") for x in item.get("c", []) if isinstance(x, dict))
+                        for item in lrc_data.get("c", []) if isinstance(item, dict)
+                    )
+            elif isinstance(lrc_data, str):
+                lyric = lrc_data
         url_data = await self.fetch("getSongUrl", {"id": ncm_id, "level": "standard"})
         if not (audio_url := url_data.get("url")):
             raise ParseException("无法获取音频下载地址")

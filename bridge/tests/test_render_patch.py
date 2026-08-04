@@ -215,6 +215,42 @@ def test_render_html_env_filters_registered():
     assert getattr(render.RENDERER.render_html, "_pl_env_filters", False)
 
 
+def test_lyric_to_text():
+    """歌词 dict/list → 文本 (网易云新格式 {t, c:[{tx}]} 不泄漏)."""
+    from bridge.render_patch import lyric_to_text
+
+    r1 = lyric_to_text([{"t": 0, "c": [{"tx": "飞べない蝶"}]},
+                        {"t": 5000, "c": [{"tx": "梦见る"}]}])
+    assert "飞べない蝶" in r1
+    assert "梦见る" in r1
+    assert "{" not in r1
+    assert "t'" not in r1
+    r2 = lyric_to_text({"lyric": "[00:00.00]标准LRC"})
+    assert r2 == "[00:00.00]标准LRC"
+    r3 = lyric_to_text("纯文本歌词")
+    assert r3 == "纯文本歌词"
+    r4 = lyric_to_text(None)
+    assert r4 == ""
+
+
+def test_clean_result_html_lyric():
+    """渲染入口清洗 extra.lyric (dict → 文本)."""
+    from bridge.render_patch import clean_result_html
+
+    class FakeResult:
+        extra: dict = None  # type: ignore[assignment]
+        content: list = None  # type: ignore[assignment]
+        comments: list = None  # type: ignore[assignment]
+        repost = None
+
+    r = FakeResult()
+    r.extra = {"lyric": [{"t": 0, "c": [{"tx": "歌词A"}]}]}
+    r.content = []
+    r.comments = []
+    clean_result_html(r)
+    assert r.extra["lyric"] == "歌词A"
+
+
 def test_render_html_instance_attr_no_self():
     """render_html 是实例属性裸函数 (无 self) — render_image 内部调用参数对齐.
 
