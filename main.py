@@ -1627,28 +1627,56 @@ class ParserLitePlugin(Star):
         if not installed:
             yield event.plain_result("✗ 浏览器下载失败, 请检查网络或手动执行: python -m playwright install chromium")
             return
-        # 浏览器就绪 → 检查/补齐系统库
+        # 浏览器就绪 → 检查/补齐系统库 (install-deps 优先, apt-get 回退)
         missing = _detect_missing_libs()
         if missing:
-            yield event.plain_result(f"检测到缺失系统库, 尝试 apt-get 安装:\n{missing}")
+            yield event.plain_result(f"检测到缺失系统库, 尝试自动安装:\n{missing}")
+            if not (hasattr(os, "geteuid") and os.geteuid() == 0):
+                yield event.plain_result(
+                    "✗ 非 root 用户无法安装系统库, 请在容器/服务器以 root 运行:\n"
+                    "  apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0\n"
+                    "  或: python -m playwright install-deps chromium")
+                return
+            # ① playwright install-deps (全量依赖, 适配发行版包管理器)
             try:
-                _apt1 = await asyncio.create_subprocess_exec(
-                    "apt-get", "update",
+                _deps_proc = await asyncio.create_subprocess_exec(
+                    sys.executable, "-m", "playwright", "install-deps", "chromium",
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                await asyncio.wait_for(_apt1.communicate(), timeout=300)
-                _apt2 = await asyncio.create_subprocess_exec(
-                    "apt-get", "install", "-y", "--no-install-recommends",
-                    "libnspr4", "libnss3", "libgbm1", "libasound2", "libxkbcommon0",
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                _o2, _e2 = await asyncio.wait_for(_apt2.communicate(), timeout=600)
-                if _apt2.returncode != 0:
+                _deps_out, _deps_err = await asyncio.wait_for(
+                    _deps_proc.communicate(), timeout=600)
+                if _deps_proc.returncode == 0:
+                    astrbot_logger.info("[ParserLite] playwright install-deps 成功")
+                else:
                     yield event.plain_result(
-                        f"✗ apt-get 安装失败: rc={_apt2.returncode} {_e2.decode(errors='replace').strip()[-300:]}")
-                    yield event.plain_result(
-                        "请手动执行: apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0")
-                    return
+                        f"playwright install-deps 失败 (rc={_deps_proc.returncode}), "
+                        f"回退 apt-get:\n{_deps_err.decode(errors='replace').strip()[-200:]}")
+                    # ② 回退: 手写 apt-get 补齐核心库
+                    try:
+                        _apt1 = await asyncio.create_subprocess_exec(
+                            "apt-get", "update",
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                        await asyncio.wait_for(_apt1.communicate(), timeout=300)
+                        _apt2 = await asyncio.create_subprocess_exec(
+                            "apt-get", "install", "-y", "--no-install-recommends",
+                            "libnspr4", "libnss3", "libgbm1", "libasound2", "libxkbcommon0",
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                        _o2, _e2 = await asyncio.wait_for(_apt2.communicate(), timeout=600)
+                        if _apt2.returncode != 0:
+                            yield event.plain_result(
+                                f"✗ apt-get 安装失败: rc={_apt2.returncode} "
+                                f"{_e2.decode(errors='replace').strip()[-300:]}")
+                            yield event.plain_result(
+                                "请手动执行: apt-get update && apt-get install -y "
+                                "libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0")
+                            return
+                    except Exception as e:
+                        yield event.plain_result(f"✗ apt-get 异常: {e}\n请手动安装系统库后重试")
+                        return
+            except asyncio.TimeoutError:
+                yield event.plain_result("✗ playwright install-deps 超时, 请手动安装系统库后重试")
+                return
             except Exception as e:
-                yield event.plain_result(f"✗ apt-get 异常: {e}\n请手动安装系统库后重试")
+                yield event.plain_result(f"✗ 系统库安装异常: {e}\n请手动安装后重试")
                 return
         # 最终验证
         try:
