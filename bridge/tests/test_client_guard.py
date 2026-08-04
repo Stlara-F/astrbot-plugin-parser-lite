@@ -85,11 +85,12 @@ def test_ensure_parser_httpx_keeps_open():
         __name__ = "FakeParserCls2"
 
     class FakeParser:
-        headers = {}
+        headers: dict = None  # type: ignore[assignment]
         timeout = 15
         httpx = None
 
     p = FakeParser()
+    p.headers = {}
     p.httpx = AsyncClient(timeout=15)
     orig = p.httpx
     pl = core.ParserLite()
