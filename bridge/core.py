@@ -165,8 +165,6 @@ _load_all_parsers()  # 新版 parsers 惰性发现 → 显式注册全部平台�
 
 CACHE_INTERVAL = 24 * 3600
 _RESULT_CACHE: LimitedSizeDict[str, ParseResult] = LimitedSizeDict(max_size=50)
-_DISABLED_GROUPS_FILE = Path(__file__).parent / "data" / "parser_lite" / "disabled_groups.json"
-_CONF_SCHEMA_PATH = Path(__file__).parent / "_conf_schema.json"
 
 # ── 配置桥接 ──────────────────────────────────────────────────────────────────
 class BridgeConfig:

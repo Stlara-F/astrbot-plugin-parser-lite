@@ -106,6 +106,7 @@ from nonebot_plugin_parser_lite.data import (
     GraphicContent,
     ImageContent,
     ParseResult,
+    StickerContent,
     VideoContent,
 )
 from nonebot_plugin_parser_lite.download import DOWNLOADER
@@ -1133,7 +1134,7 @@ class ParserLitePlugin(Star):
                     await self._send_video_cover(event, item)
                 return
             p = Path(str(await item.path_task))
-            if isinstance(item, (ImageContent, GraphicContent)):
+            if isinstance(item, (ImageContent, GraphicContent, StickerContent)):
                 if self._should_send("image"):
                     await self._send_any(event, p, "image", source_url=src_url)
             elif isinstance(item, VideoContent):

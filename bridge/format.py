@@ -6,6 +6,7 @@ from nonebot_plugin_parser_lite.data import (
     AudioContent,
     ImageContent,
     ParseResult,
+    StickerContent,
     VideoContent,
 )
 
@@ -17,7 +18,13 @@ def format_full(result: ParseResult) -> str:
     ]
     if result.timestamp:
         lines.append(result.formatted_datetime)
-    texts = [t for t in result.content if isinstance(t, str)]
+    # 保持 content 原始顺序: 文本 + 贴纸 desc 按序拼接
+    texts = []
+    for t in result.content:
+        if isinstance(t, str):
+            texts.append(t)
+        elif isinstance(t, StickerContent):
+            texts.append(t.desc or "[表情]")
     if texts:
         lines.append("\n" + "\n".join(texts))
     media = []
