@@ -1,6 +1,7 @@
 from datetime import datetime
 import re
 
+from bs4 import BeautifulSoup
 from msgspec import Struct
 from msgspec.json import Decoder
 
@@ -99,6 +100,8 @@ class WeiboData(Struct):
         else:
             text = self.text_raw
         cleaned_text = _URL_PATTERN.sub("", text).strip()
+        cleaned_text = BeautifulSoup(cleaned_text, "html.parser").get_text(
+            separator="\n", strip=True)
         content = replace_placeholder_to_sticker(cleaned_text, WEIBO_PATTERN, "weibo")
         if self.pic_infos:
             content.extend(pic.content for pic in self.pic_infos.values())

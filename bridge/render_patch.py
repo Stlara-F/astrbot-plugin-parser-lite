@@ -12,46 +12,22 @@
 from __future__ import annotations
 
 import functools
-import html as _html
 import re
 from typing import Any
 
 
 def strip_html_to_text(text: str) -> str:
-    """HTML 源码 → 纯文本.
+    """HTML 源码 → 纯文本 (BeautifulSoup 浏览器级解析).
 
-    优先 BeautifulSoup (浏览器级解析, div/span/class/嵌套全处理,
-    不残留标签), 缺失时回退正则 (块级转行 + 字母锚定去标签).
+    解析器已正确解析 HTML 进 content (根因修复); 此处为渲染层防御,
+    仅处理残留 HTML 字符串.
     """
-    try:
-        from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup
 
-        soup = BeautifulSoup(text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        return soup.get_text(separator="\n", strip=True)
-    except Exception:
-        return _regex_strip_html(text)
-
-
-def _regex_strip_html(text: str) -> str:
-    """正则回退: 标签名字母锚定, 属性引号内 > 保护, 避免误删数学比较."""
-    t = re.sub(r"(?is)<!--.*?-->", "", text)
-    t = re.sub(r"(?is)<!\[CDATA\[.*?\]\]>", "", t)
-    t = re.sub(r'"[^"]*"', _protect_gt, t)
-    t = re.sub(r"'[^']*'", _protect_gt, t)
-    t = re.sub(r"(?i)<br\s*/?>", "\n", t)
-    t = re.sub(r"(?i)</(?:p|div|li|h[1-6]|tr)>", "\n", t)
-    t = re.sub(_TAG_PATTERN, "", t)
-    t = t.replace("\x01", ">")
-    return _html.unescape(t)
-
-
-def _protect_gt(match: re.Match[str]) -> str:
-    return match.group(0).replace(">", "\x01")
-
-
-_TAG_PATTERN = re.compile(r"(?i)</?[a-zA-Z][^>]*>")
+    soup = BeautifulSoup(text, "html.parser")
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+    return soup.get_text(separator="\n", strip=True)
 
 
 def _is_html(text: str) -> bool:

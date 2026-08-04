@@ -1,5 +1,6 @@
 import re
 
+from bs4 import BeautifulSoup
 from msgspec import Struct
 from msgspec.json import Decoder
 
@@ -22,7 +23,10 @@ class ArticleComment(Struct):
 
     @property
     def content(self):
-        return replace_placeholder_to_sticker(self.text, WEIBO_PATTERN, "weibo")
+        # 微博 API text 是 HTML (<a>/<br>/<span class=url-icon>) - 正确解析为纯文本
+        plain = BeautifulSoup(self.text, "html.parser").get_text(
+            separator="\n", strip=True)
+        return replace_placeholder_to_sticker(plain, WEIBO_PATTERN, "weibo")
 
 
 class ArticleCommentData(Struct):

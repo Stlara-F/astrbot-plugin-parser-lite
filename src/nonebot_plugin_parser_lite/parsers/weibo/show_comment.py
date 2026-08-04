@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import re
 
+from bs4 import BeautifulSoup
 from msgspec import Struct, field
 from msgspec.json import Decoder
 
@@ -56,7 +57,9 @@ class TvComment(Struct):
 
     @property
     def content(self):
-        data = replace_placeholder_to_sticker(self.text_raw, WEIBO_PATTERN, "weibo")
+        plain = BeautifulSoup(self.text_raw, "html.parser").get_text(
+            separator="\n", strip=True)
+        data = replace_placeholder_to_sticker(plain, WEIBO_PATTERN, "weibo")
         if self.pic_infos:
             data.extend(pic.content for pic in self.pic_infos.values())
         return data
