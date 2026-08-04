@@ -154,7 +154,23 @@ def _get_sendable_types() -> list[str]:
 _get_sendable_types  # 懒求值函数, 在 _BRIDGE_FIELDS 中使用 lambda 调用
 
 # bridge 语义字段: 不在上游 Config 中的 AstrBot 专属配置项, 声明式注入
+# 排序: 使用频率从高到低 (高频解析/发送 → 中频后台 → 低频开关)
 _BRIDGE_FIELDS: list[dict] = [
+    # ── 高频: 每次解析/发送都读取 ──
+    {
+        "path": "plite_http_proxy",
+        "type": "string",
+        "desc": "HTTP代理",
+        "default": "",
+        "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。配置后所有解析器请求均通过代理",
+    },
+    {
+        "path": "send_strategy",
+        "type": "list",
+        "desc": "发送策略",
+        "default": lambda: _get_sendable_types(),
+        "options": lambda: _get_sendable_types(),
+    },
     {
         "path": "parsers.items.proxied",
         "type": "list",
@@ -170,20 +186,7 @@ _BRIDGE_FIELDS: list[dict] = [
         "default": "{}",
         "hint": '语法: {"平台名":"key1=val1; key2=val2"}。例: {"bilibili":"SESSDATA=xxx; bili_jct=yyy","zhihu":"z_c0=zzz"}。B站Cookie从浏览器F12→Application→Cookies→bilibili.com 复制。各平台独立，以分号分隔键值对',
     },
-    {
-        "path": "send_strategy",
-        "type": "list",
-        "desc": "发送策略",
-        "default": lambda: _get_sendable_types(),
-        "options": lambda: _get_sendable_types(),
-    },
-    {
-        "path": "plite_http_proxy",
-        "type": "string",
-        "desc": "HTTP代理",
-        "default": "",
-        "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。配置后所有解析器请求均通过代理",
-    },
+    # ── 中频: 每次媒体发送 ──
     {
         "path": "plite_direct_link",
         "type": "bool",
@@ -199,12 +202,42 @@ _BRIDGE_FIELDS: list[dict] = [
         "hint": "开启后视频只发送 ffmpeg 截取的封面图, 不发送视频本体(省流量)",
     },
     {
-        "path": "arbiter",
-        "type": "object",
-        "desc": "多Bot表情仲裁",
-        "default": {},
-        "hint": '{"enabled":true,"emoji":"👍","window_sec":1.5} — 群内多解析机器人时开启, 解析前发送竞争表情, 检测到其他bot回应则放弃',
+        "path": "plite_image_compress_mb",
+        "type": "int",
+        "desc": "图片压缩阈值(MB)",
+        "default": 20,
+        "hint": "超过此大小的图片自动压缩后再发送",
     },
+    {
+        "path": "plite_forward_max_nodes",
+        "type": "int",
+        "desc": "合并转发节点上限",
+        "default": 90,
+        "hint": "OneBot 合并转发单条消息最大节点数",
+    },
+    # ── 中频: 每次解析去重/缓存 ──
+    {
+        "path": "plite_dedup_ttl",
+        "type": "int",
+        "desc": "消息去重窗口(秒)",
+        "default": 60,
+        "hint": "同一消息在窗口内不重复解析",
+    },
+    {
+        "path": "plite_cache_interval",
+        "type": "int",
+        "desc": "缓存清理间隔(小时)",
+        "default": 24,
+        "hint": "定期清理过期缓存文件的时间间隔",
+    },
+    {
+        "path": "card_semantic",
+        "type": "bool",
+        "desc": "卡片语义注入(LLM)",
+        "default": True,
+        "hint": "将QQ分享卡片转为结构化文本注入消息, 供AI助手理解",
+    },
+    # ── 低频: 后台任务 / 特殊功能开关 ──
     {
         "path": "push",
         "type": "object",
@@ -220,21 +253,30 @@ _BRIDGE_FIELDS: list[dict] = [
         "hint": '{"enabled":true,"threshold_mb":20,"timeout_sec":300,"emoji_ids":["128077"]} — 大视频先发提示, 回应表情后发送',
     },
     {
+        "path": "arbiter",
+        "type": "object",
+        "desc": "多Bot表情仲裁",
+        "default": {},
+        "hint": '{"enabled":true,"emoji":"👍","window_sec":1.5} — 群内多解析机器人时开启, 解析前发送竞争表情, 检测到其他bot回应则放弃',
+    },
+    {
         "path": "cookie_health",
         "type": "object",
         "desc": "Cookie健康检查",
         "default": {},
         "hint": '{"enabled":true,"interval_sec":3600} — 定期验证B站/知乎cookie, 失效时通知',
     },
-    {
-        "path": "card_semantic",
-        "type": "bool",
-        "desc": "卡片语义注入(LLM)",
-        "default": True,
-        "hint": "将QQ分享卡片转为结构化文本注入消息, 供AI助手理解",
-    },
 ]
 """AstrBot 专属字段声明: path=JSON路径, source=动态选项生成器(可选), default/hint/desc=静态元数据"""
+
+
+def _bridge_cfg(key: str, default=None):
+    """读取 bridge 语义配置 (非硬编码: 缺失回退默认值)."""
+    try:
+        v = (BridgeConfig._source or {}).get(key)
+        return v if v is not None else default
+    except Exception:
+        return default
 
 def _schema_desc(fname: str) -> str:
     s = fname.removeprefix("plite_").replace("_", " ")
@@ -678,7 +720,8 @@ class ParserLitePlugin(Star):
 
     async def _cleanup_loop(self) -> None:
         while True:
-            await asyncio.sleep(CACHE_INTERVAL)
+            _interval = float(_bridge_cfg("plite_cache_interval", CACHE_INTERVAL) or 3600)
+            await asyncio.sleep(_interval)
             await self._do_clean_cache()
 
     async def _do_clean_cache(self) -> int:
@@ -885,7 +928,8 @@ class ParserLitePlugin(Star):
             except Exception: pass
             try:
                 raw = p.read_bytes()
-                if len(raw) > 20 * 1024 * 1024:
+                _img_mb = int(_bridge_cfg("plite_image_compress_mb", 20) or 20)
+                if len(raw) > _img_mb * 1024 * 1024:
                     raw = await self._compress_image(p)
                 await event.send(event.chain_result([Comp.Image.fromBytes(raw)]))
                 astrbot_logger.debug(f"[ParserLite]   image via bytes: {len(raw)}B")
@@ -1202,7 +1246,7 @@ class ParserLitePlugin(Star):
         nodes = []
         author = result.author.name if result.author and result.author.name else "解析"
         platform = result.platform.display_name if result.platform else ""
-        MAX_PER_NODE = 90  # OneBot 限制
+        MAX_PER_NODE = int(_bridge_cfg("plite_forward_max_nodes", 90) or 90)
 
         for item in items:
             if not hasattr(item, "path_task"): continue
@@ -1252,8 +1296,6 @@ class ParserLitePlugin(Star):
                 label="合并转发",
             )
 
-    _DEDUP_TTL = 60  # seconds
-
     async def on_notice(self, event: AstrMessageEvent):
         """E6: 多 Bot 表情仲裁 + F7: 延迟发送触发 — 处理 group_msg_emoji_like notice.
 
@@ -1292,12 +1334,13 @@ class ParserLitePlugin(Star):
         if msg_id is None:
             msg_id = hash(event.get_message_str())
         now = time.time()
+        _dedup_ttl = float(_bridge_cfg("plite_dedup_ttl", 60) or 60)
         if msg_id in self._recently_processed:
-            if now - self._recently_processed[msg_id] < self._DEDUP_TTL:
+            if now - self._recently_processed[msg_id] < _dedup_ttl:
                 return
         self._recently_processed[msg_id] = now
         if len(self._recently_processed) > 50:
-            cutoff = now - self._DEDUP_TTL
+            cutoff = now - _dedup_ttl
             self._recently_processed = {k: v for k, v in self._recently_processed.items() if v > cutoff}
         # E6: 多 Bot 仲裁 — 武装竞争窗口 (参数动态, 默认关闭)
         _arbiter_cfg = (BridgeConfig._source or {}).get("arbiter", {}) or {}
