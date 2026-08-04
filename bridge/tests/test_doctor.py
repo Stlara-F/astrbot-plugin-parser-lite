@@ -172,7 +172,11 @@ def test_save_snapshot_writes_on_fail(tmp_path):
 
 
 def test_doctor_command_registered():
-    """cmd_doctor 命令别名注册 (parse_doctor + parser_doctor)."""
-    from main import ParserLitePlugin
+    """cmd_doctor 命令别名注册 (parse_doctor + parser_doctor) — 静态检查注册行.
 
-    assert hasattr(ParserLitePlugin, "cmd_doctor")
+    不 import main (依赖 astrbot, CI 不可用), 检查 filter.command 注册声明.
+    """
+    main_py = Path(_ROOT / "main.py").read_text(encoding="utf-8")
+    assert 'filter.command("parse_doctor")' in main_py
+    assert 'filter.command("parser_doctor")' in main_py
+    assert "cmd_doctor" in main_py
