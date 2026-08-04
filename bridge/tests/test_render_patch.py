@@ -74,6 +74,71 @@ def test_render_patch_idempotent():
     assert apply_render_patch() is True
 
 
+def test_strip_html_to_text():
+    """HTML 源码 → 纯文本 (br 转换行, 去标签, 实体解码)."""
+    from bridge.render_patch import strip_html_to_text
+
+    t = ('<a href="https://weibo.com/u/123">@用户</a>：'
+         '<br>内容<span class="url-icon"><img src="x"></span>不错</p>')
+    out = strip_html_to_text(t)
+    assert "@用户" in out
+    assert "<a" not in out
+    assert "url-icon" not in out
+    assert "\n" in out  # <br> → 换行
+
+
+def test_strip_html_unescape():
+    """实体解码: &amp; → &."""
+    from bridge.render_patch import strip_html_to_text
+
+    assert "A & B" in strip_html_to_text("<p>A &amp; B</p>")
+
+
+def test_is_html_guard():
+    """_is_html 保护: 数学比较等含尖括号文本不误判."""
+    from bridge.render_patch import _is_html
+
+    assert _is_html("3 < 5 且 a > b") is False
+    assert _is_html("<div>x</div>") is True
+    assert _is_html("普通文本") is False
+
+
+def test_clean_result_html_inplace():
+    """就地清洗 content/comments, 非 HTML 元素不动, 幂等."""
+    from bridge.render_patch import clean_result_html
+
+    class FakeComment:
+        content: list = None  # type: ignore[assignment]
+        replies: list = None  # type: ignore[assignment]
+
+    class FakeResult:
+        content: list = None  # type: ignore[assignment]
+        comments: list = None  # type: ignore[assignment]
+        repost = None
+
+    c = FakeComment()
+    c.content = ["<p>评论<b>加粗</b>内容</p>", "纯文本评论"]
+    c.replies = []
+    r = FakeResult()
+    r.content = ["<p>正文<img src='x'></p>", "第二段", 123]
+    r.comments = [c]
+    clean_result_html(r)
+    assert "<p" not in r.content[0]
+    assert "正文" in r.content[0]
+    assert r.content[1] == "第二段"  # 非 HTML 不动
+    assert r.content[2] == 123  # 非字符串不动
+    assert "加粗" in r.comments[0].content[0]
+    clean_result_html(r)  # 幂等
+    assert "<" not in r.content[0]
+
+
+def test_render_image_wrapped_for_html_clean():
+    """render_image 已包装 (渲染入口清洗生效)."""
+    import nonebot_plugin_parser_lite.render as render
+
+    assert getattr(render.RENDERER.render_image, "_pl_html_clean", False)
+
+
 async def _close_session_like():
     """模拟 curl_cffi 未初始化会话关闭 — 抛 ctype TypeError 也应被吞."""
     # 直接调用 core._apply_downloader_proxy 的关闭逻辑太深,
