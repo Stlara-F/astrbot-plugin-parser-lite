@@ -12,6 +12,13 @@ ignore = [
   "RUF002", # ambiguous-unicode-character-docstring
   "RUF003", # ambiguous-unicode-character-comment
   "TID252", # relative-imports
+  "E501", # line-too-long (bridge main.py + upstream style)
+  "RUF100", # unused-noqa (E501 removed from enabled rules, makes upstream noqa stale)
+  "T201", # print-found (test files + upstream utility scripts)
+  "E701", # multiple-statements-on-one-line (upstream style)
+  "E702", # multiple-statements-on-one-line-semicolon
+  "ASYNC240", # async-timeout-without-await (upstream)
+  "E902", # io-error
 ]
 select = [
   "F", # Pyflakes
@@ -40,3 +47,9 @@ mark-parentheses = false
 
 [lint.pyupgrade]
 keep-runtime-typing = true
+
+[lint.per-file-ignores]
+# 上游 standalone 生成产物 — 导入顺序由上游管理
+"src/**/*.py" = ["I001"]
+# 生成器脚本豁免
+"scripts/*.py" = ["ALL"]
