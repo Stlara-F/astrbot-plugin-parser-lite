@@ -424,5 +424,29 @@
     "description": "卡片语义注入(LLM)",
     "default": true,
     "hint": "将QQ分享卡片转为结构化文本注入消息, 供AI助手理解"
+  },
+  "plite_image_compress_mb": {
+    "type": "int",
+    "description": "图片压缩阈值(MB)",
+    "default": 20,
+    "hint": "超过此大小的图片自动压缩后再发送"
+  },
+  "plite_forward_max_nodes": {
+    "type": "int",
+    "description": "合并转发节点上限",
+    "default": 90,
+    "hint": "OneBot 合并转发单条消息最大节点数"
+  },
+  "plite_dedup_ttl": {
+    "type": "int",
+    "description": "消息去重窗口(秒)",
+    "default": 60,
+    "hint": "同一消息在窗口内不重复解析"
+  },
+  "plite_cache_interval": {
+    "type": "int",
+    "description": "缓存清理间隔(小时)",
+    "default": 24,
+    "hint": "定期清理过期缓存文件的时间间隔"
   }
 }

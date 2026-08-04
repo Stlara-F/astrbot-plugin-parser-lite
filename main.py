@@ -272,11 +272,8 @@ _BRIDGE_FIELDS: list[dict] = [
 
 def _bridge_cfg(key: str, default=None):
     """读取 bridge 语义配置 (非硬编码: 缺失回退默认值)."""
-    try:
-        v = (BridgeConfig._source or {}).get(key)
-        return v if v is not None else default
-    except Exception:
-        return default
+    from bridge.cfg import read_cfg
+    return read_cfg(BridgeConfig._source, key, default)
 
 def _schema_desc(fname: str) -> str:
     s = fname.removeprefix("plite_").replace("_", " ")
