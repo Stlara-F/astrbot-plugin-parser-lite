@@ -142,25 +142,28 @@ def apply_render_patch() -> bool:
         _render.RENDERER.render_image = _patched_render_image
 
         # ③ render_html 重建 env: 注入 pl_esc/pl_str (模板 ~ 拼接与 join 转义修复)
+        # 注意: 赋值到实例属性 → 必须是"无 self"裸函数 (调用方直接传 result),
+        # 否则 render_image 内部 self.render_html(result) 会把 result 当 self.
         _orig_render_html = _render.RENDERER.render_html
+        _renderer = _render.RENDERER
 
         @functools.wraps(_orig_render_html)
-        async def _patched_render_html(self, result, *args, **kwargs):
+        async def _patched_render_html(result, *args, **kwargs):
             from jinja2 import Environment, FileSystemLoader
 
             from nonebot_plugin_parser_lite.render import get_theme
 
             environment = Environment(
-                loader=FileSystemLoader(str(self.templates_dir)),
+                loader=FileSystemLoader(str(_renderer.templates_dir)),
                 enable_async=True,
                 autoescape=True,
             )
             environment.filters["safe_src"] = _render.safe_src
             environment.filters["pl_esc"] = pl_esc
             environment.filters["pl_str"] = pl_str
-            template = environment.get_template(self._template_name(result))
+            template = environment.get_template(_renderer._template_name(result))
             return await template.render_async(
-                result=await self.resolve_parse_result(result),
+                result=await _renderer.resolve_parse_result(result),
                 theme=kwargs.get("theme") or get_theme(),
             )
 

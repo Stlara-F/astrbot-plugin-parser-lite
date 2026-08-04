@@ -215,6 +215,21 @@ def test_render_html_env_filters_registered():
     assert getattr(render.RENDERER.render_html, "_pl_env_filters", False)
 
 
+def test_render_html_instance_attr_no_self():
+    """render_html 是实例属性裸函数 (无 self) — render_image 内部调用参数对齐.
+
+    回归: 曾因带 self 签名赋值实例属性, render_image 内部
+    self.render_html(result, theme=theme) 把 result 当 self → TypeError.
+    """
+    import inspect
+
+    import nonebot_plugin_parser_lite.render as render
+
+    sig = inspect.signature(render.RENDERER.render_html)
+    params = list(sig.parameters)
+    assert params[0] == "result", f"首个参数应为 result, 实际 {params}"
+
+
 async def _close_session_like():
     """模拟 curl_cffi 未初始化会话关闭 — 抛 ctype TypeError 也应被吞."""
     # 直接调用 core._apply_downloader_proxy 的关闭逻辑太深,
