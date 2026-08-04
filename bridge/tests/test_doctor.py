@@ -126,3 +126,53 @@ async def test_check_coverage_real():
     """实际运行覆盖率检查: 27 平台多数注册."""
     _ok, detail, _warn = await doctor.check_coverage()
     assert "27" in detail or "26" in detail  # 平台数合理
+
+
+def test_to_json_serializable():
+    """JSON 输出: 机器可解析, 含时间戳."""
+    results = [
+        doctor.CheckResult("a", True, detail="fine"),
+        doctor.CheckResult("b", False, error="boom"),
+    ]
+    s = doctor.summarize(results)
+    text = doctor.to_json(results, s)
+    import json
+
+    payload = json.loads(text)
+    assert payload["summary"]["failed"] == 1
+    assert payload["checks"][1]["error"] == "boom"
+    assert "timestamp" in payload
+
+
+def test_save_snapshot_all_ok_no_file(tmp_path):
+    """全部 OK → 不落盘 (无失败无需快照)."""
+    results = [doctor.CheckResult("a", True)]
+    s = doctor.summarize(results)
+    target = str(tmp_path / "snap.json")
+    assert doctor.save_snapshot(results, s, target) is None
+    assert not Path(target).exists()
+
+
+def test_save_snapshot_writes_on_fail(tmp_path):
+    """有失败 → 落盘 JSON 快照 (错误显式持久化)."""
+    results = [
+        doctor.CheckResult("a", True),
+        doctor.CheckResult("net", False, error="conn refused"),
+    ]
+    s = doctor.summarize(results)
+    target = str(tmp_path / "snap.json")
+    path = doctor.save_snapshot(results, s, target)
+    assert path == target
+    assert Path(target).exists()
+    import json
+
+    payload = json.loads(Path(target).read_text(encoding="utf-8"))
+    assert payload["checks"][1]["name"] == "net"
+    assert payload["checks"][1]["ok"] is False
+
+
+def test_doctor_command_registered():
+    """cmd_doctor 命令别名注册 (parse_doctor + parser_doctor)."""
+    from main import ParserLitePlugin
+
+    assert hasattr(ParserLitePlugin, "cmd_doctor")

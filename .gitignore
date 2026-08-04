@@ -10,3 +10,6 @@ data/
 
 # Runtime-generated UI schema (injected at first run)
 _conf_schema.json
+
+# Doctor snapshot (runtime)
+test/_doctor_snapshot.json

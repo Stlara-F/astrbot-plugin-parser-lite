@@ -81,12 +81,16 @@ if not args.smoke:
 print("\n-- doctor --")  # noqa: T201
 t0 = time.time()
 try:
-    from bridge.doctor import render_text, run_checks, summarize
+    from bridge.doctor import render_text, run_checks, save_snapshot, summarize, to_json
     _checks = asyncio.run(run_checks())
     _summary = summarize(_checks)
     print(render_text(_checks, _summary))  # noqa: T201
+    _snap = save_snapshot(_checks, _summary, target=str(Path(__file__).parent / "_doctor_snapshot.json"))
+    if _snap:
+        print(f"[doctor] snapshot: {_snap}")  # noqa: T201
     _status = "PASS" if _summary["failed"] == 0 else "FAIL"
-    results["doctor"] = {"status": _status, "time": time.time() - t0}
+    results["doctor"] = {"status": _status, "time": time.time() - t0,
+                         "json": to_json(_checks, _summary)}
 except Exception as e:
     results["doctor"] = {"status": f"ERROR: {e}", "time": time.time() - t0}
 

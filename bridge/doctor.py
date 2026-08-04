@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 import time
 
 
@@ -238,3 +239,37 @@ def render_text(results: list[CheckResult], summary: dict) -> str:
     if summary["failed_items"]:
         lines.append(f"失败项: {', '.join(summary['failed_items'])}")
     return "\n".join(lines)
+
+
+def to_json(results: list[CheckResult], summary: dict | None = None) -> str:
+    """JSON 序列化 (机器可解析, CI/日志可观测)."""
+    import json
+
+    payload = {
+        "checks": [r.to_dict() for r in results],
+        "summary": summary if summary is not None else summarize(results),
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def save_snapshot(results: list[CheckResult], summary: dict, target: str | None = None) -> str | None:
+    """错误快照落盘 (失败详情显式持久化, 便于事后排查).
+
+    :param target: 输出路径 (默认: 插件 data_dir/doctor_snapshot.json)
+    :return: 快照路径; 全部 OK 时返回 None (无失败不落盘)
+    """
+    if summary["failed"] == 0 and summary["warn"] == 0:
+        return None
+    try:
+        if target is None:
+            from bridge.core import get_config
+
+            cfg = get_config()
+            base = Path(cfg.data_dir) if cfg is not None else Path(".")
+            target = str(base / "doctor_snapshot.json")
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        Path(target).write_text(to_json(results, summary), encoding="utf-8")
+        return target
+    except Exception:
+        return None

@@ -1560,17 +1560,20 @@ class ParserLitePlugin(Star):
     async def cmd_doctor(self, event: AstrMessageEvent):
         """自检: 全动态扫描, 结构化可观测, 错误显式返回 (复用 bridge.doctor)."""
         try:
-            from bridge.doctor import render_text, run_checks, summarize
+            from bridge.doctor import render_text, run_checks, save_snapshot, summarize
             results = await run_checks()
             summary = summarize(results)
             report = render_text(results, summary)
-            # 错误显式返回: 有失败项时附修复提示
-            if summary["failed"]:
+            # 错误显式返回: 有失败项时附修复提示 + 快照落盘
+            if summary["failed"] or summary["warn"]:
+                snap = save_snapshot(results, summary)
                 report += "\n\n── 修复建议 ──"
                 report += "\n  1. Config/Downloader 失败 → 检查插件配置与依赖"
                 report += "\n  2. Chromium 警告 → 发送 parse_install_chromium"
                 report += "\n  3. Network 失败 → 检查代理/网络"
                 report += "\n  4. 其余失败 → 查看上方 error 详情"
+                if snap:
+                    report += f"\n\n快照已保存: {snap}"
             yield event.plain_result(report)
         except Exception as e:
             yield event.plain_result(f"doctor 执行失败: {e}")
@@ -1718,6 +1721,7 @@ filter.command("parse_status")(ParserLitePlugin.cmd_status)
 filter.command("parse_enable")(ParserLitePlugin.cmd_enable)
 filter.command("parse_disable")(ParserLitePlugin.cmd_disable)
 filter.command("parse_doctor")(ParserLitePlugin.cmd_doctor)
+filter.command("parser_doctor")(ParserLitePlugin.cmd_doctor)  # 别名 (用户习惯 /parser_doctor)
 filter.command("parse_install_chromium")(ParserLitePlugin.cmd_install_chromium)
 filter.command("cmd_bm")(ParserLitePlugin.cmd_bm)
 filter.command("cmd_blogin")(ParserLitePlugin.cmd_blogin)
