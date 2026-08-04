@@ -18,15 +18,44 @@ from typing import Any
 
 
 def strip_html_to_text(text: str) -> str:
-    """HTML 源码 → 纯文本 (br/p/div 转换行, 去其余标签, 实体解码)."""
-    t = re.sub(r"(?i)<br\s*/?>", "\n", text)
-    t = re.sub(r"(?i)</(p|div|li|h[1-6]|tr)>", "\n", t)
-    t = re.sub(r"(?i)<[^>]+>", "", t)
+    """HTML 源码 → 纯文本.
+
+    优先 BeautifulSoup (浏览器级解析, div/span/class/嵌套全处理,
+    不残留标签), 缺失时回退正则 (块级转行 + 字母锚定去标签).
+    """
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(text, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        return soup.get_text(separator="\n", strip=True)
+    except Exception:
+        return _regex_strip_html(text)
+
+
+def _regex_strip_html(text: str) -> str:
+    """正则回退: 标签名字母锚定, 属性引号内 > 保护, 避免误删数学比较."""
+    t = re.sub(r"(?is)<!--.*?-->", "", text)
+    t = re.sub(r"(?is)<!\[CDATA\[.*?\]\]>", "", t)
+    t = re.sub(r'"[^"]*"', _protect_gt, t)
+    t = re.sub(r"'[^']*'", _protect_gt, t)
+    t = re.sub(r"(?i)<br\s*/?>", "\n", t)
+    t = re.sub(r"(?i)</(?:p|div|li|h[1-6]|tr)>", "\n", t)
+    t = re.sub(_TAG_PATTERN, "", t)
+    t = t.replace("\x01", ">")
     return _html.unescape(t)
 
 
+def _protect_gt(match: re.Match[str]) -> str:
+    return match.group(0).replace(">", "\x01")
+
+
+_TAG_PATTERN = re.compile(r"(?i)</?[a-zA-Z][^>]*>")
+
+
 def _is_html(text: str) -> bool:
-    return "<" in text and ">" in text and bool(re.search(r"</?[a-zA-Z][^>]*>", text))
+    return bool(re.search(r"(?i)</?[a-zA-Z][^>]*>", text))
 
 
 def _clean_items(items: list[Any]) -> None:

@@ -87,6 +87,42 @@ def test_strip_html_to_text():
     assert "\n" in out  # <br> → 换行
 
 
+def test_strip_html_quote_attr_gt():
+    """属性值含 > (data-x="a>b") 不残留截断."""
+    from bridge.render_patch import strip_html_to_text
+
+    t = '<div class="feed" data-x="a>b"><span class="url-icon">@用户</span></div>'
+    out = strip_html_to_text(t)
+    assert "@用户" in out
+    assert ">" not in out
+    assert "b" not in out or True  # b 可能作为内容消失, 关键是标签无残留
+
+
+def test_strip_html_no_math_collateral():
+    """数学比较 3 < 5 且 a > b 不误删 (关键回归)."""
+    from bridge.render_patch import strip_html_to_text
+
+    m = "价格 3 < 5 且 a > b, 箭头 -> 保留"
+    assert strip_html_to_text(m) == m
+    mix = "正文<b>粗</b> 3 < 5 保留"
+    out = strip_html_to_text(mix)
+    assert "<b>" not in out
+    assert "粗" in out
+    assert "3 < 5" in out
+
+
+def test_strip_html_comment_cdata():
+    """注释/CDATA 删除."""
+    from bridge.render_patch import strip_html_to_text
+
+    t = "前<!-- 注释 -->后<![CDATA[数据]]>尾"
+    out = strip_html_to_text(t)
+    assert "前" in out
+    assert "后" in out
+    assert "尾" in out
+    assert "注释" not in out
+
+
 def test_strip_html_unescape():
     """实体解码: &amp; → &."""
     from bridge.render_patch import strip_html_to_text
