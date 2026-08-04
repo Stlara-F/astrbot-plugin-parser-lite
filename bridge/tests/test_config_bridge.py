@@ -82,3 +82,41 @@ def test_bridge_fields_dynamic_source():
     src = (_ROOT / "main.py").read_text("utf-8")
     assert "BaseParser.get_all_subclass()" in src
     assert '"path": "parsers.items.proxied"' in src
+
+
+def test_object_fields_have_items():
+    """AstrBot 兼容: object 类型配置必须含 items (否则 _parse_schema KeyError: 'items').
+
+    回归保护: 实机曾报 'items' KeyError (push/delay_send/arbiter/cookie_health 缺 items).
+    """
+    src = (_ROOT / "main.py").read_text("utf-8")
+
+    # 静态检查 _BRIDGE_FIELDS: 每个 object 类型条目必须有 "items" 或 "items_type"
+    start = src.find("_BRIDGE_FIELDS: list[dict] = [")
+    end = src.find('"""AstrBot', start)
+    block = src[start:end]
+
+    # 按条目切分
+    entries = []
+    depth = 0
+    i = block.find("{")
+    while i != -1:
+        j = i
+        depth = 0
+        while j < len(block):
+            c = block[j]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    entries.append(block[i:j + 1])
+                    break
+            j += 1
+        i = block.find("{", j + 1)
+
+    objects = [e for e in entries if '"type": "object"' in e]
+    assert objects, "应有 object 类型配置"
+    for e in objects:
+        assert '"items"' in e or '"items_type"' in e, \
+            f"object 配置缺 items: {e[:80]}"

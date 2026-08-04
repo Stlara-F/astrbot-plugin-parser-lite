@@ -83,6 +83,11 @@ def main() -> int:
         if parsers_items and parsers_items[0] != "cookies":
             errors.append(f"FAIL: parsers.items 首项应为 cookies, 实际 {parsers_items}")
 
+        # 5. AstrBot 兼容性: object 类型必须含 items (否则 _parse_schema KeyError)
+        for k, v in schema.items():
+            if isinstance(v, dict) and v.get("type") == "object" and "items" not in v:
+                errors.append(f"FAIL: object 类型配置 {k} 缺 items (AstrBot 解析会 KeyError)")
+
     if errors:
         print("\n".join(errors))
         return 1

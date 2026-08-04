@@ -237,6 +237,7 @@ _BRIDGE_FIELDS: list[dict] = [
 {
         "path": "push",
         "type": "object",
+        "items": {},
         "desc": "B站UP订阅推送",
         "default": {},
         "hint": '{"enabled":true,"interval_sec":300,"subscriptions":{"UID":["群号1","群号2"]}} — 轮询UP动态/直播, 新动态推送到群',
@@ -244,6 +245,7 @@ _BRIDGE_FIELDS: list[dict] = [
 {
         "path": "delay_send",
         "type": "object",
+        "items": {},
         "desc": "延迟发送(表情触发)",
         "default": {},
         "hint": '{"enabled":true,"threshold_mb":20,"timeout_sec":300,"emoji_ids":["128077"]} — 大视频先发提示, 回应表情后发送',
@@ -251,6 +253,7 @@ _BRIDGE_FIELDS: list[dict] = [
 {
         "path": "arbiter",
         "type": "object",
+        "items": {},
         "desc": "多Bot表情仲裁",
         "default": {},
         "hint": '{"enabled":true,"emoji":"👍","window_sec":1.5} — 群内多解析机器人时开启, 解析前发送竞争表情, 检测到其他bot回应则放弃',
@@ -258,6 +261,7 @@ _BRIDGE_FIELDS: list[dict] = [
 {
         "path": "cookie_health",
         "type": "object",
+        "items": {},
         "desc": "Cookie健康检查",
         "default": {},
         "hint": '{"enabled":true,"interval_sec":3600} — 定期验证B站/知乎cookie, 失效时通知',
@@ -476,6 +480,9 @@ def _inject_dynamic_options_static():
             entry = {"type": bf["type"], "description": bf["desc"]}
             dv = bf.get("default")
             entry["default"] = dv() if callable(dv) else (dv if dv is not None else [])
+            # AstrBot _parse_schema: object 类型必须含 items (否则 KeyError: 'items')
+            if bf["type"] == "object":
+                entry["items"] = {}
             if "items_type" in bf:
                 entry["items"] = {"type": bf["items_type"]}
             if "hint" in bf:
