@@ -53,8 +53,13 @@ class CommentItem(Struct):
 
     @property
     def content(self) -> list[ContentItem]:
+        # 小黑盒评论 text 可能含 HTML (<a>/<br>) — 正确解析为纯文本
+        from bs4 import BeautifulSoup
+
+        plain = BeautifulSoup(self.text, "html.parser").get_text(
+            separator="\n", strip=True)
         content = replace_placeholder_to_sticker(
-            self.text, HEYBOX_PATTERN, "heybox", size_resolver
+            plain, HEYBOX_PATTERN, "heybox", size_resolver
         )
         for img in self.imgs:
             content.append(Creator.image(url=img.url + "\\"))
@@ -119,7 +124,10 @@ class Link(Struct):
                 elif part["type"] == "img":
                     content.append(Creator.image(url=part["url"] + "\\"))
         except (json.JSONDecodeError, TypeError):
-            content.append(self.text)
+            from bs4 import BeautifulSoup
+
+            content.append(BeautifulSoup(self.text, "html.parser").get_text(
+                separator="\n", strip=True))
         if self.has_video and self.video_url and self.video_thumb:
             content.append(
                 Creator.video(url_or_task=self.video_url, cover_url=self.video_thumb)

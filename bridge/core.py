@@ -86,11 +86,32 @@ def _read_proxy_config() -> str:
 
 _last_proxy: str | None = None
 
+
+def _client_closed(client) -> bool:
+    """检测 DOWNLOADER 客户端是否已关闭 (插件重载/terminate 后残留).
+
+    httpx: is_closed; curl_cffi: 内部 _curl 为 None (未初始化/已关闭).
+    """
+    for attr in ("_httpx", "_curl"):
+        s = getattr(client, attr, None)
+        if s is None:
+            return True
+        if getattr(s, "is_closed", False):
+            return True
+        if getattr(s, "_curl", None) is None and hasattr(s, "_curl"):
+            return True
+    return False
+
+
 def _apply_downloader_proxy(proxy_url: str):
-    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端"""
+    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端.
+
+    proxy 未变但 client 已关闭 (插件更新重载后) → 强制重建.
+    """
     global _last_proxy
     proxy_url = _resolve_proxy_url(proxy_url)
-    if proxy_url == (_last_proxy or ""):
+    client = DOWNLOADER.client
+    if proxy_url == (_last_proxy or "") and not _client_closed(client):
         return
     _last_proxy = proxy_url
     from curl_cffi import AsyncSession as CurlSession
