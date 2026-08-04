@@ -154,24 +154,23 @@ def _get_sendable_types() -> list[str]:
 _get_sendable_types  # 懒求值函数, 在 _BRIDGE_FIELDS 中使用 lambda 调用
 
 # bridge 语义字段: 不在上游 Config 中的 AstrBot 专属配置项, 声明式注入
-# 排序: 使用频率从高到低 (高频解析/发送 → 中频后台 → 低频开关)
+# 排序: 修改频率从高到低 (Cookie/代理 → 平台路由 → 发送 → 阈值 → 开关 → 后台任务)
 _BRIDGE_FIELDS: list[dict] = [
-    # ── 高频: 每次解析/发送都读取 ──
-    {
+{
+        "path": "parsers.items.cookies",
+        "type": "string",
+        "desc": "Cookie映射(JSON)",
+        "default": "{}",
+        "hint": '语法: {"平台名":"key1=val1; key2=val2"}。例: {"bilibili":"SESSDATA=xxx; bili_jct=yyy","zhihu":"z_c0=zzz"}。B站Cookie从浏览器F12→Application→Cookies→bilibili.com 复制。各平台独立，以分号分隔键值对',
+    },
+{
         "path": "plite_http_proxy",
         "type": "string",
         "desc": "HTTP代理",
         "default": "",
         "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。配置后所有解析器请求均通过代理",
     },
-    {
-        "path": "send_strategy",
-        "type": "list",
-        "desc": "发送策略",
-        "default": lambda: _get_sendable_types(),
-        "options": lambda: _get_sendable_types(),
-    },
-    {
+{
         "path": "parsers.items.proxied",
         "type": "list",
         "desc": "走代理的解析器",
@@ -179,93 +178,90 @@ _BRIDGE_FIELDS: list[dict] = [
         "source": lambda: sorted({p.name.lower() for cls in BaseParser.get_all_subclass()
                                   if (p := getattr(cls, "platform", None))}),
     },
-    {
-        "path": "parsers.items.cookies",
-        "type": "string",
-        "desc": "Cookie映射(JSON)",
-        "default": "{}",
-        "hint": '语法: {"平台名":"key1=val1; key2=val2"}。例: {"bilibili":"SESSDATA=xxx; bili_jct=yyy","zhihu":"z_c0=zzz"}。B站Cookie从浏览器F12→Application→Cookies→bilibili.com 复制。各平台独立，以分号分隔键值对',
+{
+        "path": "send_strategy",
+        "type": "list",
+        "desc": "发送策略",
+        "default": lambda: _get_sendable_types(),
+        "options": lambda: _get_sendable_types(),
     },
-    # ── 中频: 每次媒体发送 ──
-    {
+{
         "path": "plite_direct_link",
         "type": "bool",
         "desc": "直链免下载模式",
         "default": False,
         "hint": "开启后视频/图片优先以 URL 直链发送(HEAD+Range探测大小), 不落盘。超限或失败自动回退下载",
     },
-    {
+{
         "path": "plite_send_cover_only",
         "type": "bool",
         "desc": "视频仅发封面",
         "default": False,
         "hint": "开启后视频只发送 ffmpeg 截取的封面图, 不发送视频本体(省流量)",
     },
-    {
+{
         "path": "plite_image_compress_mb",
         "type": "int",
         "desc": "图片压缩阈值(MB)",
         "default": 20,
         "hint": "超过此大小的图片自动压缩后再发送",
     },
-    {
-        "path": "plite_forward_max_nodes",
-        "type": "int",
-        "desc": "合并转发节点上限",
-        "default": 90,
-        "hint": "OneBot 合并转发单条消息最大节点数",
-    },
-    # ── 中频: 每次解析去重/缓存 ──
-    {
+{
         "path": "plite_dedup_ttl",
         "type": "int",
         "desc": "消息去重窗口(秒)",
         "default": 60,
         "hint": "同一消息在窗口内不重复解析",
     },
-    {
+{
         "path": "plite_cache_interval",
         "type": "int",
         "desc": "缓存清理间隔(小时)",
         "default": 24,
         "hint": "定期清理过期缓存文件的时间间隔",
     },
-    {
+{
+        "path": "plite_forward_max_nodes",
+        "type": "int",
+        "desc": "合并转发节点上限",
+        "default": 90,
+        "hint": "OneBot 合并转发单条消息最大节点数",
+    },
+{
         "path": "card_semantic",
         "type": "bool",
         "desc": "卡片语义注入(LLM)",
         "default": True,
         "hint": "将QQ分享卡片转为结构化文本注入消息, 供AI助手理解",
     },
-    # ── 低频: 后台任务 / 特殊功能开关 ──
-    {
+{
         "path": "push",
         "type": "object",
         "desc": "B站UP订阅推送",
         "default": {},
         "hint": '{"enabled":true,"interval_sec":300,"subscriptions":{"UID":["群号1","群号2"]}} — 轮询UP动态/直播, 新动态推送到群',
     },
-    {
+{
         "path": "delay_send",
         "type": "object",
         "desc": "延迟发送(表情触发)",
         "default": {},
         "hint": '{"enabled":true,"threshold_mb":20,"timeout_sec":300,"emoji_ids":["128077"]} — 大视频先发提示, 回应表情后发送',
     },
-    {
+{
         "path": "arbiter",
         "type": "object",
         "desc": "多Bot表情仲裁",
         "default": {},
         "hint": '{"enabled":true,"emoji":"👍","window_sec":1.5} — 群内多解析机器人时开启, 解析前发送竞争表情, 检测到其他bot回应则放弃',
     },
-    {
+{
         "path": "cookie_health",
         "type": "object",
         "desc": "Cookie健康检查",
         "default": {},
         "hint": '{"enabled":true,"interval_sec":3600} — 定期验证B站/知乎cookie, 失效时通知',
-    },
+    }
 ]
 """AstrBot 专属字段声明: path=JSON路径, source=动态选项生成器(可选), default/hint/desc=静态元数据"""
 

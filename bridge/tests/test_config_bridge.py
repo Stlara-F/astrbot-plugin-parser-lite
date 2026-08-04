@@ -71,9 +71,9 @@ def test_bridge_fields_structure():
     # 无重复
     assert len(paths) == len(set(paths)), "存在重复配置路径"
 
-    # 使用频率排序: 高频在前
-    assert paths[0] == "plite_http_proxy"
-    assert paths[1] == "send_strategy"
+    # 修改频率排序: 高频 (Cookie/代理) 在前
+    assert paths[0] == "parsers.items.cookies"
+    assert paths[1] == "plite_http_proxy"
     assert paths[-1] in ("arbiter", "cookie_health")
 
 

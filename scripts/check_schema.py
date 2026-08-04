@@ -19,8 +19,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# 使用频率分组 (用于断言排序)
-HIGH = {"plite_http_proxy", "send_strategy", "parsers.items.proxied", "parsers.items.cookies"}
+# 修改频率分组 (用于断言排序: 高→低)
+HIGH = {"parsers.items.cookies", "plite_http_proxy", "parsers.items.proxied", "send_strategy"}
 LOW = {"push", "delay_send", "arbiter", "cookie_health"}
 
 
@@ -47,11 +47,11 @@ def main() -> int:
         errors.append(f"FAIL: _BRIDGE_FIELDS 重复路径: "
                       f"{[p for p in paths if paths.count(p) > 1]}")
 
-    # 2. 使用频率排序: 高频在前
-    if paths and paths[0] != "plite_http_proxy":
-        errors.append(f"FAIL: 首个配置应为 plite_http_proxy, 实际 {paths[0]}")
-    if paths and paths[1] != "send_strategy":
-        errors.append(f"FAIL: 第二个配置应为 send_strategy, 实际 {paths[1]}")
+    # 2. 修改频率排序: 高频 (Cookie/代理) 在前
+    if paths and paths[0] != "parsers.items.cookies":
+        errors.append(f"FAIL: 首个配置应为 parsers.items.cookies (最高修改频率), 实际 {paths[0]}")
+    if paths and paths[1] != "plite_http_proxy":
+        errors.append(f"FAIL: 第二个配置应为 plite_http_proxy, 实际 {paths[1]}")
     # 低频应在最后
     last_low = [i for i, p in enumerate(paths) if p in LOW]
     first_high_end = max([i for i, p in enumerate(paths) if p in HIGH] or [-1])
@@ -75,13 +75,13 @@ def main() -> int:
         if present != top_bridge:
             errors.append("FAIL: schema 顶层缺失 bridge 字段 "
                           f"(缺: {set(top_bridge) - set(present)})")
-        # 相对顺序: 高频在前
+        # 相对顺序: 顶层首个 bridge 字段应为 plite_http_proxy (最高修改频率的顶层字段)
         if present and present[0] != "plite_http_proxy":
-            errors.append(f"FAIL: schema 首个配置应为 plite_http_proxy, 实际 {present[0]}")
-        # 嵌套: parsers.items 顺序
+            errors.append(f"FAIL: schema 顶层首个应为 plite_http_proxy, 实际 {present[0]}")
+        # 嵌套: parsers.items 顺序 (Cookie 修改频率最高, 应在前)
         parsers_items = list((schema.get("parsers", {}).get("items") or {}).keys())
-        if parsers_items and parsers_items[0] != "proxied":
-            errors.append(f"FAIL: parsers.items 首项应为 proxied, 实际 {parsers_items}")
+        if parsers_items and parsers_items[0] != "cookies":
+            errors.append(f"FAIL: parsers.items 首项应为 cookies, 实际 {parsers_items}")
 
     if errors:
         print("\n".join(errors))
