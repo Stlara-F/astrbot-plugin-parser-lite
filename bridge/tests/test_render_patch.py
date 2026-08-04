@@ -194,8 +194,17 @@ def test_template_uses_pl_esc_and_pl_str():
     )
     text = tmpl.read_text(encoding="utf-8")
     assert "cont | pl_esc" in text
+    assert "cont.desc|pl_esc" in text
     assert "map('pl_str')|join" in text
-    assert "cont | e" not in text.replace("result.title | e", "")
+    # ~ 拼接处不得使用 |e (Markup 转义字面量)
+    for banned in ("cont.desc|e", "(alt|e)", "(cont.url|e)", "(cont.text|e)"):
+        assert banned not in text, f"模板残留 Markup 拼接: {banned}"
+    # 宏调用点 | safe (嵌套宏 Markup 断裂防护)
+    assert "render_content_items(comment.content) | safe" in text
+    assert "render_content_items(reply.content) | safe" in text
+    assert "render_content_items(result.content) | safe" in text
+    assert "render_comments(comments) | safe" in text
+    assert "render_content(result.repost, True) | safe" in text
 
 
 def test_render_html_env_filters_registered():
