@@ -4,8 +4,9 @@ import re
 from typing import Any
 
 from httpx import AsyncClient
-from nonebot import logger
 import ujson
+
+from ...utils.log import logger
 
 if __name__ == "__main__":
     COMMON_TIMEOUT = 5  # pyright: ignore[reportGeneralTypeIssues]

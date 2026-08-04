@@ -1,47 +1,44 @@
-from nonebot import logger, require
-from nonebot.plugin import PluginMetadata, inherit_supported_adapters
+"""Standalone social-media parser package.
 
-require("nonebot_plugin_alconna")
-require("nonebot_plugin_uninfo")
-require("nonebot_plugin_htmlrender")
-require("nonebot_plugin_apscheduler")
-require("nonebot_plugin_localstore")
+The root module deliberately avoids importing every platform parser. Import a
+platform module directly, or use ``Parser`` for lazy discovery.
+"""
 
-from nonebot_plugin_apscheduler import scheduler
+from importlib import import_module
+from typing import Any
 
-from .config import Config
-from .matchers import clear_result_cache
-from .utils.browser import BrowserManager
-from .utils.cache import CacheManager
+__version__ = "1.3.2"
 
-__plugin_meta__ = PluginMetadata(
-    name="链接分享解析 Lite 版",
-    description="通用媒体链接分享解析",
-    usage="发送支持平台的(BV号/链接/小程序/卡片)即可",
-    type="application",
-    homepage="https://github.com/sokoko-org/nonebot-plugin-parser-lite",
-    config=Config,
-    supported_adapters=inherit_supported_adapters(
-        "nonebot_plugin_alconna", "nonebot_plugin_uninfo"
-    ),
-    extra={
-        "author": "molanp",
-        "homepage": "https://github.com/sokoko-org/nonebot-plugin-parser-lite",
-        "version": "1.3.2",
-        "plugin_type": "NORMAL",
-    },
-)
+__all__ = [
+    "Config",
+    "MatchResult",
+    "ParseStep",
+    "Parser",
+    "clear_result_cache",
+    "configure",
+    "match",
+    "parse",
+    "shutdown_runtime",
+]
+
+_EXPORTS = {
+    "Config": (".config", "Config"),
+    "configure": (".config", "configure"),
+    "MatchResult": (".pipeline", "MatchResult"),
+    "ParseStep": (".pipeline", "ParseStep"),
+    "Parser": (".pipeline", "Parser"),
+    "clear_result_cache": (".pipeline", "clear_result_cache"),
+    "match": (".pipeline", "match"),
+    "parse": (".pipeline", "parse"),
+    "shutdown_runtime": (".pipeline", "shutdown_runtime"),
+}
 
 
-@scheduler.scheduled_job("interval", hours=2, id="parser-clean-local-cache")
-async def clean_plugin_cache() -> None:
-    """周期性清理过期缓存文件，并重置解析状态。"""
-
+def __getattr__(name: str) -> Any:
     try:
-        await CacheManager.clean_expired()
-    except Exception as e:
-        logger.exception(f"清理缓存文件时发生异常: {e!r}")
-
-    clear_result_cache()
-    await BrowserManager.clear_cache()
-    await BrowserManager.reconnect()
+        module_name, attribute = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(name) from exc
+    value = getattr(import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value
