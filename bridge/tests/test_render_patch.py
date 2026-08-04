@@ -140,33 +140,23 @@ def test_is_html_guard():
     assert _is_html("普通文本") is False
 
 
-def test_clean_result_html_inplace():
-    """就地清洗 content/comments, 非 HTML 元素不动, 幂等."""
+def test_clean_result_html_lyric_only():
+    """渲染入口仅处理 lyric (content 不重复清洗 — 解析器层已修复)."""
     from bridge.render_patch import clean_result_html
 
-    class FakeComment:
-        content: list = None  # type: ignore[assignment]
-        replies: list = None  # type: ignore[assignment]
-
     class FakeResult:
+        extra: dict = None  # type: ignore[assignment]
         content: list = None  # type: ignore[assignment]
         comments: list = None  # type: ignore[assignment]
         repost = None
 
-    c = FakeComment()
-    c.content = ["<p>评论<b>加粗</b>内容</p>", "纯文本评论"]
-    c.replies = []
     r = FakeResult()
-    r.content = ["<p>正文<img src='x'></p>", "第二段", 123]
-    r.comments = [c]
+    r.extra = {"lyric": [{"t": 0, "c": [{"tx": "歌词A"}]}]}
+    r.content = ["<p>HTML</p>"]  # 解析器已修复的场景 — 不再被渲染层改写
+    r.comments = []
     clean_result_html(r)
-    assert "<p" not in r.content[0]
-    assert "正文" in r.content[0]
-    assert r.content[1] == "第二段"  # 非 HTML 不动
-    assert r.content[2] == 123  # 非字符串不动
-    assert "加粗" in r.comments[0].content[0]
-    clean_result_html(r)  # 幂等
-    assert "<" not in r.content[0]
+    assert r.extra["lyric"] == "歌词A"
+    assert r.content[0] == "<p>HTML</p>"  # content 原样 (不堆补丁)
 
 
 def test_render_image_wrapped_for_html_clean():

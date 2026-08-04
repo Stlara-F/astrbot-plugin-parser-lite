@@ -387,26 +387,6 @@ class Creator:
         )
 
     @staticmethod
-    def _clean_html_in_items(items: list[ContentItem]) -> list[ContentItem]:
-        """通用管道清洗: 评论/正文中残留的 HTML 字符串 → 纯文本.
-
-        根因修复: 各平台 API 的 text/message 可能含 HTML (<a>/<br>/<span class>),
-        在数据入口 (Creator) 统一用 BeautifulSoup 正确解析, 覆盖所有解析器.
-        """
-        from bs4 import BeautifulSoup
-
-        out: list[ContentItem] = []
-        for item in items:
-            if isinstance(item, str) and "<" in item and ">" in item:
-                soup = BeautifulSoup(item, "html.parser")
-                for tag in soup(["script", "style"]):
-                    tag.decompose()
-                out.append(soup.get_text(separator="\n", strip=True))
-            else:
-                out.append(item)
-        return out
-
-    @staticmethod
     def comment(
         author: Author,
         content: list[ContentItem],
@@ -432,7 +412,7 @@ class Creator:
             replies = []
         return Comment(
             author=author,
-            content=Creator._clean_html_in_items(content),
+            content=content,
             timestamp=timestamp,
             stats=stats or Stats(),
             replies=replies,

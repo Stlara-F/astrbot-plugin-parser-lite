@@ -67,29 +67,16 @@ def lyric_to_text(lyric) -> str:
 
 
 def clean_result_html(result: Any) -> None:
-    """就地清洗 ParseResult 的 content / comments / replies / repost. 幂等."""
+    """渲染入口防御: 仅处理歌词 dict→文本 (多平台 lyric 字段格式差异).
+
+    注: content/comments 的 HTML 已在解析器层修复 (微博 BS4 / 上游 API 纯文本),
+    此处不再重复清洗 (避免补丁堆叠).
+    """
     if result is None:
         return
     extra = getattr(result, "extra", None)
     if isinstance(extra, dict) and "lyric" in extra:
         extra["lyric"] = lyric_to_text(extra["lyric"])
-    if getattr(result, "content", None):
-        try:
-            _clean_items(result.content)
-        except Exception:
-            pass
-    for comment in getattr(result, "comments", None) or []:
-        if getattr(comment, "content", None):
-            try:
-                _clean_items(comment.content)
-            except Exception:
-                pass
-        for reply in getattr(comment, "replies", None) or []:
-            if getattr(reply, "content", None):
-                try:
-                    _clean_items(reply.content)
-                except Exception:
-                    pass
     repost = getattr(result, "repost", None)
     if repost is not None:
         clean_result_html(repost)

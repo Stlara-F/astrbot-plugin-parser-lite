@@ -312,11 +312,8 @@ class BaseParser:
         **kwargs: Unpack[ParseResultKwargs],
     ) -> ParseResult:
         """创建解析结果"""
-        from ..creator import Creator
-
         return ParseResult(
-            platform=cls.platform, author=author, url=url,
-            content=Creator._clean_html_in_items(content), **kwargs,
+            platform=cls.platform, author=author, url=url, content=content, **kwargs
         )
 
     @staticmethod
