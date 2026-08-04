@@ -79,14 +79,12 @@ _CONF_SCHEMA_PATH = Path(__file__).parent / "_conf_schema.json"
 from bridge.core import (  # noqa: F401
     _PROXY_PROTOCOLS,
     _apply_downloader_proxy,
-    _extract_config_value,
     _get_cookies_for,
     _is_parser_enabled,
     _label,
     _load_parsers_config,
     _read_proxy_config,
     _resolve_proxy_url,
-    _resolve_raw_addr,
     _try_load,
     _use_proxy_for,
 )
