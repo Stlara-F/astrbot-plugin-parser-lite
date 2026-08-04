@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 import sys
 
@@ -173,6 +174,45 @@ def test_render_image_wrapped_for_html_clean():
     import nonebot_plugin_parser_lite.render as render
 
     assert getattr(render.RENDERER.render_image, "_pl_html_clean", False)
+
+
+def test_pl_esc_returns_plain_str():
+    """pl_esc 返回普通 str (非 Markup) — ~ 拼接不转义字面量."""
+    from bridge.render_patch import pl_esc
+
+    r = pl_esc("文本<b>粗</b>")
+    assert type(r).__name__ == "str"
+    assert r == "文本&lt;b&gt;粗&lt;/b&gt;"
+
+
+def test_pl_str_returns_plain_str():
+    """pl_str 把 Markup 转普通 str — join 前 map 修复 Markup.join 转义."""
+    from markupsafe import Markup
+
+    from bridge.render_patch import pl_str
+
+    m = Markup('<div class="x">hi</div>')
+    r = pl_str(m)
+    assert type(r).__name__ == "str"
+    assert r == '<div class="x">hi</div>'
+
+
+def test_template_uses_pl_esc_and_pl_str():
+    """模板已使用 pl_esc/pl_str (回归保护: 防退回 |e 与裸 join)."""
+    tmpl = Path(os.path.dirname(os.path.abspath(__file__))).parent.parent / (
+        "src/nonebot_plugin_parser_lite/render/templates/macros.jinja"
+    )
+    text = tmpl.read_text(encoding="utf-8")
+    assert "cont | pl_esc" in text
+    assert "map('pl_str')|join" in text
+    assert "cont | e" not in text.replace("result.title | e", "")
+
+
+def test_render_html_env_filters_registered():
+    """render_html 已包装 (注入 pl_esc/pl_str filter)."""
+    import nonebot_plugin_parser_lite.render as render
+
+    assert getattr(render.RENDERER.render_html, "_pl_env_filters", False)
 
 
 async def _close_session_like():

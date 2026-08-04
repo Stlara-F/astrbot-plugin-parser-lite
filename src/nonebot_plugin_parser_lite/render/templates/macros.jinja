@@ -219,7 +219,7 @@
             {# 2. 文本：遇到非图片前先 flush，避免跨段 #}
         {% elif cont is string %}
             {% set _ = flush_images() %}
-            {% set text = cont | e %}
+            {% set text = cont | pl_esc %}
             {# 第一段或紧邻贴纸时，直接作为内联 span；否则仍作为段落 span，但交给外层包 <p> #}
             {% if not state.first_text_seen or prev_is_sticker or next_is_sticker %}
                 {% set _ = html_parts.append('<span class="whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">' ~ text ~ '</span>') %}
@@ -291,7 +291,7 @@
     {% endif %}
 {% endfor %}
 {% set _ = flush_images() %}
-{{ html_parts|join("") | safe }}
+{{ html_parts|map('pl_str')|join("") | safe }}
 {% endmacro %}
 {# 3. 内容+转发宏（Tailwind 样式 + is_repost） #}
 {% macro render_content(result, is_repost=False) %}
