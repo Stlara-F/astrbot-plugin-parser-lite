@@ -42,12 +42,10 @@ from astrbot.api.star import Context, Star
 
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
 from bridge.core import (
-    FEATURE_TABLE,
     BridgeConfig,
     CustomParser,
     LazyManager,
     ParserLite,
-    _build_feature_table,
     _detect_missing_libs,
     _load_disabled_groups,
     _save_disabled_groups,
@@ -111,7 +109,6 @@ from nonebot_plugin_parser_lite.data import (
     StickerContent,
     VideoContent,
 )
-from nonebot_plugin_parser_lite.download import DOWNLOADER
 from nonebot_plugin_parser_lite.parsers.base import BaseParser
 from nonebot_plugin_parser_lite.utils.cache import CacheManager
 from nonebot_plugin_parser_lite.utils.common import LimitedSizeDict
@@ -1561,150 +1558,22 @@ class ParserLitePlugin(Star):
         yield event.plain_result("本群解析已关闭")
 
     async def cmd_doctor(self, event: AstrMessageEvent):
-        """战未来诊断: 全动态扫描, 0 hardcode, 含错误行号"""
-        import traceback as _tb
-        lines = ["=== ParserLite Doctor ===", ""]
-        todo: list[str] = []
-        errlog: list[str] = []  # 汇总所有 FAIL 的堆栈摘要
-
-        def _fail(label: str, exc: Exception):
-            tb_lines = _tb.format_exception(exc)
-            last = "".join(tb_lines[-3:]) if len(tb_lines) >= 3 else "".join(tb_lines)
-            last = last.strip()[-300:]
-            lines.append(f"[FAIL] {label}: {exc}")
-            errlog.append(f"── {label} ──\n{last}")
-            todo.append(label)
-
-        # ── 1. 环境 ──
+        """自检: 全动态扫描, 结构化可观测, 错误显式返回 (复用 bridge.doctor)."""
         try:
-            cfg = get_config()
-            if cfg is not None:
-                lines.append(f"[OK] Config: {len(cfg.model_fields)} fields, cache={cfg.cache_dir}")
-            else:
-                lines.append("[WARN] Config: plugin not yet initialized (first load)")
+            from bridge.doctor import render_text, run_checks, summarize
+            results = await run_checks()
+            summary = summarize(results)
+            report = render_text(results, summary)
+            # 错误显式返回: 有失败项时附修复提示
+            if summary["failed"]:
+                report += "\n\n── 修复建议 ──"
+                report += "\n  1. Config/Downloader 失败 → 检查插件配置与依赖"
+                report += "\n  2. Chromium 警告 → 发送 parse_install_chromium"
+                report += "\n  3. Network 失败 → 检查代理/网络"
+                report += "\n  4. 其余失败 → 查看上方 error 详情"
+            yield event.plain_result(report)
         except Exception as e:
-            _fail("Config", e)
-        try:
-            avail = await FFmpeg.is_available()
-            lines.append(f"[OK] FFmpeg: {'yes' if avail else 'no (apt install ffmpeg)'}")
-        except Exception as e:
-            _fail("FFmpeg", e)
-        try:
-            if hasattr(DOWNLOADER, "ensure_client"):
-                DOWNLOADER.ensure_client()
-                lines.append("[OK] Downloader: ready")
-            else:
-                lines.append("[OK] Downloader: loaded (no ensure_client)")
-        except Exception as e:
-            _fail("Downloader", e)
-        try:
-            from nonebot_plugin_parser_lite.utils.browser import BrowserManager
-            await BrowserManager.ensure_started()
-            lines.append("[OK] Chromium: ready")
-        except Exception as e:
-            s = str(e)[:100]
-            lines.append(f"[WARN] Chromium: {s}")
-            todo.append("发送 parse_install_chromium 安装浏览器")
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5) as c:
-                r = await c.get("https://httpbin.org/ip")
-            lines.append(f"[OK] Network: reachable (HTTP {r.status_code})")
-        except Exception as e:
-            lines.append(f"[WARN] Network: {str(e)[:100]}")
-            todo.append("检查网络/代理配置")
-
-        # ── 2. 模块 ──
-        mod_count = len([m for m in sys.modules if "nonebot_plugin_parser_lite" in m])
-        lines.append(f"[OK] Modules: {mod_count} loaded")
-
-        # ── 3. 解析器 ──
-        parsers = list(BaseParser.get_all_subclass())
-        broken = []
-        for cls in parsers:
-            try:
-                cls()  # test instantiation
-                if not getattr(cls, "platform", None):
-                    broken.append(f"{cls.__name__}: missing platform")
-            except Exception as e:
-                broken.append(f"{cls.__name__}: {e}")
-                _fail(f"Parser {cls.__name__}", e)
-        lines.append(f"[OK] Parsers: {len(parsers)} total, {len(parsers)-len(broken)} ok" + (f", {len(broken)} broken" if broken else ""))
-
-        # ── 4. 平台覆盖 ──
-        from nonebot_plugin_parser_lite.constants import PlatformEnum
-        enum_set = {p.name.lower() for p in PlatformEnum}
-        parser_set = set()
-        for cls in parsers:
-            p = getattr(cls, "platform", None)
-            if p: parser_set.add(p.name.lower())
-        missing = enum_set - parser_set
-        lines.append(f"[OK] Coverage: {len(parser_set)}/{len(enum_set)} platforms")
-        if missing:
-            lines.append(f"[INFO] Missing: {', '.join(sorted(missing))}")
-
-        # ── 5. URL 测试 ──
-        _build_feature_table()
-        lines.append(f"[OK] Route table: {len(FEATURE_TABLE)} keywords")
-        try:
-            from test.test_parsers import _FALLBACK_URLS as _tufb
-        except Exception as e:
-            _tufb = []; _fail("test_parsers import", e)
-        test_urls = list(_tufb)
-        source = BridgeConfig._source or {}
-        tu = source.get("test_urls", [])
-        if isinstance(tu, str):
-            try: tu = json.loads(tu)
-            except Exception: tu = []
-        if tu and isinstance(tu, list): test_urls = [u for u in tu if isinstance(u, str) and u.strip()]
-        live_count = 0
-        dead_count = 0
-        for url in test_urls[:5]:
-            matched = False
-            for cls in parsers:
-                try:
-                    kw, _ = cls.search_url(url)
-                    if kw:
-                        pn = getattr(getattr(cls, "platform", None), "name", "?")
-                        lines.append(f"  [OK] {pn}: {url[:60]}")
-                        matched = True; live_count += 1; break
-                except Exception:
-                    continue  # 非目标解析器静默跳过
-            if not matched:
-                lines.append(f"  [FAIL] no match: {url[:60]}")
-                dead_count += 1
-        if not live_count:
-            todo.append("在 WebUI test_urls 中添加有效测试链接")
-
-        # ── 6. 注入 ──
-        flag = Path(__file__).parent / ".injected"
-        lines.append(f"[OK] Injected: {'yes' if flag.exists() else 'no (will inject on restart)'}")
-
-        # ── 7. 错误详单 ──
-        if errlog:
-            lines.append(f"\n── 错误详情 ({len(errlog)} 项) ──")
-            for e in errlog:
-                lines.append(e)
-
-        # ── 8. 渲染管线 (曾因 helper.py→nonebot 导入崩溃) ──
-        try:
-            from nonebot_plugin_parser_lite.render import RENDERER
-            lines.append(f"[OK] Render: templates={RENDERER.templates_dir}")
-        except Exception as e:
-            _fail("Render import (helper.py no nonebot guard)", e)
-        try:
-            import importlib.util
-            if importlib.util.find_spec("jinja2") is not None:
-                lines.append("[OK] jinja2: available")
-            else:
-                lines.append("[WARN] jinja2: not installed → card rendering disabled")
-                todo.append("pip install jinja2")
-        except Exception:
-            lines.append("[WARN] jinja2: import check failed")
-        if todo:
-            lines.append(f"\n── 修复建议 ({len(todo)} 项) ──")
-            for i, t in enumerate(todo, 1): lines.append(f"  {i}. {t}")
-        yield event.plain_result("\n".join(lines))
+            yield event.plain_result(f"doctor 执行失败: {e}")
 
     async def cmd_install_chromium(self, event: AstrMessageEvent):
         try:

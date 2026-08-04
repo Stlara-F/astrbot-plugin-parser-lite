@@ -77,6 +77,19 @@ if not args.smoke:
     finally:
         sys.argv = orig_argv
 
+# ── Doctor 自检 (可观测: 结构化结果, 错误显式列出) ──
+print("\n-- doctor --")  # noqa: T201
+t0 = time.time()
+try:
+    from bridge.doctor import render_text, run_checks, summarize
+    _checks = asyncio.run(run_checks())
+    _summary = summarize(_checks)
+    print(render_text(_checks, _summary))  # noqa: T201
+    _status = "PASS" if _summary["failed"] == 0 else "FAIL"
+    results["doctor"] = {"status": _status, "time": time.time() - t0}
+except Exception as e:
+    results["doctor"] = {"status": f"ERROR: {e}", "time": time.time() - t0}
+
 print(f"\n{'=' * 60}")  # noqa: T201
 print("Summary")  # noqa: T201
 print(f"{'=' * 60}")  # noqa: T201
