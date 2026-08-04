@@ -94,7 +94,9 @@ class _LoguruBridge(logging.Handler):
                 )
                 fn(msg)
             else:
-                astrbot_logger.log(lv, msg)
+                # 无 opt() 时回退标准 logging (避免 astrbot_logger.log 递归触发 emit)
+                _std = logging.getLogger("parser-lite.bridge")
+                _std.log(lv, msg)
         except Exception:
             pass
 
@@ -158,10 +160,19 @@ _get_sendable_types  # 懒求值函数, 在 _BRIDGE_FIELDS 中使用 lambda 调�
 _BRIDGE_FIELDS: list[dict] = [
 {
         "path": "parsers.items.cookies",
-        "type": "string",
-        "desc": "Cookie映射(JSON)",
-        "default": "{}",
-        "hint": '语法: {"平台名":"key1=val1; key2=val2"}。例: {"bilibili":"SESSDATA=xxx; bili_jct=yyy","zhihu":"z_c0=zzz"}。B站Cookie从浏览器F12→Application→Cookies→bilibili.com 复制。各平台独立，以分号分隔键值对',
+        "type": "template_list",
+        "desc": "平台Cookie(可增删)",
+        "default": [],
+        "templates": {
+            "default": {
+                "name": "Cookie",
+                "items": {
+                    "platform": {"type": "string", "description": "平台名", "default": ""},
+                    "cookie": {"type": "string", "description": "Cookie值", "default": ""},
+                },
+            },
+        },
+        "hint": "可增删条目: 每平台一条。例: 平台=bilibili, Cookie=SESSDATA=xxx; bili_jct=yyy",
     },
 {
         "path": "plite_http_proxy",
@@ -235,36 +246,64 @@ _BRIDGE_FIELDS: list[dict] = [
         "hint": "将QQ分享卡片转为结构化文本注入消息, 供AI助手理解",
     },
 {
-        "path": "push",
-        "type": "object",
-        "items": {},
-        "desc": "B站UP订阅推送",
-        "default": {},
-        "hint": '{"enabled":true,"interval_sec":300,"subscriptions":{"UID":["群号1","群号2"]}} — 轮询UP动态/直播, 新动态推送到群',
+    "path": "push",
+    "type": "template_list",
+    "desc": "B站UP订阅推送",
+    "default": [],
+    "templates": {
+        "default": {
+            "name": "订阅",
+            "items": {
+                "uid": {"type": "string", "description": "UP主UID", "default": ""},
+                "groups": {"type": "string", "description": "推送群号(逗号分隔)", "default": ""},
+                "enabled": {"type": "bool", "description": "启用", "default": True},
+            },
+        },
     },
+    "hint": "可增删订阅条目: 每个UP主一条, 填UID和推送群号",
+},
 {
-        "path": "delay_send",
-        "type": "object",
-        "items": {},
-        "desc": "延迟发送(表情触发)",
-        "default": {},
-        "hint": '{"enabled":true,"threshold_mb":20,"timeout_sec":300,"emoji_ids":["128077"]} — 大视频先发提示, 回应表情后发送',
+    "path": "push_interval",
+    "type": "int",
+    "desc": "推送轮询间隔(秒)",
+    "default": 300,
+    "hint": "UP动态/直播轮询间隔",
+},
+{
+    "path": "delay_send",
+    "type": "object",
+    "items": {
+        "enabled": {"type": "bool", "description": "启用延迟发送", "default": False},
+        "threshold_mb": {"type": "int", "description": "触发延迟的阈值(MB)", "default": 20},
+        "timeout_sec": {"type": "int", "description": "等待超时(秒)", "default": 300},
+        "emoji_ids": {"type": "list", "description": "触发表情ID", "items": {"type": "string"}, "default": ["128077"]},
     },
+    "desc": "延迟发送(表情触发)",
+    "default": {},
+    "hint": "大视频先发提示, 回应表情后发送",
+},
 {
         "path": "arbiter",
         "type": "object",
-        "items": {},
+        "items": {
+            "enabled": {"type": "bool", "description": "启用多Bot仲裁", "default": False},
+            "emoji": {"type": "string", "description": "竞争表情", "default": "👍"},
+            "window_sec": {"type": "float", "description": "竞争窗口(秒)", "default": 1.5},
+        },
         "desc": "多Bot表情仲裁",
         "default": {},
-        "hint": '{"enabled":true,"emoji":"👍","window_sec":1.5} — 群内多解析机器人时开启, 解析前发送竞争表情, 检测到其他bot回应则放弃',
+        "hint": "群内多解析机器人时开启, 解析前发送竞争表情, 检测到其他bot回应则放弃",
     },
 {
         "path": "cookie_health",
         "type": "object",
-        "items": {},
+        "items": {
+            "enabled": {"type": "bool", "description": "启用Cookie健康检查", "default": False},
+            "interval_sec": {"type": "int", "description": "检查间隔(秒)", "default": 3600},
+        },
         "desc": "Cookie健康检查",
         "default": {},
-        "hint": '{"enabled":true,"interval_sec":3600} — 定期验证B站/知乎cookie, 失效时通知',
+        "hint": "定期验证B站/知乎cookie, 失效时通知",
     }
 ]
 """AstrBot 专属字段声明: path=JSON路径, source=动态选项生成器(可选), default/hint/desc=静态元数据"""
@@ -481,10 +520,15 @@ def _inject_dynamic_options_static():
             dv = bf.get("default")
             entry["default"] = dv() if callable(dv) else (dv if dv is not None else [])
             # AstrBot _parse_schema: object 类型必须含 items (否则 KeyError: 'items')
-            if bf["type"] == "object":
+            if "items" in bf:
+                entry["items"] = bf["items"]
+            elif bf["type"] == "object":
                 entry["items"] = {}
             if "items_type" in bf:
                 entry["items"] = {"type": bf["items_type"]}
+            # template_list 必须透传 templates (可增删列表模板)
+            if "templates" in bf:
+                entry["templates"] = bf["templates"]
             if "hint" in bf:
                 entry["hint"] = bf["hint"]
             if "source" in bf:
@@ -643,16 +687,30 @@ class ParserLitePlugin(Star):
                 self._debouncer = None
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
             self._chromium_task = asyncio.create_task(self._auto_ensure_chromium())
-            # F1: B站 UP 订阅推送 (配置驱动, 默认关闭)
+            # F1: B站 UP 订阅推送 (配置驱动, 默认关闭; push 为可增删 template_list)
             self._pusher = None
             try:
                 from bridge.push import make_pusher
-                _push_cfg = (BridgeConfig._source or {}).get("push", {}) or {}
+                _push_raw = (BridgeConfig._source or {}).get("push", []) or []
                 _base_dir = os.environ.get("PARSER_LITE_BASE_DIR", str(Path.cwd() / "data"))
                 self._pusher = make_pusher(Path(_base_dir) / "parser_lite")
-                _subs = _push_cfg.get("subscriptions", {}) or {}
+                # template_list: [{uid, groups("1,2"), enabled}]
+                _subs: dict[str, list[str]] = {}
+                if isinstance(_push_raw, list):
+                    for entry in _push_raw:
+                        if not isinstance(entry, dict):
+                            continue
+                        if not entry.get("enabled", True):
+                            continue
+                        _uid = str(entry.get("uid", "") or "").strip()
+                        _grp = str(entry.get("groups", "") or "").strip()
+                        if _uid:
+                            _subs[_uid] = [g.strip() for g in _grp.split(",") if g.strip()]
+                elif isinstance(_push_raw, dict):
+                    # 兼容旧格式 {uid: [groups]}
+                    _subs = {str(k): [str(g) for g in v] for k, v in _push_raw.items()}
                 self._pusher.set_subscriptions(_subs)
-                _interval = float(_push_cfg.get("interval_sec", 300) or 300)
+                _interval = float(_bridge_cfg("push_interval", 300) or 300)
 
                 async def _push_send(msg: str, groups: list[str]):
                     for gid in groups:
@@ -662,7 +720,7 @@ class ParserLitePlugin(Star):
                         except Exception as _e:
                             astrbot_logger.warning(f"[ParserLite] 推送失败 {gid}: {_e}")
 
-                if _push_cfg.get("enabled", False) and _subs:
+                if _subs:
                     self._pusher.start(_interval, _push_send)
                     astrbot_logger.info(f"[ParserLite] UP 推送已启动: {len(_subs)} 订阅, 间隔 {_interval}s")
             except Exception as _e:

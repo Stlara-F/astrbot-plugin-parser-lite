@@ -38,9 +38,13 @@ def event_loop():
 
 
 def _run_parse(url: str):
-    from bridge.core import ParserLite
+    from bridge.core import BridgeConfig, ParserLite
     from bridge.fixtures import patch_httpx_send
 
+    # 隔离: 重置共享配置, 避免其他测试污染 (platforms enable=False 等)
+    BridgeConfig._source = {}
+    BridgeConfig._instance = None
+    BridgeConfig._hash = ""
     patch_httpx_send(replay=True)
     os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
     os.environ.setdefault("PARSER_LITE_BASE_DIR", str(_ROOT / ".parser-lite-test"))

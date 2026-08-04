@@ -270,14 +270,30 @@ FEATURE_TABLE: dict[str, str] = {}
 
 # ── Per-parser config helpers ──────────────────────────────────────────────
 def _load_parsers_config() -> dict:
-    try: return (BridgeConfig._source or {}).get("parsers", {})
-    except Exception: return {}
+    """读取 parsers 配置 (兼容嵌套 items: AstrBot 存为 {items: {proxied, cookies}})."""
+    try:
+        p = (BridgeConfig._source or {}).get("parsers", {}) or {}
+        if isinstance(p, dict):
+            # AstrBot schema 路径 parsers.items.X → 配置 {parsers: {items: {...}}}
+            inner = p.get("items", p) if isinstance(p.get("items"), dict) else p
+            if isinstance(inner, dict):
+                return inner
+    except Exception:
+        pass
+    return {}
 
 def _platform_cfg(platform: str) -> dict:
-    """F9: 每平台独立配置 (platforms template_list), 缺失时返回空."""
+    """F9: 每平台独立配置 (platforms template_list: [{platform, enable, use_proxy, cookies}]).
+
+    template_list 值是列表, 按 platform 字段匹配; 兼容旧 dict 格式.
+    """
     try:
-        pfm = (BridgeConfig._source or {}).get("platforms", {}) or {}
-        if isinstance(pfm, dict):
+        pfm = (BridgeConfig._source or {}).get("platforms", []) or []
+        if isinstance(pfm, list):
+            for item in pfm:
+                if isinstance(item, dict) and str(item.get("platform", "")).lower() == platform.lower():
+                    return item
+        elif isinstance(pfm, dict):
             return pfm.get(platform, {}) or {}
     except Exception:
         pass
@@ -311,7 +327,16 @@ def _get_cookies_for(platform: str) -> dict:
         _ck = (_pc.get("cookies", "") or "").strip()
         if _ck:
             return {"Cookie": _ck}
+        # parsers.items.cookies: template_list (可增删) 或 旧 dict/JSON 格式
         raw = _load_parsers_config().get("cookies", "{}")
+        if isinstance(raw, list):
+            # template_list: [{platform, cookie}, ...]
+            for entry in raw:
+                if isinstance(entry, dict) and str(entry.get("platform", "")).lower() == platform.lower():
+                    ck = str(entry.get("cookie", "") or "").strip()
+                    if ck:
+                        return {"Cookie": ck}
+            return {}
         cookies = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, dict) else {})
         ck = cookies.get(platform, "").strip()
         if ck: return {"Cookie": ck}

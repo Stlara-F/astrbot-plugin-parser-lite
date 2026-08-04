@@ -82,14 +82,21 @@ def build_mock_transport():
     return httpx.MockTransport(handler)
 
 
+_ORIGINAL_SEND = None
+
+
 def patch_httpx_send(replay: bool):
-    """monkeypatch httpx.AsyncClient.send — 录制/回放钩子.
+    """monkeypatch httpx.AsyncClient.send — 录制/回放钩子 (幂等).
 
     录制时: 真实请求后落盘; 回放时: 直接返回 fixture.
     """
     import httpx
 
-    original = httpx.AsyncClient.send
+    global _ORIGINAL_SEND
+    # 幂等: 保存原始方法, 避免多次 patch 递归包装
+    if _ORIGINAL_SEND is None or not hasattr(httpx.AsyncClient.send, "_pl_patched"):
+        _ORIGINAL_SEND = httpx.AsyncClient.send
+    original = _ORIGINAL_SEND
     d = _fixture_dir()
 
     async def send(self, request: httpx.Request, *args, **kwargs):
@@ -110,6 +117,7 @@ def patch_httpx_send(replay: bool):
                 pass
         return resp
 
+    send._pl_patched = True  # type: ignore[attr-defined]
     httpx.AsyncClient.send = send  # type: ignore[method-assign]
     return send
 
