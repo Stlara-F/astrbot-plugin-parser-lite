@@ -78,7 +78,7 @@ async def check_downloader() -> tuple[bool, str, bool]:
 
 
 async def check_chromium(timeout: float = 10.0) -> tuple[bool, str, bool]:
-    """Chromium 可用性 (缺失警告, 有超时防 hang)."""
+    """Chromium 可用性 (缺失警告, 有超时防 hang, 缺库时给 apt 修复命令)."""
     from nonebot_plugin_parser_lite.utils.browser import BrowserManager
 
     try:
@@ -87,7 +87,21 @@ async def check_chromium(timeout: float = 10.0) -> tuple[bool, str, bool]:
     except asyncio.TimeoutError:
         return False, f"启动超时 ({timeout}s)", True
     except Exception as e:
-        return False, str(e)[:100], True
+        detail = str(e)[:120]
+        missing = _detect_missing_libs_hint()
+        if missing:
+            detail += f"; 缺失系统库: {missing} → apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0"
+        return False, detail, True
+
+
+def _detect_missing_libs_hint() -> str:
+    """复用 bridge.core._detect_missing_libs 检测缺失库 (无 astrbot 依赖)."""
+    try:
+        from bridge.core import _detect_missing_libs
+
+        return _detect_missing_libs().strip() or ""
+    except Exception:
+        return ""
 
 
 async def check_network(probe_url: str = "https://www.bilibili.com") -> tuple[bool, str, bool]:

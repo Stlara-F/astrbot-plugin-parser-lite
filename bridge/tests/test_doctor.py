@@ -180,3 +180,30 @@ def test_doctor_command_registered():
     assert 'filter.command("parse_doctor")' in main_py
     assert 'filter.command("parser_doctor")' in main_py
     assert "cmd_doctor" in main_py
+
+
+def test_detect_missing_libs_hint_safe():
+    """缺失库检测: 无 astrbot 环境也不崩溃, 返回字符串."""
+    hint = doctor._detect_missing_libs_hint()
+    assert isinstance(hint, str)
+
+
+def test_check_chromium_reports_missing_libs(monkeypatch):
+    """Chromium 启动失败 (缺库) → detail 含 apt 修复命令 (显式返回)."""
+    import bridge.doctor as d
+
+    async def fake_started():
+        raise RuntimeError("error while loading shared libraries: libnspr4.so")
+
+    monkeypatch.setattr(d, "_detect_missing_libs_hint", lambda: "libnspr4.so\nlibnss3.so")
+    try:
+        from nonebot_plugin_parser_lite.utils.browser import BrowserManager
+        monkeypatch.setattr(BrowserManager, "ensure_started", fake_started)
+    except ImportError:
+        pass  # 环境缺上游包时仅验证 hint 逻辑
+    if hasattr(d, "check_chromium"):
+        ok, detail, warn = asyncio.run(d.check_chromium(timeout=1))
+        assert ok is False
+        assert warn is True
+        assert "libnspr4.so" in detail
+        assert "apt-get install -y" in detail
