@@ -1221,8 +1221,7 @@ class ParserLitePlugin(Star):
         # F2: QQ 卡片 → LLM 结构化文本注入 (配置驱动, 默认开)
         try:
             from bridge.card_semantic import find_json_cards, inject_card_summary
-            _src_cfg = BridgeConfig._source or {}
-            if _src_cfg.get("card_semantic", True):
+            if _bridge_cfg("card_semantic", True):
                 for _entry in find_json_cards(event)[:2]:
                     inject_card_summary(event, _entry["card"])
         except Exception:
@@ -1259,9 +1258,8 @@ class ParserLitePlugin(Star):
             src_url = getattr(item.path_task, "url", "")
             dur = getattr(item, "duration", 0.0)
             # bridge 语义字段从 _source 读取 (不在上游 Config 模型)
-            _src_cfg = BridgeConfig._source or {}
-            _direct = bool(_src_cfg.get("plite_direct_link", False))
-            _cover_only = bool(_src_cfg.get("plite_send_cover_only", False))
+            _direct = bool(_bridge_cfg("plite_direct_link", False))
+            _cover_only = bool(_bridge_cfg("plite_send_cover_only", False))
             # F5: 直链免下载模式 (配置驱动, 非硬编码)
             if _direct and src_url:
                 sent = await self._try_direct_send(event, item, src_url)
