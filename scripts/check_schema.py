@@ -28,7 +28,7 @@ LOW = {"push", "delay_send", "arbiter", "cookie_health"}
 def parse_bridge_fields(src: str) -> list[dict]:
     """静态解析 _BRIDGE_FIELDS (不 import main, 避免 astrbot 依赖)."""
     start = src.find("_BRIDGE_FIELDS: list[dict] = [")
-    end = src.find('"""AstrBot', start)
+    end = src.find("_PARSER_EXTRA_MAP", start)
     if start == -1 or end == -1:
         raise SystemExit("FAIL: 未找到 _BRIDGE_FIELDS")
     block = src[start:end]
@@ -39,7 +39,7 @@ def parse_bridge_fields(src: str) -> list[dict]:
 
 def main() -> int:
     errors: list[str] = []
-    main_src = (ROOT / "main.py").read_text("utf-8")
+    main_src = (ROOT / "bridge" / "inject.py").read_text("utf-8")
     fields = parse_bridge_fields(main_src)
     paths = [f["path"] for f in fields]
 

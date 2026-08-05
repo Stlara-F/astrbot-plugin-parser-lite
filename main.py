@@ -623,8 +623,13 @@ def _rebuild_parser_extra_map():
         short_key = fname.removeprefix("plite_")
         _PARSER_EXTRA_MAP[short_key] = (fname, enum_cls, is_list)
 
-# 模块加载时执行注入 (含 _injected 开关保护)
-_inject_dynamic_options_static()
+# 模块加载时执行注入 (含 _injected 开关保护) — 委托 bridge.inject 决策树
+from bridge.inject import inject_dynamic_options_static  # noqa: E402
+
+inject_dynamic_options_static(
+    Path(__file__).parent / "_conf_schema.json",
+    Path(__file__).parent / ".injected",
+)
 
 # ── 格式化 ────────────────────────────────────────────────────────────────────
 # ── 格式化 (已移至 bridge.format) ──
