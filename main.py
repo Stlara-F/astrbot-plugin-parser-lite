@@ -116,7 +116,6 @@ class _LoguruBridge(logging.Handler):
 
 # ── 上游 imports ───────────────────────────────────────────────────────────────
 from nonebot_plugin_parser_lite.config import Config as _UpConfig
-from nonebot_plugin_parser_lite.constants import PlatformEnum
 from nonebot_plugin_parser_lite.data import (
     AudioContent,
     GraphicContent,
@@ -404,8 +403,7 @@ def _inject_dynamic_options_static():
     """
     import typing
 
-    from nonebot_plugin_parser_lite.constants import PlatformEnum
-    schema_path = _CONF_SCHEMA_PATH
+        schema_path = _CONF_SCHEMA_PATH
     flag_path = Path(__file__).parent / ".injected"
     if schema_path.exists():
         schema = json.loads(schema_path.read_text("utf-8"))
