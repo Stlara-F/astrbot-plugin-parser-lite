@@ -54,19 +54,26 @@ repo/
       `send_card(event, result)`: 上游 RENDERER.render_image → Comp.Image.fromBytes (LRU 10)
       → 失败回退 format_full 纯文本; `should_send(media_type)`: send_strategy 门控;
       `get_sendable_types()`: 上游 ContentItem Union 动态扫描
-- [ ] C1b. `bridge/send.py` — 媒体发送 (MediaContent 遍历 → 三路 fromFileSystem/fromBytes/fromURL)
-      + FFmpeg 转换回调注入 (main.py 提供, 保持发送层纯扩展)
-- [ ] C2. 渲染: 删除 render_patch 的 render_html autoescape 重建包装
-      (回上游原样 env), 保留 safe_src 默认 method (上游模板 bug)
-- [x] C3a. main.py `_send_card` 委托 bridge.send (文本回退保留)
+- [x] C1b. `bridge/send.py` — 媒体三路发送骨架 (fromFileSystem/fromBytes/fromURL),
+      转换回调 converters 注入 (FFmpeg 保持扩展层)
+- [ ] C2. 渲染回上游: 删除 render_patch 的 render_html autoescape 重建包装
+      (回上游原样 env, 模板 |e 拼接问题由上游模板处理);
+      保留 safe_src 默认 method 补丁 (上游模板省略 method, 必须)
+- [ ] C3b. main.py `_send_any` → 委托 send_media_file (converters 注入:
+      _compress_image/_convert_video/_convert_audio 回调)
 
 ### 阶段 D: 命令与入口
 - [ ] D1. `bridge/commands.py` — doctor/status/install_chromium/clean/enable/disable/bm/blogin
-      (AstrBot 命令注册从 main.py 迁出, 委托 bridge.doctor/send 等)
-- [ ] D2. main.py 薄化: 仅 ParserLitePlugin(Star) + 命令/事件注册 (逻辑委托 bridge 模块)
+      (从 main.py 迁出, 委托 bridge.doctor/send/resolve; 命令注册保留 main.py 声明)
+- [ ] D2. main.py 薄化: 仅 ParserLitePlugin(Star) + 命令/事件注册
+      (删除旧注入/发送/命令实现, 逻辑全在 bridge 模块)
 
-### 阶段 E: 收尾
-- [ ] E1. 测试对齐 + 解耦回归 (上游模块不可反向 import bridge)
+### 阶段 E: 多端环境兼容 + 收尾
+- [ ] E1. `bridge/tests/test_env_compat.py` — 多端环境兼容性测试:
+      ├─ 无 astrbot (CI): 所有 bridge 模块顶层可导入 (组件/logger 延迟)
+      ├─ 无上游 standalone: context up_* 延迟加载不崩 (配置类可导入)
+      ├─ Windows/Linux 路径语义 (media 发送 Path 处理)
+      └─ 解耦回归: 上游模块源码不含 bridge import (grep 检查)
 - [ ] E2. check_schema 适配 + CI + 部署验证
 
 ## 5. 决策树 (注入)
