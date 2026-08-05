@@ -237,6 +237,54 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
     except Exception:
         _use_b64 = False
 
+
+    _m5 = None
+    _md5_failed = None
+    _fsz = 0
+
+    def _ok(stage: str, segs) -> bool:
+        """发送成功统一出口: 反馈 + md5 缓存记录 (秒传命中后不再重复记录)."""
+        _try_send(stage, segs)
+        last_send_report["ok"] = True
+        if _m5 and _md5_failed != _m5:
+            try:
+                from bridge.media_cache import get_cache as _gc
+
+                _gc().put(_m5, media_type, _fsz if _fsz else p.stat().st_size)
+            except Exception:
+                pass
+        return True
+    # md5 秒传: 有缓存指纹 → file://md5 引用 (QQ 服务器资源秒回应, 参考
+    # SnowLuma fast-upload; 失败 → 回退正常路径, 多级 failback)
+    try:
+        from bridge.cfg import read_cfg as _rc2
+        from bridge.context import BridgeConfig as _BC2
+        from bridge.media_cache import compute_md5, get_cache, md5_file_ref
+
+        _md5_fast = bool(_rc2(_BC2._source or {}, "plite_md5_fast_send", True))
+        if _md5_fast and media_type in ("image", "video", "audio"):
+            _m5 = compute_md5(p)
+            if get_cache().has(_m5):
+                _ref = md5_file_ref(_m5)
+                if media_type == "image":
+                    _md5_seg = Image(file=_ref)
+                elif media_type == "video":
+                    _md5_seg = Video(file=_ref)
+                else:
+                    _md5_seg = Record(file=_ref)
+                try:
+                    await event.send(event.chain_result([_md5_seg]))
+                    _try_send(f"{media_type}-md5", [_md5_seg])
+                    last_send_report["ok"] = True
+                    return True
+                except Exception as _e:
+                    _try_send(f"{media_type}-md5", [], _e)
+                    _md5_failed = _m5  # 引用失败, 后续正常路径重试
+        else:
+            _m5 = None
+    except Exception:
+        _m5 = None
+
     if media_type == "image":
         # base64 优先 (上游配置驱动)
         if _use_b64:
@@ -255,9 +303,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         try:
             _segs = [Image.fromFileSystem(str(p))]
             await event.send(event.chain_result(_segs))
-            _try_send("image-fs", _segs)
-            last_send_report["ok"] = True
-            return True
+            return _ok("image-fs", _segs)
         except Exception as _e:
             _try_send("image-fs", [], _e)
         try:
@@ -267,9 +313,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
                 raw = await compress(p)
             _segs = [Image.fromBytes(raw)]
             await event.send(event.chain_result(_segs))
-            _try_send("image-bytes", _segs)
-            last_send_report["ok"] = True
-            return True
+            return _ok("image-bytes", _segs)
         except Exception as _e:
             _try_send("image-bytes", [], _e)
         if source_url:
@@ -326,9 +370,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         try:
             _segs = [*_segs, Video.fromFileSystem(str(mp4))]
             await event.send(event.chain_result(_segs))
-            _try_send("video-fs", _segs)
-            last_send_report["ok"] = True
-            return True
+            return _ok("video-fs", _segs)
         except Exception as _e:
             _try_send("video-fs", [], _e)
         try:
@@ -336,9 +378,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             b64 = base64.b64encode(raw).decode()
             _segs = [Video.fromBase64(b64)]
             await event.send(event.chain_result(_segs))
-            _try_send("video-b64-fallback", _segs)
-            last_send_report["ok"] = True
-            return True
+            return _ok("video-b64-fallback", _segs)
         except Exception as _e:
             _try_send("video-b64-fallback", [], _e)
         if source_url:
@@ -369,9 +409,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         try:
             _segs = [Record.fromFileSystem(str(mp3))]
             await event.send(event.chain_result(_segs))
-            _try_send("audio-fs", _segs)
-            last_send_report["ok"] = True
-            return True
+            return _ok("audio-fs", _segs)
         except Exception as _e:
             _try_send("audio-fs", [], _e)
         try:
@@ -379,9 +417,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             b64 = base64.b64encode(raw).decode()
             _segs = [Record.fromBase64(b64)]  # 组件无 fromBytes (OneBot11 record.file)
             await event.send(event.chain_result(_segs))
-            _try_send("audio-b64-fallback", _segs)
-            last_send_report["ok"] = True
-            return True
+            return _ok("audio-b64-fallback", _segs)
         except Exception as _e:
             _try_send("audio-b64-fallback", [], _e)
         if source_url:

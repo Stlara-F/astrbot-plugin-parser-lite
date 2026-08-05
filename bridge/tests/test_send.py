@@ -112,11 +112,19 @@ def _mk_cmp_cls(name):
 
 
 @pytest.fixture(autouse=True)
-def _fake_components(monkeypatch):
+def _fake_components(monkeypatch, tmp_path):
+    import bridge.media_cache as _mc
+
+    _mc.reset_cache()
+    _iso = _mc.MediaMd5Cache(tmp_path / "md5.json", max_entries=50)
+    monkeypatch.setattr(_mc, "get_cache", lambda *a, **k: _iso)
     monkeypatch.setattr(send, "_get_components", lambda: {
         "File": _mk_cmp_cls("File"), "Image": _mk_cmp_cls("Image"),
         "Record": _mk_cmp_cls("Record"), "Video": _mk_cmp_cls("Video"),
     })
+    yield
+    _mc.reset_cache()
+    BridgeConfig._source = {}
 
 
 def test_send_card_fallback_text(monkeypatch: MonkeyPatch):
