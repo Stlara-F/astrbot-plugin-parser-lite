@@ -52,9 +52,9 @@ def test_key_functions_single_owner():
     """关键叶子功能有且唯一实现."""
     owner_map = {
         "read_cfg": "cfg.py",
-        "_resolve_proxy_url": "core.py",
-        "_read_proxy_config": "core.py",
-        "_apply_downloader_proxy": "core.py",
+        "resolve_proxy_url": "proxy.py",
+        "read_proxy_config": "proxy.py",
+        "apply_downloader_proxy": "proxy.py",
         "strip_html_to_text": "render_patch.py",
         "clean_result_html": "render_patch.py",
         "pl_esc": "render_patch.py",
@@ -67,6 +67,10 @@ def test_key_functions_single_owner():
         "make_delay_sender": "delay_send.py",
         "make_cookie_health": "cookie_health.py",
         "make_pusher": "push.py",
+        "BridgeConfig": "context.py",
+        "ParserLite": "resolve.py",
+        "CustomParser": "custom_parser.py",
+        "inject_dynamic_options_static": "inject.py",
     }
     for fn, owner in owner_map.items():
         files = []

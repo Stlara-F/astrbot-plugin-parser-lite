@@ -49,6 +49,11 @@ def test_bridge_imports_exist():
             defined |= {n.target.id for n in ast.walk(tree)
                         if isinstance(n, ast.AnnAssign)
                         and isinstance(n.target, ast.Name)}
+            # re-export 模块 (core): from bridge.X import Y [as Z] 视为已定义 (薄转发层)
+            defined |= {a.asname or a.name for n in ast.walk(tree)
+                        if isinstance(n, ast.ImportFrom) and n.module
+                        and n.module.startswith("bridge")
+                        for a in n.names if a.name != "*"}
             if name not in defined:
                 missing.append(f"{_f}: {module}.{name} 不存在")
     assert not missing, "\n".join(missing)
