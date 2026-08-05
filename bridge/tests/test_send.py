@@ -81,3 +81,31 @@ def test_send_card_fallback_text(monkeypatch: MonkeyPatch):
         assert ev.sent[0][0].text == "回退文本"
     finally:
         send.up_renderer = orig
+
+
+class FailingEvent:
+    def chain_result(self, segs):
+        return segs
+
+    async def send(self, segs):
+        raise RuntimeError("api down")
+
+
+def test_send_media_file_missing():
+    """文件不存在 → 返回 False."""
+    import asyncio
+    from pathlib import Path
+
+    ok = asyncio.run(send.send_media_file(
+        FakeEvent(), Path("nonexistent/x.jpg"), "image"))
+    assert ok is False
+
+
+def test_send_media_file_all_fail():
+    """三路全失败 (API 不可用) → False, 不崩溃."""
+    import asyncio
+    from pathlib import Path
+
+    ok = asyncio.run(send.send_media_file(
+        FailingEvent(), Path(__file__), "image"))
+    assert ok is False

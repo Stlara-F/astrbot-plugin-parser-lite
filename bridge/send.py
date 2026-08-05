@@ -92,3 +92,99 @@ def _plain(text: str):
     from astrbot.api.message_components import Plain
 
     return Plain(text)
+
+
+async def send_media_file(event, path, media_type: str, source_url: str = "",
+                          converters: dict | None = None, logger=None) -> bool:
+    """媒体三路发送骨架 (fromFileSystem → bytes/base64 → fromURL).
+
+    :param converters: 扩展回调 {"image": async fn(path)->bytes, "video": async fn(path)->Path,
+                       "audio": async fn(path)->Path} — 由调用方注入 (FFmpeg 转换保持扩展)
+    :return: 是否成功发送
+    """
+    import base64
+    from pathlib import Path
+
+    if logger is None:
+        import logging
+        logger = logging.getLogger("parser-lite.bridge.send")
+
+    from astrbot.api.message_components import Image, Record, Video
+
+    p = Path(path)
+    if not p.exists():
+        logger.warning(f"[ParserLite] send_media_file: file missing {p}")
+        return False
+    try:
+        p.chmod(0o644)
+    except Exception:
+        pass
+    converters = converters or {}
+
+    if media_type == "image":
+        try:
+            await event.send(event.chain_result([Image.fromFileSystem(str(p))]))
+            return True
+        except Exception:
+            pass
+        try:
+            raw = p.read_bytes()
+            compress = converters.get("image")
+            if compress is not None:
+                raw = await compress(p)
+            await event.send(event.chain_result([Image.fromBytes(raw)]))
+            return True
+        except Exception:
+            pass
+        if source_url:
+            try:
+                await event.send(event.chain_result([Image.fromURL(source_url)]))
+                return True
+            except Exception:
+                pass
+
+    elif media_type == "video":
+        conv = converters.get("video")
+        mp4 = await conv(p) if conv else p
+        mp4 = Path(mp4)
+        try:
+            await event.send(event.chain_result([Video.fromFileSystem(str(mp4))]))
+            return True
+        except Exception:
+            pass
+        try:
+            raw = mp4.read_bytes()
+            b64 = base64.b64encode(raw).decode()
+            await event.send(event.chain_result([Video.fromBase64(b64)]))
+            return True
+        except Exception:
+            pass
+        if source_url:
+            try:
+                await event.send(event.chain_result([Video.fromURL(source_url)]))
+                return True
+            except Exception:
+                pass
+
+    elif media_type == "audio":
+        conv = converters.get("audio")
+        mp3 = await conv(p) if conv else p
+        mp3 = Path(mp3)
+        try:
+            await event.send(event.chain_result([Record.fromFileSystem(str(mp3))]))
+            return True
+        except Exception:
+            pass
+        try:
+            raw = mp3.read_bytes()
+            await event.send(event.chain_result([Record.fromBytes(raw)]))
+            return True
+        except Exception:
+            pass
+        if source_url:
+            try:
+                await event.send(event.chain_result([Record.fromURL(source_url)]))
+                return True
+            except Exception:
+                pass
+    return False
