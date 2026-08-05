@@ -7,8 +7,6 @@ PR#205 merged → sokoko-org/main. Runs inside nonebot_plugin_parser_lite/ packa
 from __future__ import annotations
 
 import asyncio
-import inspect
-import json
 import logging
 import os
 from pathlib import Path
@@ -62,7 +60,6 @@ from astrbot.api.star import Context, Star
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
 from bridge.core import (
     BridgeConfig,
-    CustomParser,
     LazyManager,
     ParserLite,
     _detect_missing_libs,
@@ -115,7 +112,6 @@ class _LoguruBridge(logging.Handler):
             pass
 
 # ── 上游 imports ───────────────────────────────────────────────────────────────
-from nonebot_plugin_parser_lite.config import Config as _UpConfig
 from nonebot_plugin_parser_lite.data import (
     AudioContent,
     GraphicContent,
@@ -133,6 +129,18 @@ _RESULT_CACHE: LimitedSizeDict[str, ParseResult] = LimitedSizeDict(max_size=50)
 _CARD_CACHE: dict[str, bytes] = {}
 _CARD_CACHE_MAX = 20  # LRU 上限 (动态可调)
 from bridge.format import format_full
+
+
+def _bridge_cfg(key: str, default=None):
+    """读取 bridge 配置 (统一入口, 缺失回退默认值)."""
+    from bridge.cfg import read_cfg
+
+    return read_cfg(BridgeConfig._source, key, default)
+
+
+# ── 动态注入 ──────────────────────────────────────────────────────────────────
+# 模块加载时执行注入 (含 _injected 开关保护) — 委托 bridge.inject 决策树
+from bridge.inject import inject_dynamic_options_static  # noqa: E402
 from bridge.url_extract import (
     collect_urls,
     extract_card_json_url,
@@ -140,490 +148,6 @@ from bridge.url_extract import (
     url_from_text,
 )
 from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
-
-# ── 动态注入 ──────────────────────────────────────────────────────────────────
-_PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
-"""parser_extra UI key → (Config field name, enum class, is_list)"""
-
-# slider 元数据: 上游模型缺少 ge/le 元数据的字段在这里补 (未来上游加了 Field(ge=...) 后自动消除)
-_SLIDER_HINTS: dict[str, dict] = {
-    "plite_max_size":            {"min": 10,  "max": 500,  "step": 10},
-    "plite_duration_maximum":    {"min": 60,  "max": 3600, "step": 60},
-    "plite_max_comments":        {"min": 0,   "max": 20,   "step": 1},
-    "plite_max_retries":         {"min": 0,   "max": 5,    "step": 1},
-}
-"""上游字段缺少 Field(ge=,le=) 的 slider 补丁 — 上游补齐后此处自动失效"""
-
-# ── 发送策略: 从 _send_any 方法中提取支持的类型, 0 hardcode ────────────────
-def _get_sendable_types() -> list[str]:
-    """从 _send_any 方法体中扫描所有 media_type 分支, 自动生成选项列表 (战未来)"""
-    import re as _re
-    try:
-        src = inspect.getsource(ParserLitePlugin._send_any)
-    except Exception:
-        return ["card", "image", "video", "audio"]
-    types = _re.findall(r'media_type\s*==\s*"(\w+)"', src)
-    return sorted(set(types))
-
-_get_sendable_types  # 懒求值函数, 在 _BRIDGE_FIELDS 中使用 lambda 调用
-
-# bridge 语义字段: 不在上游 Config 中的 AstrBot 专属配置项, 声明式注入
-# 排序: 修改频率从高到低 (Cookie/代理 → 平台路由 → 发送 → 阈值 → 开关 → 后台任务)
-_BRIDGE_FIELDS: list[dict] = [
-{
-        "path": "plite_http_proxy",
-        "type": "string",
-        "desc": "HTTP代理",
-        "default": "",
-        "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。配置后所有解析器请求均通过代理",
-    },
-{
-        "path": "send_strategy",
-        "type": "list",
-        "desc": "发送策略",
-        "default": lambda: _get_sendable_types(),
-        "options": lambda: _get_sendable_types(),
-    },
-{
-        "path": "plite_direct_link",
-        "type": "bool",
-        "desc": "直链免下载模式",
-        "default": False,
-        "hint": "开启后视频/图片优先以 URL 直链发送(HEAD+Range探测大小), 不落盘。超限或失败自动回退下载",
-    },
-{
-        "path": "plite_send_cover_only",
-        "type": "bool",
-        "desc": "视频仅发封面",
-        "default": False,
-        "hint": "开启后视频只发送 ffmpeg 截取的封面图, 不发送视频本体(省流量)",
-    },
-{
-        "path": "plite_image_compress_mb",
-        "type": "int",
-        "desc": "图片压缩阈值(MB)",
-        "default": 20,
-        "hint": "超过此大小的图片自动压缩后再发送",
-    },
-{
-        "path": "plite_dedup_ttl",
-        "type": "int",
-        "desc": "消息去重窗口(秒)",
-        "default": 60,
-        "hint": "同一消息在窗口内不重复解析",
-    },
-{
-        "path": "plite_cache_interval",
-        "type": "int",
-        "desc": "缓存清理间隔(小时)",
-        "default": 24,
-        "hint": "定期清理过期缓存文件的时间间隔",
-    },
-{
-        "path": "plite_forward_max_nodes",
-        "type": "int",
-        "desc": "合并转发节点上限",
-        "default": 90,
-        "hint": "OneBot 合并转发单条消息最大节点数",
-    },
-{
-        "path": "card_semantic",
-        "type": "bool",
-        "desc": "卡片语义注入(LLM)",
-        "default": True,
-        "hint": "将QQ分享卡片转为结构化文本注入消息, 供AI助手理解",
-    },
-{
-    "path": "push",
-    "type": "template_list",
-    "desc": "B站UP订阅推送",
-    "default": [],
-    "templates": {
-        "default": {
-            "name": "订阅",
-            "items": {
-                "uid": {"type": "string", "description": "UP主UID", "default": ""},
-                "groups": {"type": "string", "description": "推送群号(逗号分隔)", "default": ""},
-                "enabled": {"type": "bool", "description": "启用", "default": True},
-            },
-        },
-    },
-    "hint": "可增删订阅条目: 每个UP主一条, 填UID和推送群号",
-},
-{
-    "path": "push_interval",
-    "type": "int",
-    "desc": "推送轮询间隔(秒)",
-    "default": 300,
-    "hint": "UP动态/直播轮询间隔",
-},
-{
-    "path": "delay_send",
-    "type": "object",
-    "items": {
-        "enabled": {"type": "bool", "description": "启用延迟发送", "default": False},
-        "threshold_mb": {"type": "int", "description": "触发延迟的阈值(MB)", "default": 20},
-        "timeout_sec": {"type": "int", "description": "等待超时(秒)", "default": 300},
-        "emoji_ids": {"type": "list", "description": "触发表情ID", "items": {"type": "string"}, "default": ["128077"]},
-    },
-    "desc": "延迟发送(表情触发)",
-    "default": {},
-    "hint": "大视频先发提示, 回应表情后发送",
-},
-{
-        "path": "arbiter",
-        "type": "object",
-        "items": {
-            "enabled": {"type": "bool", "description": "启用多Bot仲裁", "default": False},
-            "emoji": {"type": "string", "description": "竞争表情", "default": "👍"},
-            "window_sec": {"type": "float", "description": "竞争窗口(秒)", "default": 1.5},
-        },
-        "desc": "多Bot表情仲裁",
-        "default": {},
-        "hint": "群内多解析机器人时开启, 解析前发送竞争表情, 检测到其他bot回应则放弃",
-    },
-{
-        "path": "cookie_health",
-        "type": "object",
-        "items": {
-            "enabled": {"type": "bool", "description": "启用Cookie健康检查", "default": False},
-            "interval_sec": {"type": "int", "description": "检查间隔(秒)", "default": 3600},
-        },
-        "desc": "Cookie健康检查",
-        "default": {},
-        "hint": "定期验证B站/知乎cookie, 失效时通知",
-    }
-]
-"""AstrBot 专属字段声明: path=JSON路径, source=动态选项生成器(可选), default/hint/desc=静态元数据"""
-
-
-def _bridge_cfg(key: str, default=None):
-    """读取 bridge 语义配置 (非硬编码: 缺失回退默认值)."""
-    from bridge.cfg import read_cfg
-    return read_cfg(BridgeConfig._source, key, default)
-
-def _schema_desc(fname: str) -> str:
-    s = fname.removeprefix("plite_").replace("_", " ")
-    return " ".join(w[0].upper() + w[1:] for w in s.split())
-
-def _is_enum_field(finfo) -> bool:
-    import typing
-    ann = finfo.annotation
-    if hasattr(ann, "__args__"):
-        ann = typing.get_args(ann)[0]
-    return hasattr(ann, "__members__")
-
-def _is_str_list_field(finfo) -> bool:
-    """list[str] 类型"""
-    import typing
-    ann = finfo.annotation
-    if not hasattr(ann, "__args__"): return False
-    args = typing.get_args(ann)
-    return len(args) == 1 and args[0] is str
-
-def _extract_slider(finfo) -> dict | None:
-    """从 pydantic Field 元数据提取 slider 配置"""
-    slider = None
-    for meta in getattr(finfo, "metadata", []):
-        ge_ = getattr(meta, "ge", None); le_ = getattr(meta, "le", None)
-        multiple = getattr(meta, "multiple_of", None)
-        if ge_ is not None or le_ is not None:
-            slider = {}
-            if ge_ is not None: slider["min"] = ge_
-            if le_ is not None: slider["max"] = le_
-            slider["step"] = multiple if multiple else (
-                max(1, (slider["max"] - slider.get("min", 0)) // 20) if "min" in slider and "max" in slider else 1
-            )
-            break
-    return slider
-
-def _build_field_entry(fname: str, finfo, is_new: bool) -> dict | None:
-    """从 pydantic 字段信息生成 AstrBot schema 条目 (0 hardcode)"""
-    ann = finfo.annotation
-    default = finfo.default
-
-    # 转换为 JSON-safe 默认值
-    try:
-        if default is not None and not isinstance(default, (int, float, str, bool, list, dict)):
-            if hasattr(default, "name"):
-                default_val = default.name
-            elif isinstance(default, list) and default and hasattr(default[0], "name"):
-                default_val = [e.name for e in default]
-            else:
-                default_val = None
-        elif isinstance(default, list):
-            default_val = list(default)
-        else:
-            default_val = default
-    except Exception:
-        default_val = None
-
-    entry = {"description": _schema_desc(fname)}
-
-    # int → slider 或 纯 int
-    if ann is int or (hasattr(ann, "__origin__") and ann.__origin__ is int):
-        entry["type"] = "int"
-        slider = _extract_slider(finfo) or _SLIDER_HINTS.get(fname)
-        if slider:
-            entry["slider"] = slider
-    # str
-    elif ann is str or (hasattr(ann, "__origin__") and ann.__origin__ is str):
-        entry["type"] = "string"
-    # bool → 归入 features (不生成独立条目)
-    elif ann is bool or (hasattr(ann, "__origin__") and ann.__origin__ is bool):
-        return None
-    # list[str]
-    elif _is_str_list_field(finfo):
-        entry["type"] = "list"
-        entry["items"] = {"type": "string"}
-    # list[Enum] 或 Enum → parser_extra (不生成独立条目)
-    elif _is_enum_field(finfo):
-        return None
-    # float
-    elif ann is float or (hasattr(ann, "__origin__") and ann.__origin__ is float):
-        entry["type"] = "float"
-    else:
-        return None  # 未知类型跳过
-
-    if default_val is not None:
-        entry["default"] = default_val
-    return entry
-
-def _get_parser_extra_mapping() -> dict:
-    if not _PARSER_EXTRA_MAP:
-        _inject_dynamic_options_static()
-    return dict(_PARSER_EXTRA_MAP)
-
-def _inject_dynamic_options_static():
-    """0-hardcode 动态注入: 扫描上游 Config 模型 → 填充 _conf_schema.json
-
-    无硬编码保证:
-    - 无文件时从空 dict 启动 (运行时生成, 不入库)
-    - 输出顺序按 _BRIDGE_FIELDS 使用频率重排 (高频在前)
-    """
-    import typing
-
-    from nonebot_plugin_parser_lite.constants import PlatformEnum
-
-    schema_path = _CONF_SCHEMA_PATH
-    flag_path = Path(__file__).parent / ".injected"
-    if schema_path.exists():
-        schema = json.loads(schema_path.read_text("utf-8"))
-    else:
-        schema = {}
-    has_markers = "__INJECT__" in json.dumps(schema)
-    if flag_path.exists() and not has_markers:
-        _rebuild_parser_extra_map()
-        return
-    updated = False
-    injected = []
-
-    # 0) custom_parsers 模板: 从 CustomParser.SCHEMA 类属性扫描生成
-    cp = schema.setdefault("custom_parsers", {"type": "template_list", "description": "自定义解析器", "templates": {}})
-    template = cp.setdefault("templates", {}).setdefault("default", {})
-    if not template.get("items"):
-        items = {}
-        for cm in CustomParser.SCHEMA:
-            entry = {"type": cm["type"], "description": cm["desc"]}
-            if "default" in cm and cm["default"] is not None:
-                entry["default"] = cm["default"]
-            if "hint" in cm:
-                entry["hint"] = cm["hint"]
-            items[cm["key"]] = entry
-        template["name"] = "自定义"
-        template["items"] = items
-        updated = True; injected.append("custom_parsers")
-
-    # F9: platforms 模板 — 每平台独立配置 (enable/proxy/cookies 统一), 动态从 BaseParser 扫描
-    pfm = schema.setdefault("platforms", {"type": "template_list", "description": "平台配置", "templates": {}})
-    _pf_items = {
-        "enable": {"type": "bool", "description": "启用该平台解析", "default": True},
-        "proxy": {"type": "bool", "description": "该平台走代理", "default": False},
-        "cookies": {"type": "string", "description": "该平台Cookie", "default": ""},
-    }
-    _pf_templates = pfm.setdefault("templates", {})
-    _changed_platform = False
-    for _cls in BaseParser.get_all_subclass():
-        _p = getattr(_cls, "platform", None)
-        _pname = getattr(_p, "name", None)
-        if not _pname:
-            continue
-        _pname = str(_pname).lower()
-        if _pname not in _pf_templates:
-            _pf_templates[_pname] = {
-                "name": getattr(_p, "display_name", _pname),
-                "items": {k: dict(v) for k, v in _pf_items.items()},
-            }
-            _changed_platform = True
-    if _changed_platform:
-        updated = True; injected.append("platforms")
-
-    # 1) features: bool 字段
-    bool_fields = sorted(k for k, f in _UpConfig.model_fields.items()
-                         if f.annotation is bool and k.startswith("plite_"))
-    _features = schema.setdefault("features", {"type": "list", "options": [], "default": []})
-    if _features.get("options") == ["__INJECT__"] or not _features.get("options"):
-        _features["options"] = [_label(k) for k in bool_fields]
-        _features["default"] = [
-            _label(k) for k in bool_fields if _UpConfig.model_fields[k].default is True
-        ]
-        updated = True; injected.append("features")
-
-    # 2) plite_* 顶级字段: 从上游模型自动生成
-    for fname, finfo in _UpConfig.model_fields.items():
-        if not fname.startswith("plite_"): continue
-        ann = finfo.annotation
-        is_bool = ann is bool
-        is_enum = _is_enum_field(finfo)
-        # bool → features; enum → parser_extra; 其他 → 顶级字段
-        if is_bool or is_enum:
-            continue
-        # 已有有效条目(非 __INJECT__) → 仅同步默认值
-        if fname in schema and schema[fname] != ["__INJECT__"] and not isinstance(schema[fname], list):
-            default = finfo.default
-            if default is not None and not isinstance(default, (int, float, str, bool, list, dict)):
-                default = None  # Enum 等不可 JSON 序列化
-            if default is not None and "default" in schema[fname]:
-                schema[fname]["default"] = default
-                updated = True
-            continue
-        entry = _build_field_entry(fname, finfo, is_new=False)
-        if entry:
-            schema[fname] = entry
-            updated = True; injected.append(fname)
-
-    # 3) bridge 语义字段: 从 _BRIDGE_FIELDS 声明式扫描注入
-    schema.setdefault("parsers", {"type": "object", "description": "解析器控制", "items": {}})
-    for bf in _BRIDGE_FIELDS:
-        parts = bf["path"].split(".")
-        obj = schema
-        for p in parts[:-1]:
-            obj = obj.setdefault(p, {} if p != parts[-2] else (obj.get(p, {}) if isinstance(obj.get(p), dict) else {}))
-        last = parts[-1]
-        existing = obj.get(last, {})
-        needs_inject = (
-            isinstance(existing, dict) and existing.get("options") == ["__INJECT__"]
-        ) or (not isinstance(existing, dict) or not existing)
-        if needs_inject:
-            entry = {"type": bf["type"], "description": bf["desc"]}
-            dv = bf.get("default")
-            entry["default"] = dv() if callable(dv) else (dv if dv is not None else [])
-            # AstrBot _parse_schema: object 类型必须含 items (否则 KeyError: 'items')
-            if "items" in bf:
-                entry["items"] = bf["items"]
-            elif bf["type"] == "object":
-                entry["items"] = {}
-            if "items_type" in bf:
-                entry["items"] = {"type": bf["items_type"]}
-            # template_list 必须透传 templates (可增删列表模板)
-            if "templates" in bf:
-                entry["templates"] = bf["templates"]
-            if "hint" in bf:
-                entry["hint"] = bf["hint"]
-            if "source" in bf:
-                entry["options"] = bf["source"]()
-            if "options" in bf:
-                opts = bf["options"]
-                entry["options"] = opts() if callable(opts) else opts
-            if "default" in bf:
-                dv = bf["default"]
-                entry["default"] = dv() if callable(dv) else dv
-            obj[last] = entry
-            updated = True; injected.append(bf["path"])
-
-    # 4) plite_disabled_platforms (必须在 parser_extra 之前, 避免重复注入)
-    platforms = sorted({p.name for p in PlatformEnum})
-    if schema.get("plite_disabled_platforms", {}).get("options") in (["__INJECT__"], None):
-        schema["plite_disabled_platforms"] = {
-            "type": "list",
-            "description": _schema_desc("plite_disabled_platforms"),
-            "options": platforms,
-            "default": [],
-        }
-        updated = True; injected.append("plite_disabled_platforms")
-
-    # 5) parser_extra: 枚举字段 (排除已有顶级 schema 的字段)
-    _PARSER_EXTRA_MAP.clear()
-    extra = {}
-    for fname, finfo in _UpConfig.model_fields.items():
-        if not _is_enum_field(finfo): continue
-        if fname in schema: continue  # 已有顶级字段, 跳过
-        ann = finfo.annotation
-        is_list = hasattr(ann, "__args__")
-        enum_cls = typing.get_args(ann)[0] if is_list else ann
-        short_key = fname.removeprefix("plite_")
-
-        try:
-            dv = finfo.default
-            if dv is not None and hasattr(dv, "name"):
-                fallback = dv.name if not is_list else [dv.name]
-            elif isinstance(dv, list) and dv and hasattr(dv[0], "name"):
-                fallback = [e.name for e in dv]
-            else:
-                fallback = [] if is_list else ""
-        except Exception:
-            fallback = [] if is_list else ""
-
-        _PARSER_EXTRA_MAP[short_key] = (fname, enum_cls, is_list)
-        if (not schema.get("parser_extra", {}).get("items") or
-            short_key not in schema["parser_extra"].get("items", {})):
-            extra[short_key] = {
-                "description": _schema_desc(fname),
-                "type": "string" if not is_list else "list",
-                "options": list(enum_cls.__members__),
-                "default": fallback,
-                "hint": "",
-            }
-    if extra:
-        schema.setdefault("parser_extra", {"type": "object", "description": "解析器专属扩展", "items": {}})
-        schema["parser_extra"]["items"] = {**(schema.get("parser_extra", {}).get("items") or {}), **extra}
-        updated = True; injected.append("parser_extra")
-
-    # 6) test_urls 默认值 (从 test/test_parsers._FALLBACK_URLS 动态注入)
-    tu = schema.get("test_urls", {})
-    if tu.get("default") in ([], None, ["__INJECT__"]):
-        try:
-            from test.test_parsers import _FALLBACK_URLS as _tufb
-        except ImportError:
-            _tufb = []
-        schema["test_urls"] = {
-            "type": "list", "description": "测试URL", "default": list(_tufb),
-            "hint": "每行一条URL, 平台自动识别", "items": {"type": "string"},
-        }
-        updated = True; injected.append("test_urls")
-
-    if updated or not flag_path.exists():
-        # 顺序重排: bridge 字段按 _BRIDGE_FIELDS 使用频率序 (高频在前), 其余保持
-        _ordered = {}
-        _bridge_paths = [bf["path"] for bf in _BRIDGE_FIELDS]
-        for _key in _bridge_paths:
-            if _key in schema:
-                _ordered[_key] = schema[_key]
-        for _k, _v in schema.items():
-            if _k not in _ordered:
-                _ordered[_k] = _v
-        schema = _ordered
-        schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), "utf-8")
-        flag_path.write_text("1")
-        astrbot_logger.info(f"[ParserLite] schema injected: {', '.join(injected) if injected else '(defaults sync)'}")
-
-def _rebuild_parser_extra_map():
-    """注入跳过时仍重建映射表 (保证运行时值同步可用)"""
-    import typing
-    _PARSER_EXTRA_MAP.clear()
-    for fname, finfo in _UpConfig.model_fields.items():
-        if not _is_enum_field(finfo): continue
-        schema_path = Path(__file__).parent / "_conf_schema.json"
-        schema = json.loads(schema_path.read_text("utf-8")) if schema_path.exists() else {}
-        if fname in schema: continue  # 已有顶级字段
-        ann = finfo.annotation
-        is_list = hasattr(ann, "__args__")
-        enum_cls = typing.get_args(ann)[0] if is_list else ann
-        short_key = fname.removeprefix("plite_")
-        _PARSER_EXTRA_MAP[short_key] = (fname, enum_cls, is_list)
-
-# 模块加载时执行注入 (含 _injected 开关保护) — 委托 bridge.inject 决策树
-from bridge.inject import inject_dynamic_options_static  # noqa: E402
 
 inject_dynamic_options_static(
     Path(__file__).parent / "_conf_schema.json",
@@ -1112,15 +636,10 @@ class ParserLitePlugin(Star):
         await self._handle_card_message(event)
 
     def _should_send(self, media_type: str) -> bool:
-        """发送策略门: 从配置读取, 默认从 _send_any 自动扫描的全部类型"""
-        try:
-            s = _bridge_cfg("send_strategy", _get_sendable_types())
-            if isinstance(s, str):
-                try: s = json.loads(s)
-                except Exception: s = _get_sendable_types()
-            return media_type in (s if isinstance(s, list) else [])
-        except Exception:
-            return True
+        """发送策略门: 委托 bridge.send (配置驱动, 默认全部类型)."""
+        from bridge.send import should_send
+
+        return should_send(media_type)
 
     async def _send_items(self, event: AstrMessageEvent, items: list, result: ParseResult):
         """统一发送入口: 超过4项且配置允许 → 合并转发, 否则逐一发送"""

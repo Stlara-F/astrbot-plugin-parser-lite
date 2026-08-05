@@ -48,11 +48,16 @@ def test_read_cfg_exception_safe():
     assert read_cfg(Bad(), "k", 1) == 1
 
 
+def _bridge_fields_src():
+    """_BRIDGE_FIELDS 现定义于 bridge/inject.py (main.py 薄化)."""
+    return (_ROOT / "bridge" / "inject.py").read_text("utf-8")
+
+
 def test_bridge_fields_structure():
-    """读取 main.py 的 _BRIDGE_FIELDS 结构 (静态解析, 不 import main)."""
-    src = (_ROOT / "main.py").read_text("utf-8")
+    """读取 bridge/inject.py 的 _BRIDGE_FIELDS 结构 (静态解析)."""
+    src = _bridge_fields_src()
     start = src.find("_BRIDGE_FIELDS: list[dict] = [")
-    end = src.find('"""AstrBot', start)
+    end = src.find("_PARSER_EXTRA_MAP", start)
     assert start != -1
     assert end != -1
     block = src[start:end]
@@ -79,7 +84,7 @@ def test_bridge_fields_structure():
 
 def test_bridge_fields_no_deprecated():
     """已废弃 parsers.items (cookies/proxied) 不再注入 — 统一 platforms."""
-    src = (_ROOT / "main.py").read_text("utf-8")
+    src = _bridge_fields_src()
     assert '"path": "parsers.items.cookies"' not in src
     assert '"path": "parsers.items.proxied"' not in src
     # platforms 动态注入含统一三字段
@@ -92,11 +97,11 @@ def test_object_fields_have_items():
 
     回归保护: 实机曾报 'items' KeyError (push/delay_send/arbiter/cookie_health 缺 items).
     """
-    src = (_ROOT / "main.py").read_text("utf-8")
+    src = _bridge_fields_src()
 
     # 静态检查 _BRIDGE_FIELDS: 每个 object 类型条目必须有 "items" 或 "items_type"
     start = src.find("_BRIDGE_FIELDS: list[dict] = [")
-    end = src.find('"""AstrBot', start)
+    end = src.find("_PARSER_EXTRA_MAP", start)
     block = src[start:end]
 
     # 按条目切分
