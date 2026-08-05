@@ -71,17 +71,20 @@ def test_bridge_fields_structure():
     # 无重复
     assert len(paths) == len(set(paths)), "存在重复配置路径"
 
-    # 修改频率排序: 高频 (Cookie/代理) 在前
-    assert paths[0] == "parsers.items.cookies"
-    assert paths[1] == "plite_http_proxy"
+    # 修改频率排序: 高频 (代理/发送策略) 在前 (platforms 动态注入不在此列表)
+    assert paths[0] == "plite_http_proxy"
+    assert paths[1] == "send_strategy"
     assert paths[-1] in ("arbiter", "cookie_health")
 
 
-def test_bridge_fields_dynamic_source():
-    """parsers.items.proxied 的 source 是动态生成器 (非硬编码平台清单)."""
+def test_bridge_fields_no_deprecated():
+    """已废弃 parsers.items (cookies/proxied) 不再注入 — 统一 platforms."""
     src = (_ROOT / "main.py").read_text("utf-8")
-    assert "BaseParser.get_all_subclass()" in src
-    assert '"path": "parsers.items.proxied"' in src
+    assert '"path": "parsers.items.cookies"' not in src
+    assert '"path": "parsers.items.proxied"' not in src
+    # platforms 动态注入含统一三字段
+    assert '"proxy": {"type": "bool"' in src
+    assert '"cookies": {"type": "string"' in src
 
 
 def test_object_fields_have_items():

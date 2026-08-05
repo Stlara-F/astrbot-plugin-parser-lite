@@ -173,35 +173,11 @@ _get_sendable_types  # 懒求值函数, 在 _BRIDGE_FIELDS 中使用 lambda 调�
 # 排序: 修改频率从高到低 (Cookie/代理 → 平台路由 → 发送 → 阈值 → 开关 → 后台任务)
 _BRIDGE_FIELDS: list[dict] = [
 {
-        "path": "parsers.items.cookies",
-        "type": "template_list",
-        "desc": "平台Cookie(可增删)",
-        "default": [],
-        "templates": {
-            "default": {
-                "name": "Cookie",
-                "items": {
-                    "platform": {"type": "string", "description": "平台名", "default": ""},
-                    "cookie": {"type": "string", "description": "Cookie值", "default": ""},
-                },
-            },
-        },
-        "hint": "可增删条目: 每平台一条。例: 平台=bilibili, Cookie=SESSDATA=xxx; bili_jct=yyy",
-    },
-{
         "path": "plite_http_proxy",
         "type": "string",
         "desc": "HTTP代理",
         "default": "",
         "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。配置后所有解析器请求均通过代理",
-    },
-{
-        "path": "parsers.items.proxied",
-        "type": "list",
-        "desc": "走代理的解析器",
-        "items_type": "string",
-        "source": lambda: sorted({p.name.lower() for cls in BaseParser.get_all_subclass()
-                                  if (p := getattr(cls, "platform", None))}),
     },
 {
         "path": "send_strategy",
@@ -459,11 +435,11 @@ def _inject_dynamic_options_static():
         template["items"] = items
         updated = True; injected.append("custom_parsers")
 
-    # F9: platforms 模板 — 每平台独立配置 (enable/use_proxy/cookies), 动态从 BaseParser 扫描
+    # F9: platforms 模板 — 每平台独立配置 (enable/proxy/cookies 统一), 动态从 BaseParser 扫描
     pfm = schema.setdefault("platforms", {"type": "template_list", "description": "平台配置", "templates": {}})
     _pf_items = {
         "enable": {"type": "bool", "description": "启用该平台解析", "default": True},
-        "use_proxy": {"type": "bool", "description": "该平台走代理", "default": False},
+        "proxy": {"type": "bool", "description": "该平台走代理", "default": False},
         "cookies": {"type": "string", "description": "该平台Cookie", "default": ""},
     }
     _pf_templates = pfm.setdefault("templates", {})

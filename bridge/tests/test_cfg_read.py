@@ -106,8 +106,33 @@ def test_platform_cfg_legacy_dict():
 
 def test_platform_enable_priority():
     """platforms.enable 优先于 disabled_platforms."""
-    core.BridgeConfig._source = {
-        "platforms": [{"platform": "bilibili", "enable": False}],
-    }
+    core.BridgeConfig._source = {"platforms": [{"platform": "bilibili", "enable": False}]}
     # _is_parser_enabled 读取 platforms.enable
     assert core._is_parser_enabled("bilibili") is False
+
+
+def test_platform_proxy_priority_over_parsers_items():
+    """platforms.proxy 优先于 parsers.items.proxied (单一事实来源)."""
+    core.BridgeConfig._source = {
+        "platforms": [{"platform": "bilibili", "proxy": True}],
+        "parsers": {"items": {"proxied": ["bilibili", "zhihu"]}},
+    }
+    assert core._use_proxy_for("bilibili") is True
+    # zhihu 未在 platforms 配置 → 兼容回退 parsers.items.proxied
+    assert core._use_proxy_for("zhihu") is True
+    assert core._use_proxy_for("douyin") is False
+
+
+def test_platform_cookies_priority_over_parsers_items():
+    """platforms.cookies 优先于 parsers.items.cookies."""
+    core.BridgeConfig._source = {
+        "platforms": [{"platform": "bilibili", "cookies": "ck_new"}],
+        "parsers": {"items": {"cookies": [{"platform": "bilibili", "cookie": "ck_old"}]}},
+    }
+    assert core._get_cookies_for("bilibili") == {"Cookie": "ck_new"}
+    core.BridgeConfig._source = {
+        "platforms": [{"platform": "zhihu", "cookies": ""}],
+        "parsers": {"items": {"cookies": [{"platform": "zhihu", "cookie": "ck_old"}]}},
+    }
+    # platforms.cookies 为空 → 回退 parsers.items.cookies
+    assert core._get_cookies_for("zhihu") == {"Cookie": "ck_old"}

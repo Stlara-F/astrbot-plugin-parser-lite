@@ -20,7 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # 修改频率分组 (用于断言排序: 高→低)
-HIGH = {"parsers.items.cookies", "plite_http_proxy", "parsers.items.proxied", "send_strategy"}
+# 重新设计后: 平台统一配置 platforms (enable/proxy/cookies) 最高频
+HIGH = {"platforms", "plite_http_proxy", "send_strategy"}
 LOW = {"push", "delay_send", "arbiter", "cookie_health"}
 
 
@@ -47,11 +48,15 @@ def main() -> int:
         errors.append(f"FAIL: _BRIDGE_FIELDS 重复路径: "
                       f"{[p for p in paths if paths.count(p) > 1]}")
 
-    # 2. 修改频率排序: 高频 (Cookie/代理) 在前
-    if paths and paths[0] != "parsers.items.cookies":
-        errors.append(f"FAIL: 首个配置应为 parsers.items.cookies (最高修改频率), 实际 {paths[0]}")
-    if paths and paths[1] != "plite_http_proxy":
-        errors.append(f"FAIL: 第二个配置应为 plite_http_proxy, 实际 {paths[1]}")
+    # 2. 修改频率排序: 高频 (代理/发送策略) 在前 (platforms 为动态注入, 不在此列表)
+    if paths and paths[0] != "plite_http_proxy":
+        errors.append(f"FAIL: 首个配置应为 plite_http_proxy (最高修改频率), 实际 {paths[0]}")
+    if paths and paths[1] != "send_strategy":
+        errors.append(f"FAIL: 第二个配置应为 send_strategy, 实际 {paths[1]}")
+    # 已废弃的 parsers.items 不应再注入 (统一 platforms)
+    for deprecated in ("parsers.items.cookies", "parsers.items.proxied"):
+        if deprecated in paths:
+            errors.append(f"FAIL: 已废弃配置 {deprecated} 不应注入 (统一 platforms)")
     # 低频应在最后
     last_low = [i for i, p in enumerate(paths) if p in LOW]
     first_high_end = max([i for i, p in enumerate(paths) if p in HIGH] or [-1])
@@ -78,10 +83,22 @@ def main() -> int:
         # 相对顺序: 顶层首个 bridge 字段应为 plite_http_proxy (最高修改频率的顶层字段)
         if present and present[0] != "plite_http_proxy":
             errors.append(f"FAIL: schema 顶层首个应为 plite_http_proxy, 实际 {present[0]}")
-        # 嵌套: parsers.items 顺序 (Cookie 修改频率最高, 应在前)
+        # 嵌套: 已废弃 parsers.items 不应存在 (统一 platforms)
         parsers_items = list((schema.get("parsers", {}).get("items") or {}).keys())
-        if parsers_items and parsers_items[0] != "cookies":
-            errors.append(f"FAIL: parsers.items 首项应为 cookies, 实际 {parsers_items}")
+        if parsers_items:
+            errors.append(f"FAIL: 已废弃 parsers.items 不应注入: {parsers_items} (统一 platforms)")
+        # platforms (动态注入) 必须存在且含三项统一字段
+        pfm = schema.get("platforms", {})
+        if not pfm:
+            errors.append("FAIL: 缺少 platforms 配置 (统一平台配置)")
+        else:
+            # templates: {platform_name: {name, items: {...}}}
+            tmpls = pfm.get("templates") or {}
+            sample = next(iter(tmpls.values()), {})
+            items = (sample.get("items") or {}) if isinstance(sample, dict) else {}
+            for field in ("enable", "proxy", "cookies"):
+                if field not in items:
+                    errors.append(f"FAIL: platforms 缺少字段 {field}")
 
         # 5. AstrBot 兼容性: object 类型必须含 items (否则 _parse_schema KeyError)
         for k, v in schema.items():

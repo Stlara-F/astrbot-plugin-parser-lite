@@ -261,7 +261,10 @@ FEATURE_TABLE: dict[str, str] = {}
 
 # ── Per-parser config helpers ──────────────────────────────────────────────
 def _load_parsers_config() -> dict:
-    """读取 parsers 配置 (兼容嵌套 items: AstrBot 存为 {items: {proxied, cookies}})."""
+    """读取 parsers 配置 (兼容嵌套 items; 仅旧配置迁移期使用).
+
+    新配置统一走 platforms (enable/proxy/cookies), parsers.items 已废弃.
+    """
     try:
         p = (BridgeConfig._source or {}).get("parsers", {}) or {}
         if isinstance(p, dict):
@@ -274,9 +277,9 @@ def _load_parsers_config() -> dict:
     return {}
 
 def _platform_cfg(platform: str) -> dict:
-    """F9: 每平台独立配置 (platforms template_list: [{platform, enable, use_proxy, cookies}]).
+    """每平台独立配置 (platforms template_list: [{platform, enable, proxy, cookies}]).
 
-    template_list 值是列表, 按 platform 字段匹配; 兼容旧 dict 格式.
+    单一事实来源: 平台走代理/启用/Cookie 统一在此配置.
     """
     try:
         pfm = (BridgeConfig._source or {}).get("platforms", []) or []
@@ -292,7 +295,7 @@ def _platform_cfg(platform: str) -> dict:
 
 def _is_parser_enabled(platform: str) -> bool:
     try:
-        # F9: platforms.enable 优先
+        # 单一来源: platforms.enable (默认 True); 兼容回退 disabled_platforms
         _pc = _platform_cfg(platform)
         if "enable" in _pc:
             return bool(_pc["enable"])
@@ -303,22 +306,25 @@ def _is_parser_enabled(platform: str) -> bool:
 
 def _use_proxy_for(platform: str):
     try:
-        # F9: platforms.use_proxy 优先
+        # 单一来源: platforms.proxy (兼容旧字段 use_proxy)
         _pc = _platform_cfg(platform)
+        if "proxy" in _pc:
+            return bool(_pc["proxy"])
         if "use_proxy" in _pc:
             return bool(_pc["use_proxy"])
+        # 迁移期兼容: parsers.items.proxied (废弃)
         proxied = _load_parsers_config().get("proxied", [])
         return platform.lower() in [str(p).lower() for p in proxied]
     except Exception: return False
 
 def _get_cookies_for(platform: str) -> dict:
     try:
-        # F9: platforms.cookies 优先
+        # 单一来源: platforms.cookies
         _pc = _platform_cfg(platform)
         _ck = (_pc.get("cookies", "") or "").strip()
         if _ck:
             return {"Cookie": _ck}
-        # parsers.items.cookies: template_list (可增删) 或 旧 dict/JSON 格式
+        # 迁移期兼容: parsers.items.cookies (废弃)
         raw = _load_parsers_config().get("cookies", "{}")
         if isinstance(raw, list):
             # template_list: [{platform, cookie}, ...]
