@@ -15,6 +15,19 @@ from bridge.context import BridgeConfig, up_renderer
 _CARD_CACHE_MAX = 10
 _CARD_CACHE: OrderedDict[str, bytes] = OrderedDict()
 
+_COMPONENTS_CACHE: dict | None = None
+
+
+def _get_components():
+    """延迟获取 AstrBot 组件 (缓存, 避免重复 import 触发 AstrBot
+    sqlalchemy 表重复定义; CI/测试可注入假组件)."""
+    global _COMPONENTS_CACHE
+    if _COMPONENTS_CACHE is None:
+        from astrbot.api.message_components import File, Image, Record, Video
+
+        _COMPONENTS_CACHE = {"File": File, "Image": Image, "Record": Record, "Video": Video}
+    return _COMPONENTS_CACHE
+
 # 最近一次发送报告 (OneBot11 发送反馈回显: 成功/失败 + 段结构 + 原因)
 last_send_report: dict = {"ok": None, "segments": [], "errors": [], "stage": ""}
 
@@ -155,12 +168,20 @@ def _plain(text: str):
 
 
 async def send_media_file(event, path, media_type: str, source_url: str = "",
-                          converters: dict | None = None, logger=None) -> bool:
+                          converters: dict | None = None, logger=None,
+                          cover_path: str = "") -> bool:
     """媒体三路发送骨架 (fromFileSystem → bytes/base64 → fromURL).
 
     :param converters: 扩展回调 {"image": async fn(path)->bytes, "video": async fn(path)->Path,
                        "audio": async fn(path)->Path} — 由调用方注入 (FFmpeg 转换保持扩展)
+    :param cover_path: 视频封面路径 (OneBot11 视频+封面链, 上游 VideoContent.cover)
     :return: 是否成功发送
+
+    OneBot11 发送语义 (参考协议与 AstrBot 组件事实):
+    - image: use_base64 → fromBytes(base64://), 否则 fromFileSystem → 压缩 → fromURL
+    - video: 空文件拦截; >file_threshold_mb → Comp.File 文件发送 (OneBot11 大文件必失败);
+             base64 估算 >20MB → Comp.File; 否则 Video.fromBase64 + 封面链
+    - audio: Record.fromBase64 (组件无 fromBytes)
     """
     import base64
     from pathlib import Path
@@ -178,9 +199,13 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         p.chmod(0o644)
     except Exception:
         pass
+    if p.stat().st_size == 0:
+        logger.warning(f"[ParserLite] send_media_file: empty file {p}")
+        last_send_report.update({"ok": False, "stage": "media", "errors": [f"empty file: {p.name}"]})
+        return False
     converters = converters or {}
-    # 组件延迟 import (CI/离线无 astrbot 时可导入模块, 发送时才需组件)
-    from astrbot.api.message_components import Image, Record, Video
+    _Cmps = _get_components()
+    File, Image, Record, Video = _Cmps["File"], _Cmps["Image"], _Cmps["Record"], _Cmps["Video"]
 
     reset_send_report()
     last_send_report["stage"] = f"media:{media_type}"
@@ -190,7 +215,43 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         if exc is not None:
             last_send_report["errors"].append(f"{stage}: {type(exc).__name__}: {exc}")
 
+    async def _send_file_stage(stage: str, p_: Path) -> bool:
+        """OneBot11 文件发送 (视频/音频超限兜底)."""
+        try:
+            _segs = [File(name=p_.name, file=p_.as_uri())]
+            await event.send(event.chain_result(_segs))
+            _try_send(stage, _segs)
+            last_send_report["ok"] = True
+            return True
+        except Exception as _e:
+            _try_send(stage, [], _e)
+            return False
+
+    # 上游 use_base64 (原始调用优先): true → 强制 base64 发送
+    # 读取单一事实来源 _source (与 read_cfg 一致, 避免上游单例缓存污染)
+    try:
+        from bridge.cfg import read_cfg as _read_cfg
+        from bridge.context import BridgeConfig as _BC
+
+        _use_b64 = bool(_read_cfg(_BC._source or {}, "plite_use_base64", False))
+    except Exception:
+        _use_b64 = False
+
     if media_type == "image":
+        # base64 优先 (上游配置驱动)
+        if _use_b64:
+            try:
+                raw = p.read_bytes()
+                compress = converters.get("image")
+                if compress is not None:
+                    raw = await compress(p)
+                _segs = [Image.fromBytes(raw)]
+                await event.send(event.chain_result(_segs))
+                _try_send("image-b64", _segs)
+                last_send_report["ok"] = True
+                return True
+            except Exception as _e:
+                _try_send("image-b64", [], _e)
         try:
             _segs = [Image.fromFileSystem(str(p))]
             await event.send(event.chain_result(_segs))
@@ -225,8 +286,45 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         conv = converters.get("video")
         mp4 = await conv(p) if conv else p
         mp4 = Path(mp4)
+        _fsz = mp4.stat().st_size if mp4.exists() else 0
+        if _fsz == 0:
+            last_send_report.update({"ok": False, "stage": "video", "errors": ["empty video"]})
+            return False
+        # 大文件阈值: 超限 → Comp.File 文件发送 (OneBot11 base64 大视频必失败)
         try:
-            _segs = [Video.fromFileSystem(str(mp4))]
+            from bridge.cfg import read_cfg as _read_cfg
+            from bridge.context import BridgeConfig as _BC
+
+            _th_mb = int(_read_cfg(_BC._source or {}, "plite_video_file_threshold_mb", 100) or 100)
+        except Exception:
+            _th_mb = 100
+        if _fsz > _th_mb * 1024 * 1024:
+            if await _send_file_stage("video-file", mp4):
+                return True
+        # base64 估算 >20MB → File (OneBot11 单消息上限)
+        if _fsz * 4 / 3 > 20 * 1024 * 1024:
+            if await _send_file_stage("video-file-big", mp4):
+                return True
+        # 视频 + 封面链 (OneBot11 常见组合, cover_path 由调用方注入)
+        _segs = []
+        if cover_path and Path(cover_path).exists():
+            try:
+                _segs.append(Image.fromFileSystem(str(cover_path)))
+            except Exception:
+                pass
+        if _use_b64:
+            try:
+                raw = mp4.read_bytes()
+                b64 = base64.b64encode(raw).decode()
+                _segs = [*_segs, Video.fromBase64(b64)]
+                await event.send(event.chain_result(_segs))
+                _try_send("video-b64", _segs)
+                last_send_report["ok"] = True
+                return True
+            except Exception as _e:
+                _try_send("video-b64", [], _e)
+        try:
+            _segs = [*_segs, Video.fromFileSystem(str(mp4))]
             await event.send(event.chain_result(_segs))
             _try_send("video-fs", _segs)
             last_send_report["ok"] = True
@@ -238,11 +336,11 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             b64 = base64.b64encode(raw).decode()
             _segs = [Video.fromBase64(b64)]
             await event.send(event.chain_result(_segs))
-            _try_send("video-b64", _segs)
+            _try_send("video-b64-fallback", _segs)
             last_send_report["ok"] = True
             return True
         except Exception as _e:
-            _try_send("video-b64", [], _e)
+            _try_send("video-b64-fallback", [], _e)
         if source_url:
             try:
                 _segs = [Video.fromURL(source_url)]
@@ -257,6 +355,17 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         conv = converters.get("audio")
         mp3 = await conv(p) if conv else p
         mp3 = Path(mp3)
+        if _use_b64:
+            try:
+                raw = mp3.read_bytes()
+                b64 = base64.b64encode(raw).decode()
+                _segs = [Record.fromBase64(b64)]
+                await event.send(event.chain_result(_segs))
+                _try_send("audio-b64", _segs)
+                last_send_report["ok"] = True
+                return True
+            except Exception as _e:
+                _try_send("audio-b64", [], _e)
         try:
             _segs = [Record.fromFileSystem(str(mp3))]
             await event.send(event.chain_result(_segs))
@@ -267,13 +376,14 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             _try_send("audio-fs", [], _e)
         try:
             raw = mp3.read_bytes()
-            _segs = [Record.fromBytes(raw)]
+            b64 = base64.b64encode(raw).decode()
+            _segs = [Record.fromBase64(b64)]  # 组件无 fromBytes (OneBot11 record.file)
             await event.send(event.chain_result(_segs))
-            _try_send("audio-bytes", _segs)
+            _try_send("audio-b64-fallback", _segs)
             last_send_report["ok"] = True
             return True
         except Exception as _e:
-            _try_send("audio-bytes", [], _e)
+            _try_send("audio-b64-fallback", [], _e)
         if source_url:
             try:
                 _segs = [Record.fromURL(source_url)]

@@ -29,6 +29,7 @@ TRANSLATIONS: dict[str, str] = {
     "plite_direct_link": "直链免下载",
     "plite_send_cover_only": "视频仅发封面",
     "plite_image_compress_mb": "图片压缩阈值MB",
+    "plite_video_file_threshold_mb": "视频文件发送阈值MB",
     "plite_dedup_ttl": "链接去重TTL秒",
     "plite_cache_interval": "缓存清理间隔秒",
     "plite_forward_max_nodes": "合并转发最大节点数",
@@ -175,6 +176,8 @@ _BRIDGE_FIELDS: list[dict] = [
      "hint": "开启后视频/图片优先以 URL 直链发送, 不落盘"},
     {"path": "plite_send_cover_only", "type": "bool", "desc": tr("plite_send_cover_only"), "default": False},
     {"path": "plite_image_compress_mb", "type": "int", "desc": tr("plite_image_compress_mb"), "default": 20},
+    {"path": "plite_video_file_threshold_mb", "type": "int", "desc": tr("plite_video_file_threshold_mb"), "default": 100,
+     "hint": "视频超过此大小(MB)时以文件形式发送 (OneBot11 base64 有上限, 默认 100MB; 20MB 以上 base64 亦转文件)"},
     {"path": "plite_dedup_ttl", "type": "int", "desc": tr("plite_dedup_ttl"), "default": 60},
     {"path": "plite_cache_interval", "type": "int", "desc": tr("plite_cache_interval"), "default": 3600},
     {"path": "plite_forward_max_nodes", "type": "int", "desc": tr("plite_forward_max_nodes"), "default": 50},
@@ -211,7 +214,7 @@ _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
 _BRIDGE_PATHS: list[str] = [bf["path"] for bf in _BRIDGE_FIELDS]
 
 # 配置 schema 版本: 新增配置字段时递增 → 触发重新注入 (保留用户已编辑字段值)
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # 注入反馈: 成功/失败报告 (模块加载与 WebUI 诊断可查询)
 inject_report: dict = {

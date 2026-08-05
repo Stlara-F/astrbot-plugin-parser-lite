@@ -509,9 +509,9 @@ class ParserLitePlugin(Star):
         result = await self._parse_raw(url)
         return format_full(result) if result else ""
 
-    # ── 多媒体发送管线 (委托 bridge.send: 三路冗余 + FFmpeg 转换回调注入) ──
+    # ── 多媒体发送管线 (委托 bridge.send: OneBot11 分派 + FFmpeg 转换回调注入) ──
     async def _send_any(self, event: AstrMessageEvent, p: Path, media_type: str,
-                        source_url: str = "", duration: float = 0.0):
+                        source_url: str = "", duration: float = 0.0, cover_path: str = ""):
         from bridge.send import send_media_file
 
         converters = {
@@ -519,7 +519,8 @@ class ParserLitePlugin(Star):
             "video": self._convert_video,
             "audio": lambda path: self._convert_audio(path, fmt="mp3"),
         }
-        ok = await send_media_file(event, p, media_type, source_url, converters, astrbot_logger)
+        ok = await send_media_file(event, p, media_type, source_url, converters,
+                                   astrbot_logger, cover_path=cover_path)
         if ok:
             return
         # 发送失败回显 (OneBot11 发送反馈: 可倒查发送功能缺陷)
@@ -693,16 +694,33 @@ class ParserLitePlugin(Star):
                     await self._send_video_cover(event, item)
                 return
             p = Path(str(await item.path_task))
+            # 视频封面: 优先上游 VideoContent.cover (原始调用), 无则 ffmpeg 截帧兜底
+            _cover_p = ""
+            if isinstance(item, VideoContent):
+                _cover_p = str(await self._resolve_cover_path(item)) or ""
             if isinstance(item, (ImageContent, GraphicContent, StickerContent)):
                 if self._should_send("image"):
                     await self._send_any(event, p, "image", source_url=src_url)
             elif isinstance(item, VideoContent):
                 if self._should_send("video"):
-                    await self._send_any(event, p, "video", source_url=src_url, duration=dur)
+                    await self._send_any(event, p, "video", source_url=src_url,
+                                         duration=dur, cover_path=_cover_p)
             elif isinstance(item, AudioContent):
                 if self._should_send("audio"):
                     await self._send_any(event, p, "audio", source_url=src_url, duration=dur)
         except Exception: pass
+
+    async def _resolve_cover_path(self, item) -> Path | None:
+        """视频封面路径: 优先上游 cover path_task (原始调用), 失败返回 None."""
+        try:
+            _cover = getattr(item, "cover", None)
+            if _cover is not None and getattr(_cover, "path_task", None) is not None:
+                _cp = Path(str(await _cover.path_task))
+                if _cp.exists():
+                    return _cp
+        except Exception:
+            pass
+        return None
 
     async def _try_direct_send(self, event: AstrMessageEvent, item, src_url: str) -> bool:
         """F5: HEAD+Range 探测大小, 未超限则 URL 直发 (免下载). 失败返回 False."""
@@ -737,8 +755,14 @@ class ParserLitePlugin(Star):
             return False
 
     async def _send_video_cover(self, event: AstrMessageEvent, item) -> None:
-        """F6: ffmpeg 截帧发视频封面."""
+        """F6: 视频仅发封面 — 优先上游 cover (原始调用), 无则 ffmpeg 截帧兜底."""
         try:
+            _cp = await self._resolve_cover_path(item)
+            if _cp is not None:
+                if self._should_send("image"):
+                    await self._send_any(event, _cp, "image",
+                                         source_url=getattr(item.path_task, "url", ""))
+                return
             from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
             if not await FFmpeg.is_available():
                 return
@@ -897,7 +921,8 @@ class ParserLitePlugin(Star):
                 from bridge.rate_limit import clean_url
                 _session = self._key(event)
                 _dkey = debounce_key(_session, clean_url(url))
-                _dwin = float(getattr(get_config(), "lazy_download_timeout", 300) or 300)
+                # 防抖窗口: plite_dedup_ttl (自实现字段, 不误用上游 lazy_download_timeout)
+                _dwin = float(_bridge_cfg("plite_dedup_ttl", 60) or 60)
                 if not self._debouncer.should_parse(_dkey, _dwin):
                     continue  # 防抖命中
             try:

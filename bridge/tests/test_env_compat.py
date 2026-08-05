@@ -64,26 +64,35 @@ def _parents(tree, node):
 
 
 def test_bridge_importable_without_astrbot():
-    """无 astrbot 环境: 全部 bridge 模块可导入 (模拟 CI)."""
-    _clean_sys_modules()
-    import importlib
+    """无 astrbot 环境: 全部 bridge 模块可导入 (模拟 CI, 子进程隔离避免污染)."""
+    import subprocess
+    import sys
 
-    modules = [
-        "bridge.cfg", "bridge.context", "bridge.inject", "bridge.proxy",
-        "bridge.resolve", "bridge.custom_parser", "bridge.send",
-        "bridge.format", "bridge.url_extract", "bridge.debounce",
-        "bridge.rate_limit", "bridge.delay_send", "bridge.arbiter",
-        "bridge.push", "bridge.cookie_health", "bridge.card_semantic",
-        "bridge.fallback", "bridge.doctor",
-    ]
-    for mod in modules:
-        try:
-            importlib.import_module(mod)
-        except ModuleNotFoundError as e:
-            if "astrbot" in str(e):
-                raise AssertionError(f"{mod}: 导入依赖 astrbot (顶层): {e}")
-            # 上游 standalone 缺失是可接受的 (CI 有)
-            raise
+    _code = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(_ROOT / 'src')!r})\n"
+        f"sys.path.insert(0, {str(_ROOT)!r})\n"
+        "for k in list(sys.modules):\n"
+        "    if k.startswith('astrbot'):\n"
+        "        del sys.modules[k]\n"
+        "mods = ['bridge.cfg','bridge.context','bridge.inject','bridge.proxy',\n"
+        "        'bridge.resolve','bridge.custom_parser','bridge.send',\n"
+        "        'bridge.format','bridge.url_extract','bridge.debounce',\n"
+        "        'bridge.rate_limit','bridge.delay_send','bridge.arbiter',\n"
+        "        'bridge.push','bridge.cookie_health','bridge.card_semantic',\n"
+        "        'bridge.fallback','bridge.doctor']\n"
+        "import importlib\n"
+        "try:\n"
+        "    for m in mods:\n"
+        "        importlib.import_module(m)\n"
+        "    print('OK')\n"
+        "except ModuleNotFoundError as e:\n"
+        "    print('FAIL', m, str(e))\n"
+    )
+    r = subprocess.run([sys.executable, "-c", _code], capture_output=True,
+                       text=True, timeout=60)
+    assert r.returncode == 0, f"子进程退出码非 0: {r.stderr[-300:]}"
+    assert r.stdout.strip() == "OK", f"子进程纯净导入失败: {r.stdout[-300:]}{r.stderr[-300:]}"
 
 
 def test_upstream_not_import_bridge():
