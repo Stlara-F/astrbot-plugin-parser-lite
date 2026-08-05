@@ -67,7 +67,6 @@ from bridge.core import (
     ParserLite,
     _detect_missing_libs,
     _load_disabled_groups,
-    _save_disabled_groups,
     configure,
     get_config,
 )
@@ -1425,36 +1424,24 @@ class ParserLitePlugin(Star):
         yield event.plain_result("已下载")
 
     async def cmd_clean(self, event: AstrMessageEvent):
-        count = await self._do_clean_cache()
-        yield event.plain_result(f"清理完成: {count} files")
+        from bridge.commands import clean_cache
+
+        yield event.plain_result(clean_cache(self))
 
     async def cmd_status(self, event: AstrMessageEvent):
-        get_config()  # ensure initialized
-        uptime = int(time.time() - self._plugin_start_time)
-        h, m = divmod(uptime, 3600); m2, s = divmod(m, 60)
-        lines = [
-            "ParserLite v1.3.1", f"Uptime: {h}h{m2}m{s}s",
-            f"Cache: {len(_RESULT_CACHE)} entries",
-            f"Disabled groups: {len(self._disabled_groups)}",
-            f"Lazy: {len(LazyManager._sessions)} sessions",
-            f"Platforms: {len(PlatformEnum)}",
-            f"Parsers: {len(list(BaseParser.get_all_subclass()))}",
-        ]
-        try: lines.append(f"FFmpeg: is_available={FFmpeg.is_available}")
-        except Exception as e: lines.append(f"FFmpeg: {e}")
-        yield event.plain_result("\n".join(lines))
+        from bridge.commands import status_text
+
+        yield event.plain_result(status_text(self))
 
     async def cmd_enable(self, event: AstrMessageEvent):
-        gid = self._gid(event)
-        self._disabled_groups.discard(gid)
-        _save_disabled_groups(self._disabled_groups)
-        yield event.plain_result("本群解析已开启")
+        from bridge.commands import toggle_group
+
+        yield event.plain_result(toggle_group(self, self._gid(event), True))
 
     async def cmd_disable(self, event: AstrMessageEvent):
-        gid = self._gid(event)
-        self._disabled_groups.add(gid)
-        _save_disabled_groups(self._disabled_groups)
-        yield event.plain_result("本群解析已关闭")
+        from bridge.commands import toggle_group
+
+        yield event.plain_result(toggle_group(self, self._gid(event), False))
 
     async def cmd_doctor(self, event: AstrMessageEvent):
         """自检: 全动态扫描, 结构化可观测, 错误显式返回 (复用 bridge.doctor)."""
