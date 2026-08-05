@@ -411,9 +411,9 @@ class ParserLite:
             ordered = [c for c in ordered if c.__name__ == target] + [c for c in ordered if c.__name__ != target]
         # ②⑤ 解析器 httpx 可用性守卫: 插件重载/terminate 后 self.httpx 可能已关闭
         self._ensure_parser_httpx(ordered)
-        # ③ 代理/直连: proxy 已配置则始终使用 (媒体下载也需要代理, 不能双路切换)
-        # 单次解析总超时: 防止慢代理/死链拖死 (curl 默认 240s × 协议轮询 = 8分钟)
-        if proxy_url:
+        # ③ 默认直连; 代理为附加配置: 仅 platforms[].proxy 勾选的平台走代理
+        #    (全局 plite_http_proxy 只是"可用代理地址", 不强制所有解析器)
+        if proxy_url and self._target_uses_proxy(ordered, target):
             _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
             _last_err = None
             for _proto in _try_protocols:
@@ -430,9 +430,19 @@ class ParserLite:
                     _last_err = _e
                     astrbot_logger.debug(f"[ParserLite] proxy {_px} failed: {_e}")
                     continue
-            if _last_err is not None:
-                raise _last_err  # type: ignore[misc]
+            # 代理全失败 → 回退直连 (代理是附加配置, 不应阻断解析)
+            astrbot_logger.warning(f"[ParserLite] 代理全部失败, 回退直连: {url[:60]}")
+            _apply_downloader_proxy("")
+            try:
+                return await asyncio.wait_for(
+                    self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT)
+            except asyncio.TimeoutError as _e:
+                raise TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}") from _e
+            except Exception as _e2:
+                raise _last_err if _last_err is not None else _e2  # type: ignore[misc]
         else:
+            # 直连 (默认): 确保客户端无代理
+            _apply_downloader_proxy("")
             try:
                 return await asyncio.wait_for(
                     self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT)
@@ -440,6 +450,24 @@ class ParserLite:
                 raise TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}") from _e
             except Exception:
                 return await self._try_custom_parsers(url)
+
+    def _target_uses_proxy(self, ordered: list, target: str | None) -> bool:
+        """目标平台是否勾选代理 (platforms[].proxy). 默认直连."""
+        try:
+            if target:
+                for cls in ordered:
+                    if cls.__name__ == target:
+                        pn = getattr(getattr(cls, "platform", None), "name", "") or ""
+                        return _use_proxy_for(str(pn).lower())
+                return False
+            # 无特征命中: 检查首个可能匹配的解析器平台
+            for cls in ordered:
+                pn = getattr(getattr(cls, "platform", None), "name", "") or ""
+                if pn and _use_proxy_for(str(pn).lower()):
+                    return True
+            return False
+        except Exception:
+            return False
 
     async def _try_custom_parsers(self, url: str) -> ParseResult:
         self._load_custom_parsers()
