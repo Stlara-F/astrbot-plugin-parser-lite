@@ -155,6 +155,7 @@ _load_all_parsers()  # 新版 parsers 惰性发现 → 显式注册全部平台�
 # ── bridge 模块 (拆分解耦) ─────────────────────────────────────────────────
 
 CACHE_INTERVAL = 24 * 3600
+PARSE_TIMEOUT = 60.0  # 单次解析总超时(秒) — 防慢代理/死链拖死 (配置: plite_max_retries 无关, 独立常量)
 _RESULT_CACHE: LimitedSizeDict[str, ParseResult] = LimitedSizeDict(max_size=50)
 
 # ── 配置桥接 ──────────────────────────────────────────────────────────────────
@@ -411,6 +412,7 @@ class ParserLite:
         # ②⑤ 解析器 httpx 可用性守卫: 插件重载/terminate 后 self.httpx 可能已关闭
         self._ensure_parser_httpx(ordered)
         # ③ 代理/直连: proxy 已配置则始终使用 (媒体下载也需要代理, 不能双路切换)
+        # 单次解析总超时: 防止慢代理/死链拖死 (curl 默认 240s × 协议轮询 = 8分钟)
         if proxy_url:
             _try_protocols = _PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
             _last_err = None
@@ -418,7 +420,12 @@ class ParserLite:
                 _px = _proto + proxy_url if "://" not in proxy_url else proxy_url
                 _apply_downloader_proxy(_px)
                 try:
-                    return await self._try_all_parsers(ordered, url)
+                    return await asyncio.wait_for(
+                        self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT)
+                except asyncio.TimeoutError:
+                    _last_err = TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}")
+                    astrbot_logger.warning(f"[ParserLite] proxy {_px} 超时, 切换协议")
+                    continue
                 except Exception as _e:
                     _last_err = _e
                     astrbot_logger.debug(f"[ParserLite] proxy {_px} failed: {_e}")
@@ -427,7 +434,10 @@ class ParserLite:
                 raise _last_err  # type: ignore[misc]
         else:
             try:
-                return await self._try_all_parsers(ordered, url)
+                return await asyncio.wait_for(
+                    self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT)
+            except asyncio.TimeoutError as _e:
+                raise TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}") from _e
             except Exception:
                 return await self._try_custom_parsers(url)
 
