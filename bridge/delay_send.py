@@ -95,3 +95,23 @@ class DelaySender:
 
 def make_delay_sender() -> DelaySender:
     return DelaySender()
+
+
+def load_cfg(source: dict | None = None) -> dict:
+    """提取 delay_send 配置段 (功能自包含, 可注入配置源).
+
+    :param source: 配置源 (None → 全局 BridgeConfig)
+    :return: {"enabled", "threshold_mb", "timeout_sec", "emoji_ids"}
+    """
+    from bridge.cfg import global_source, module_cfg
+
+    src = source if source is not None else global_source()
+    cfg = module_cfg(src, "delay_send", {}) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "threshold_mb": int(cfg.get("threshold_mb", 20) or 20),
+        "timeout_sec": float(cfg.get("timeout_sec", 300) or 300),
+        "emoji_ids": cfg.get("emoji_ids", ["128077"]),
+    }

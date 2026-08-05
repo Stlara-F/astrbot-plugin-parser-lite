@@ -101,3 +101,18 @@ def is_notice_event(event) -> bool:
     msg_obj = getattr(event, "message_obj", None)
     raw2 = getattr(msg_obj, "raw_message", None)
     return isinstance(raw2, dict) and raw2.get("post_type") == "notice"
+
+
+def load_cfg(source: dict | None = None) -> dict:
+    """提取 arbiter 配置段 (功能自包含, 可注入配置源)."""
+    from bridge.cfg import global_source, module_cfg
+
+    src = source if source is not None else global_source()
+    cfg = module_cfg(src, "arbiter", {}) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "emoji": str(cfg.get("emoji", "👍") or "👍"),
+        "window_sec": float(cfg.get("window_sec", 1.5) or 1.5),
+    }

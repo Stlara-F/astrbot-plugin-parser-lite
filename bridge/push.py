@@ -191,3 +191,25 @@ class UpPusher:
 
 def make_pusher(base_dir: str | Path) -> UpPusher:
     return UpPusher(Path(base_dir) / "push_state.json")
+
+
+def load_cfg(source: dict | None = None) -> tuple[list[dict], int]:
+    """提取 push 配置段: (订阅列表, 轮询间隔秒).
+
+    订阅: template_list [{uid, groups, enabled}] 或旧 dict {uid: [groups]}.
+    """
+    from bridge.cfg import global_source, module_cfg
+
+    src = source if source is not None else global_source()
+    raw = module_cfg(src, "push", []) or []
+    interval = int(module_cfg(src, "push_interval", 300) or 300)
+    subs: list[dict] = []
+    if isinstance(raw, list):
+        for entry in raw:
+            if isinstance(entry, dict):
+                subs.append(entry)
+    elif isinstance(raw, dict):
+        for uid, groups in raw.items():
+            subs.append({"uid": str(uid), "groups": ",".join(str(g) for g in groups),
+                         "enabled": True})
+    return subs, interval

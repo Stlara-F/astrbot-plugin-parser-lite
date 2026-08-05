@@ -132,3 +132,17 @@ class CookieHealth:
 
 def make_cookie_health(base_dir: str | Path) -> CookieHealth:
     return CookieHealth(Path(base_dir) / "cookie_health.json")
+
+
+def load_cfg(source: dict | None = None) -> dict:
+    """提取 cookie_health 配置段 (功能自包含, 可注入配置源)."""
+    from bridge.cfg import global_source, module_cfg
+
+    src = source if source is not None else global_source()
+    cfg = module_cfg(src, "cookie_health", {}) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "interval_sec": int(cfg.get("interval_sec", 3600) or 3600),
+    }

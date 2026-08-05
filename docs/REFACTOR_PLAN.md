@@ -81,3 +81,50 @@ inject_schema(schema)
 └─ 桥接扩展字段 (显式声明, 非硬编码平台):
     send_strategy / plite_http_proxy / plite_direct_link / ... / delay_send / arbiter
 ```
+
+## 6. 配置层重构 (阶段 F)
+
+### 配置分类 (原始调用与扩展配置完全解耦)
+
+```
+配置分层:
+├─ 上游配置 (Config 模型, 原样透传零修改)
+│   ├─ plite_* bool      → features 标签 (双向映射)
+│   ├─ plite_* 数值/文本  → 顶级字段 (动态扫描)
+│   └─ plite_* 枚举      → parser_extra (parser_extra_map)
+├─ 桥接扩展配置 (bridge 专属, 与上游解耦)
+│   ├─ 全局: plite_http_proxy / send_strategy / direct_link / cover_only
+│   │        / image_compress_mb / dedup_ttl / cache_interval / forward_max_nodes
+│   ├─ 平台: platforms (enable/proxy/cookies)
+│   └─ 模块段: push / push_interval / delay_send / arbiter / cookie_health
+│             / rate_limit / card_semantic / test_urls / custom_parsers
+└─ 注入决策树 (inject.py): 上游扫描 (0硬编码) + 扩展声明 (_BRIDGE_FIELDS) → schema
+```
+
+### 阶段 F 工作清单 (功能模块化: 可注入 + 独立运行 + 职责唯一)
+
+- [ ] F1. `bridge/cfg.py`: 配置源注入模式 — `read_cfg(source, key, default)` (点路径, 已有)
+      + `module_cfg(source, section, default)` (提取模块配置段)
+- [ ] F2. 每模块 `load_cfg(source) -> 配置段` (自包含, main 不再直读配置):
+      push / delay_send / arbiter / cookie_health / rate_limit(已有) / debounce
+- [ ] F3. 工厂可选 source 注入: make_*(base_dir=None, source=None) — source None → 全局
+- [ ] F4. main.py 配置读取 → 模块 load_cfg (配置逻辑迁入模块, 调用方只传 source)
+- [ ] F5. 每模块独立测试 (构造配置源, 无全局 BridgeConfig 依赖)
+- [ ] F6. 多端环境回归 (E1 扩展: 每模块无上游/无 astrbot 可导入 + 独立运行)
+- [ ] F7. 部署验证
+
+```
+inject_schema(schema)
+├─ _injected 标记存在? → 跳过 (保留用户编辑)
+├─ _UpConfig.model_fields 遍历:
+│   ├─ bool → "features" 列表 (标签双向映射)
+│   ├─ int/float → 数字字段 (min/max/step 动态)
+│   ├─ str 枚举 (PlatformEnum 等) → options 下拉
+│   ├─ list[str] 枚举 → options 多选
+│   ├─ slider (day_range) → slider 配置
+│   └─ 其余 str → 文本字段
+├─ BaseParser.get_all_subclass() → platforms 模板 (enable/proxy/cookies)
+├─ CustomParser.SCHEMA → custom_parsers 模板
+└─ 桥接扩展字段 (显式声明, 非硬编码平台):
+    send_strategy / plite_http_proxy / plite_direct_link / ... / delay_send / arbiter
+```
