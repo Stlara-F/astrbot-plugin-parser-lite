@@ -232,6 +232,37 @@ def test_lyric_to_text():
     assert r4 == ""
 
 
+def test_netease_extract_lyric_formats():
+    """网易云歌词提取: 标准LRC / JSON拼接 / dict / 包装dict."""
+    from nonebot_plugin_parser_lite.parsers.netease import (
+        _extract_lyric,
+        _lyric_obj_to_text,
+    )
+
+    # JSON 字符串 (多对象拼接, 用户实际数据格式)
+    r = _extract_lyric(
+        '{"t":0,"c":[{"tx":"作词：","li":"http://x/1.jpg","or":"orpheuid=1"},'
+        '{"tx":"青"}]}{"t":182,"c":[{"tx":"作曲："},{"tx":"青"}]}'
+    )
+    assert "作词：" in r
+    assert "作曲：" in r
+    assert "{" not in r
+    assert "li" not in r
+    assert "orpheuid" not in r
+    # dict 新格式
+    r2 = _extract_lyric({"t": 0, "c": [{"tx": "作词："}, {"tx": "青"}]})
+    assert r2 == "作词：青"
+    # 包装 dict (lyric 为 JSON 字符串)
+    r3 = _extract_lyric({"lyric": '{"t":0,"c":[{"tx":"作词："}]}'})
+    assert r3 == "作词："
+    # 标准 LRC
+    r4 = _extract_lyric("[00:00.00]标准歌词")
+    assert r4 == "[00:00.00]标准歌词"
+    # 工具: c 数组元素即 tx 对象
+    r5 = _lyric_obj_to_text([{"tx": "作词："}, {"tx": "青"}])
+    assert r5 == "作词：青"
+
+
 def test_clean_result_html_lyric():
     """渲染入口清洗 extra.lyric (dict → 文本)."""
     from bridge.render_patch import clean_result_html

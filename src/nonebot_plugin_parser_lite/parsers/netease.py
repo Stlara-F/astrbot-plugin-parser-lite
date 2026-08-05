@@ -1,7 +1,8 @@
 import contextlib
+import json
 import random
 import time
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from .base import (
     BaseParser,
@@ -12,6 +13,72 @@ from .base import (
     PlatformEnum,
     handle,
 )
+
+
+def _lyric_obj_to_text(obj: Any) -> str:
+    """网易云新格式歌词对象 → 文本.
+
+    {"t": 0, "c": [{"tx": "作词：", "li": "...", "or": "..."}, {"tx": "青"}]}
+    → "作词：青"  (li/or 为图片/链接信息, 忽略)
+    """
+    if isinstance(obj, list):
+        # c 数组元素即 tx 对象: [{"tx": "作词："}, {"tx": "青"}]
+        return "".join(x.get("tx", "") for x in obj if isinstance(x, dict))
+    if isinstance(obj, dict) and isinstance(obj.get("c"), list):
+        return _lyric_obj_to_text(obj["c"])
+    return ""
+
+
+def _parse_lyric_json(s: str) -> str | None:
+    """解析歌词 JSON (支持多个对象拼接: {...}{...}{...}). 失败返回 None."""
+    decoder = json.JSONDecoder()
+    idx = 0
+    n = len(s)
+    texts: list[str] = []
+    while idx < n:
+        while idx < n and s[idx] in " \n\r\t":
+            idx += 1
+        if idx >= n:
+            break
+        if s[idx] != "{":
+            return None
+        try:
+            obj, end = decoder.raw_decode(s, idx)
+        except json.JSONDecodeError:
+            return None
+        texts.append(_lyric_obj_to_text(obj))
+        idx = end
+    return "\n".join(texts) if texts else None
+
+
+def _extract_lyric(lrc_data: Any) -> str:
+    """从 getSongLyric 的 lrc 字段提取歌词文本.
+
+    支持:
+    - 标准 LRC 字符串: "[00:00.00]作词：青"
+    - 新版 JSON 字符串 (可多对象拼接): '{"t":0,"c":[{"tx":"作词："}]}{"t":182,...}'
+    - 新版 dict: {"t":0,"c":[{"tx":"作词："}]}
+    - 标准包装 dict: {"lyric": "<上述任意一种>"}
+    """
+    if isinstance(lrc_data, str):
+        s = lrc_data.strip()
+        if s.startswith("{"):
+            parsed = _parse_lyric_json(s)
+            if parsed is not None:
+                return parsed
+        return lrc_data
+    if isinstance(lrc_data, dict):
+        inner = lrc_data.get("lyric")
+        if isinstance(inner, str):
+            s = inner.strip()
+            if s.startswith("{"):
+                parsed = _parse_lyric_json(s)
+                if parsed is not None:
+                    return parsed
+            return inner
+        if isinstance(lrc_data.get("c"), list):
+            return _lyric_obj_to_text(lrc_data)
+    return ""
 
 
 def random_ip() -> str:
@@ -81,17 +148,7 @@ class NCMParser(BaseParser):
         lyric = ""
         with contextlib.suppress(Exception):
             lrc_data = (await self.fetch("getSongLyric", {"id": ncm_id})).get("lrc")
-            if isinstance(lrc_data, dict):
-                # 标准: {"lyric": "[00:00.00]..."} / 新版: {"t": 0, "c": [{"tx": "..."}]}
-                if isinstance(lrc_data.get("lyric"), str):
-                    lyric = lrc_data["lyric"]
-                elif isinstance(lrc_data.get("c"), list):
-                    lyric = "\n".join(
-                        "".join(x.get("tx", "") for x in item.get("c", []) if isinstance(x, dict))
-                        for item in lrc_data.get("c", []) if isinstance(item, dict)
-                    )
-            elif isinstance(lrc_data, str):
-                lyric = lrc_data
+            lyric = _extract_lyric(lrc_data)
         url_data = await self.fetch("getSongUrl", {"id": ncm_id, "level": "standard"})
         if not (audio_url := url_data.get("url")):
             raise ParseException("无法获取音频下载地址")
