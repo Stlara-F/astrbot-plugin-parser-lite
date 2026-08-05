@@ -49,20 +49,25 @@ repo/
 - [ ] B2. `bridge/resolve.py` — parse_url 薄封装 (调用上游, 超时守卫, httpx 重建)
 - [ ] B3. 删除 bridge/core.py 中代理/解析编排 (迁入 proxy/resolve)
 
-### 阶段 C: 发送与渲染
-- [ ] C1. `bridge/send.py` — 结果转发 (卡片渲染/文本回退/媒体三路, 从 main.py 抽取)
-- [ ] C2. 渲染: 评估删除 render_patch autoescape 包装 (回上游); 保留必需最小补丁
-- [ ] C3. main.py 发送链路移除 → 委托 bridge.send
+### 阶段 C: 发送与渲染 (解耦: 调上游渲染, AstrBot 发送)
+- [x] C1a. `bridge/send.py` — 发送层核心:
+      `send_card(event, result)`: 上游 RENDERER.render_image → Comp.Image.fromBytes (LRU 10)
+      → 失败回退 format_full 纯文本; `should_send(media_type)`: send_strategy 门控;
+      `get_sendable_types()`: 上游 ContentItem Union 动态扫描
+- [ ] C1b. `bridge/send.py` — 媒体发送 (MediaContent 遍历 → 三路 fromFileSystem/fromBytes/fromURL)
+      + FFmpeg 转换回调注入 (main.py 提供, 保持发送层纯扩展)
+- [ ] C2. 渲染: 删除 render_patch 的 render_html autoescape 重建包装
+      (回上游原样 env), 保留 safe_src 默认 method (上游模板 bug)
+- [x] C3a. main.py `_send_card` 委托 bridge.send (文本回退保留)
 
 ### 阶段 D: 命令与入口
 - [ ] D1. `bridge/commands.py` — doctor/status/install_chromium/clean/enable/disable/bm/blogin
-- [ ] D2. main.py 薄化: 仅 ParserLitePlugin(Star) + 注册 (filter.command → commands)
-- [ ] D3. bridge/core.py 收尾: 保留 LazyManager/CustomParser/format (或迁移)
+      (AstrBot 命令注册从 main.py 迁出, 委托 bridge.doctor/send 等)
+- [ ] D2. main.py 薄化: 仅 ParserLitePlugin(Star) + 命令/事件注册 (逻辑委托 bridge 模块)
 
 ### 阶段 E: 收尾
-- [ ] E1. 测试迁移 (bridge/tests 对齐新模块) + 新增解耦回归测试
-- [ ] E2. scripts/check_schema.py 适配新结构
-- [ ] E3. CI + 部署验证
+- [ ] E1. 测试对齐 + 解耦回归 (上游模块不可反向 import bridge)
+- [ ] E2. check_schema 适配 + CI + 部署验证
 
 ## 5. 决策树 (注入)
 

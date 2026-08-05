@@ -1148,33 +1148,10 @@ class ParserLitePlugin(Star):
             return p
 
     async def _send_card(self, event: AstrMessageEvent, result: ParseResult):
-        cache_key = result.url
-        if cache_key in _CARD_CACHE:
-            data = _CARD_CACHE.pop(cache_key)  # LRU: 命中即移尾部
-            _CARD_CACHE[cache_key] = data
-            await event.send(event.chain_result([Comp.Image.fromBytes(data)]))
-            astrbot_logger.info(f"[ParserLite] card cache hit ({len(data)} bytes)")
-            return
+        # 委托 bridge.send (薄发送层: 上游渲染 → AstrBot 发送, 文本回退)
+        from bridge.send import send_card
 
-        from nonebot_plugin_parser_lite.render import RENDERER
-        # 0-hardcode: 直接复用 standalone renderer 的 Playwright 实现
-        try:
-            data = await RENDERER.render_image(result)
-            if len(data) < 1024 or data[:2] != b"\xff\xd8":
-                raise RuntimeError(f"Invalid JPEG: {len(data)} bytes")
-            # E7: LRU 淘汰最旧 (OrderedDict 语义: 超限删第一个)
-            if len(_CARD_CACHE) >= _CARD_CACHE_MAX:
-                _CARD_CACHE.pop(next(iter(_CARD_CACHE)), None)
-            _CARD_CACHE[cache_key] = data
-            await event.send(event.chain_result([Comp.Image.fromBytes(data)]))
-            astrbot_logger.info(f"[ParserLite] card rendered ({len(data)} bytes)")
-        except Exception:
-            astrbot_logger.warning(f"[ParserLite] 卡片渲染失败, 回退文本\n{traceback.format_exc()}")
-            try:
-                await event.send(event.chain_result([Comp.Plain(format_full(result))]))
-            except Exception:
-                astrbot_logger.error(
-                    f"[ParserLite] 回退文本发送也失败 (OneBot API 可能不可用)\n{traceback.format_exc()}")
+        await send_card(event, result, format_full, astrbot_logger)
 
     # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
     async def on_url_auto(self, event: AstrMessageEvent):
