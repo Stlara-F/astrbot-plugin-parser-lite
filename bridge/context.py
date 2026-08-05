@@ -49,6 +49,14 @@ def up_downloader():
 
 def up_renderer():
     _import_upstream()
+    # 自动确保渲染补丁 (safe_src 默认 method + pl_esc/pl_str 注册, 幂等)
+    # 上游模板省略 method 且引用 pl_esc/pl_str — 任何渲染调用方都需要
+    try:
+        from bridge.render_patch import apply_render_patch
+
+        apply_render_patch()
+    except Exception:
+        pass
     return _UP_RENDERER
 
 
