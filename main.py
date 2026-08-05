@@ -986,118 +986,44 @@ class ParserLitePlugin(Star):
         result = await self._parse_raw(url)
         return format_full(result) if result else ""
 
-    # ── 多媒体发送管线 (文件系统→base64→URL 三路冗余 + FFmpeg格式转换) ──
+    # ── 多媒体发送管线 (委托 bridge.send: 三路冗余 + FFmpeg 转换回调注入) ──
     async def _send_any(self, event: AstrMessageEvent, p: Path, media_type: str,
                         source_url: str = "", duration: float = 0.0):
-        if not p.exists():
-            astrbot_logger.warning(f"[ParserLite] _send_any: file missing {p}")
+        from bridge.send import send_media_file
+
+        converters = {
+            "image": self._compress_image,
+            "video": self._convert_video,
+            "audio": lambda path: self._convert_audio(path, fmt="mp3"),
+        }
+        ok = await send_media_file(event, p, media_type, source_url, converters, astrbot_logger)
+        if ok:
             return
-        try: p.chmod(0o644)
-        except Exception: pass
-
-        if media_type == "image":
-            # 1) fromFileSystem → 2) raw bytes → 3) fromURL
-            try:
-                await event.send(event.chain_result([Comp.Image.fromFileSystem(str(p))]))
-                astrbot_logger.debug(f"[ParserLite]   image via file: {p.name}")
-                return
-            except Exception: pass
-            try:
-                raw = p.read_bytes()
-                _img_mb = int(_bridge_cfg("plite_image_compress_mb", 20) or 20)
-                if len(raw) > _img_mb * 1024 * 1024:
-                    raw = await self._compress_image(p)
-                await event.send(event.chain_result([Comp.Image.fromBytes(raw)]))
-                astrbot_logger.debug(f"[ParserLite]   image via bytes: {len(raw)}B")
-                return
-            except Exception: pass
-            if source_url:
-                try:
-                    await event.send(event.chain_result([Comp.Image.fromURL(source_url)]))
-                    astrbot_logger.debug("[ParserLite]   image via URL")
-                    return
-                except Exception: pass
-
-        elif media_type == "video":
-            mp4 = await self._convert_video(p)
-            sz = mp4.stat().st_size if mp4.exists() else 0
-            # 1) fromFileSystem → 2) raw→base64 → 3) fromURL
-            try:
-                await event.send(event.chain_result([Comp.Video.fromFileSystem(str(mp4))]))
-                astrbot_logger.debug(f"[ParserLite]   video via file: {mp4.name} ({sz // 1024}KB)")
-                return
-            except Exception: pass
-            try:
-                import base64
-                raw = mp4.read_bytes(); b64 = base64.b64encode(raw).decode()
-                await event.send(event.chain_result([Comp.Video.fromBase64(b64)]))
-                astrbot_logger.debug(f"[ParserLite]   video via base64: {len(raw)}B")
-                return
-            except Exception: pass
-            if source_url:
-                try:
-                    await event.send(event.chain_result([Comp.Video.fromURL(source_url)]))
-                    astrbot_logger.debug("[ParserLite]   video via URL")
-                    return
-                except Exception: pass
-            # F7: 大视频延迟发送 — 先发提示, 表情回应后触发
+        # delay_send 兜底: 大视频三路失败 → 表情触发延迟发送 (扩展逻辑保留 main)
+        if media_type == "video" and p.exists():
             _dl_cfg = _bridge_cfg("delay_send", {}) or {}
             if _dl_cfg.get("enabled", False) and self._delay_sender is not None:
                 _threshold = int(_dl_cfg.get("threshold_mb", 20) or 20) * 1024 * 1024
                 _msg_id = getattr(getattr(event, "message_obj", None), "raw_message", None)
                 _msg_id = (_msg_id or {}).get("message_id") if isinstance(_msg_id, dict) else None
-                if _msg_id and sz > _threshold:
+                _sz = p.stat().st_size if p.exists() else 0
+                if _msg_id and _sz > _threshold:
                     _dl_key = f"{_msg_id}:{p.name}"
                     self._delay_sender.arm(str(_msg_id), _dl_key,
                                            timeout_sec=float(_dl_cfg.get("timeout_sec", 300) or 300))
+
                     async def _do_delay_send(_key):
                         try:
-                            await self._send_any(event, p, "video", source_url=source_url, duration=duration)
+                            await self._send_any(event, p, "video",
+                                                source_url=source_url, duration=duration)
                         except Exception:
                             pass
                     self._delay_sender.set_trigger(_do_delay_send)
                     try:
                         await event.send(event.chain_result([Comp.Plain(
-                            f"视频较大 ({sz // 1024 // 1024}MB), 回应 👍 后发送")]))
-                        return
+                            f"视频较大 ({_sz // 1024 // 1024}MB), 回应 👍 后发送")]))
                     except Exception:
                         pass
-
-        elif media_type == "audio":
-            # 转码为 MP3 (QQ/OneBot 兼容) + AMR 备路 (QQ语音)
-            mp3 = await self._convert_audio(p, fmt="mp3")
-            sz = mp3.stat().st_size if mp3.exists() else 0
-            # 1) fromFileSystem → 2) raw bytes → 3) fromURL
-            try:
-                await event.send(event.chain_result([Comp.Record.fromFileSystem(str(mp3))]))
-                astrbot_logger.debug(f"[ParserLite]   audio via file: {mp3.name} ({sz // 1024}KB)")
-                return
-            except Exception: pass
-            try:
-                raw = mp3.read_bytes()
-                await event.send(event.chain_result([Comp.Record.fromBytes(raw)]))
-                astrbot_logger.debug(f"[ParserLite]   audio via bytes: {len(raw)}B")
-                return
-            except Exception: pass
-            if source_url:
-                try:
-                    await event.send(event.chain_result([Comp.Record.fromURL(source_url)]))
-                    astrbot_logger.debug("[ParserLite]   audio via URL")
-                    return
-                except Exception: pass
-            # 最终兜底: 当群文件发送
-            try:
-                await event.send(event.chain_result([Comp.File(file=str(mp3))]))
-                return
-            except Exception: pass
-
-        elif media_type == "card":
-            raw = p.read_bytes()
-            try:
-                await event.send(event.chain_result([Comp.Image.fromFileSystem(str(p))]))
-                return
-            except Exception: pass
-            await event.send(event.chain_result([Comp.Image.fromBytes(raw)]))
 
     async def _compress_image(self, p: Path) -> bytes:
         """压缩超大图片 (JPEG quality 80%, 最大 20MB)"""
