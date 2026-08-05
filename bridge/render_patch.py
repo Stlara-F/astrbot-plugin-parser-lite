@@ -144,10 +144,11 @@ def apply_render_patch() -> bool:
 
             from nonebot_plugin_parser_lite.render import get_theme
 
+            # 回上游原样 env: 无 autoescape (与上游一致)
+            # 仅注册 pl_esc/pl_str (模板 |e Markup ~ 拼接修复, 上游模板同样引用)
             environment = Environment(
                 loader=FileSystemLoader(str(_renderer.templates_dir)),
                 enable_async=True,
-                autoescape=True,
             )
             environment.filters["safe_src"] = _render.safe_src
             environment.filters["pl_esc"] = pl_esc
