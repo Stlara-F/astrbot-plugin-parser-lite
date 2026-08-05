@@ -159,6 +159,9 @@ _BRIDGE_FIELDS: list[dict] = [
 
 _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
 
+# 配置 schema 版本: 新增配置字段时递增 → 触发重新注入 (保留用户已编辑字段值)
+SCHEMA_VERSION = 2
+
 
 def get_parser_extra_mapping() -> dict:
     if not _PARSER_EXTRA_MAP:
@@ -195,7 +198,9 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
 
     schema = json.loads(schema_path.read_text("utf-8")) if schema_path.exists() else {}
     has_markers = "__INJECT__" in json.dumps(schema)
-    if flag_path.exists() and not has_markers:
+    # 版本化标记: 同版本跳过 (保留用户 WebUI 编辑); 版本变化 (插件更新新增字段) → 重新注入
+    flag_version = flag_path.read_text("utf-8").strip() if flag_path.exists() else ""
+    if flag_version == str(SCHEMA_VERSION) and not has_markers:
         _rebuild_parser_extra_map()
         return []
     updated = False
@@ -243,12 +248,19 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
         updated = True
         injected.append("platforms")
 
-    # 1) features: bool 字段
+    # 1) features: bool 字段 (增量合并: 新字段追加, 用户已编辑保留)
     bool_fields = sorted(k for k, f in _UpConfig.model_fields.items()
                          if f.annotation is bool and k.startswith("plite_"))
     _features = schema.setdefault("features", {"type": "list", "options": [], "default": []})
-    if _features.get("options") == ["__INJECT__"] or not _features.get("options"):
-        _features["options"] = [label(k) for k in bool_fields]
+    _new_opts = [label(k) for k in bool_fields]
+    _existing_opts = list(_features.get("options") or [])
+    _merged_opts = list(dict.fromkeys([*_existing_opts, *_new_opts]))
+    if _existing_opts != _merged_opts:
+        _features["options"] = _merged_opts
+        updated = True
+        injected.append("features")
+    if not _existing_opts:
+        # 首次注入: 初始化默认勾选
         _features["default"] = [
             label(k) for k in bool_fields if _UpConfig.model_fields[k].default is True
         ]
@@ -396,6 +408,6 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
                 _ordered[_k] = _v
         schema = _ordered
         schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), "utf-8")
-        flag_path.write_text("1")
+        flag_path.write_text(str(SCHEMA_VERSION))
         _logger.info(f"[ParserLite] schema injected: {', '.join(injected) if injected else '(defaults sync)'}")
     return injected

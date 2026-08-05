@@ -103,14 +103,14 @@ inject_schema(schema)
 
 ### 阶段 F 工作清单 (功能模块化: 可注入 + 独立运行 + 职责唯一)
 
-- [ ] F1. `bridge/cfg.py`: 配置源注入模式 — `read_cfg(source, key, default)` (点路径, 已有)
-      + `module_cfg(source, section, default)` (提取模块配置段)
-- [ ] F2. 每模块 `load_cfg(source) -> 配置段` (自包含, main 不再直读配置):
-      push / delay_send / arbiter / cookie_health / rate_limit(已有) / debounce
-- [ ] F3. 工厂可选 source 注入: make_*(base_dir=None, source=None) — source None → 全局
-- [ ] F4. main.py 配置读取 → 模块 load_cfg (配置逻辑迁入模块, 调用方只传 source)
-- [ ] F5. 每模块独立测试 (构造配置源, 无全局 BridgeConfig 依赖)
-- [ ] F6. 多端环境回归 (E1 扩展: 每模块无上游/无 astrbot 可导入 + 独立运行)
+- [x] F1. `bridge/cfg.py`: 配置源注入模式 (module_cfg/global_source)
+- [x] F2. 每模块 `load_cfg(source)` (delay_send/arbiter/cookie_health/push/debounce)
+- [x] F3. 工厂可选 source 注入 (rate_limit 已有)
+- [x] F4. main.py 配置段读取 → 模块 load_cfg
+- [x] F5. 每模块独立测试 (test_module_cfg 8项, 无全局依赖)
+- [x] F6. 注入版本化 (基于 AstrBot 最新源码调研):
+      SCHEMA_VERSION 标记 — 插件更新新增字段 → 重新注入 (保留用户编辑);
+      features options 增量合并; 同版本跳过
 - [ ] F7. 部署验证
 
 ```
