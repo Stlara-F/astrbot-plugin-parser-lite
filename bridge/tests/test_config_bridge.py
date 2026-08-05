@@ -87,10 +87,13 @@ def test_bridge_fields_no_deprecated():
     src = _bridge_fields_src()
     assert '"path": "parsers.items.cookies"' not in src
     assert '"path": "parsers.items.proxied"' not in src
-    # platforms 统一勾选列表 (enabled/proxied) + cookies 动态模板
+    # platforms 统一勾选列表 (enabled/proxied) + cookies 动态模板 (纯字符串 options)
     assert 'setdefault("proxied", {"type": "list"' in src
     assert 'setdefault("enabled", {"type": "list"' in src
-    assert '"type": "template_list", "description": "平台 Cookie' in src
+    assert '"type": "template_list"' in src
+    assert "平台 Cookie" in src
+    # options 必须纯字符串 (AstrBot 勾选列表按字符串渲染, 对象 → [object Object])
+    assert '{"value": "' not in src
 
 
 def test_object_fields_have_items():

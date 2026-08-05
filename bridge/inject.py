@@ -213,6 +213,14 @@ _BRIDGE_PATHS: list[str] = [bf["path"] for bf in _BRIDGE_FIELDS]
 # 配置 schema 版本: 新增配置字段时递增 → 触发重新注入 (保留用户已编辑字段值)
 SCHEMA_VERSION = 4
 
+# 注入反馈: 成功/失败报告 (模块加载与 WebUI 诊断可查询)
+inject_report: dict = {
+    "last_ok": None,          # 最近一次注入是否成功 (True/False)
+    "last_error": "",         # 失败原因 (含 Traceback 摘要)
+    "injected": [],           # 最近一次注入的配置项
+    "schema_version": SCHEMA_VERSION,
+}
+
 
 def get_parser_extra_mapping() -> dict:
     if not _PARSER_EXTRA_MAP:
@@ -238,10 +246,35 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
     """0-hardcode 动态注入: 扫描上游 Config 模型 → 填充 _conf_schema.json.
 
     :return: 注入的配置项名列表
+    :note: 注入反馈 (成功/失败) 写入 inject_report, 异常不阻断插件加载
     """
     import logging
+    import traceback
 
     _logger = logging.getLogger("nonebot_plugin_parser_lite")
+    try:
+        _result = _inject_inner(schema_path, flag_path, _logger)
+        inject_report.update({
+            "last_ok": True, "last_error": "", "injected": _result,
+            "schema_version": SCHEMA_VERSION,
+        })
+        _logger.info(f"[ParserLite] schema injected OK: {', '.join(_result) if _result else '(idempotent sync)'}")
+        return _result
+    except Exception as _e:
+        # 注入失败反馈: 记录完整 Traceback, 不阻断插件加载 (schema 缺失时 AstrBot 用内置默认)
+        _tb = traceback.format_exc(limit=8)
+        inject_report.update({
+            "last_ok": False,
+            "last_error": f"{type(_e).__name__}: {_e}",
+            "injected": [],
+            "schema_version": SCHEMA_VERSION,
+        })
+        _logger.error(f"[ParserLite] schema 注入失败 (插件仍可加载): {_e}\n{_tb}")
+        return []
+
+
+def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
+    """注入主体 (被 inject_dynamic_options_static 包裹以提供失败反馈)."""
     from nonebot_plugin_parser_lite.constants import PlatformEnum
 
     _UpConfig = up_config()
@@ -290,19 +323,19 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
         _p = getattr(_cls, "platform", None)
         _pname = getattr(_p, "name", None)
         if _pname:
-            _plats.append({"value": str(_pname).lower(),
-                           "label": str(getattr(_p, "display_name", _pname))})
-    _plats = sorted(_plats, key=lambda x: x["value"])
+            _plats.append(str(_pname).lower())
+    _plats = sorted(set(_plats))
     _pf_items = pfm.setdefault("items", {})
     _changed_platform = False
 
     # enabled: 启用解析的平台勾选 (替代旧 27 模板 enable)
+    # 注意: options 必须为纯字符串数组 (AstrBot 勾选列表按字符串渲染, 对象 → [object Object])
     _enabled = _pf_items.setdefault("enabled", {"type": "list", "description": "启用解析的平台", "options": [], "default": []})
     if _enabled.get("options") != _plats:
         _enabled["options"] = _plats
         _changed_platform = True
     if not _enabled.get("default"):
-        _enabled["default"] = [p["value"] for p in _plats]
+        _enabled["default"] = list(_plats)
         _changed_platform = True
 
     # proxied: 走代理的平台勾选 (替代旧 27 模板 proxy 开关)
@@ -313,15 +346,19 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
 
     # 动态源: 源码支持 cookie 的平台 (Config 中 plite_<platform>_ck 字段)
     _ck_platforms = []
+    _ck_labels = {}
     for _fname in _UpConfig.model_fields:
         if _fname.startswith("plite_") and _fname.endswith("_ck"):
             _plat = _fname[len("plite_"):-len("_ck")]
-            _ck_platforms.append({"value": _plat, "label": tr(_fname)})
+            _ck_platforms.append(_plat)
+            _ck_labels[_plat] = tr(_fname)
 
-    # cookies: 动态模板列表 (平台下拉仅含支持 cookie 的源码平台)
+    # cookies: 动态模板列表 (平台下拉仅含支持 cookie 的源码平台, 纯字符串 options)
     if _ck_platforms:
+        _ck_desc = "平台 Cookie (自动同步至解析器)" + (
+            f"; 支持平台: {', '.join(_ck_labels.get(p, p) for p in _ck_platforms)}" if _ck_platforms else "")
         _cookies = _pf_items.setdefault("cookies", {
-            "type": "template_list", "description": "平台 Cookie (自动同步至解析器)",
+            "type": "template_list", "description": _ck_desc,
             "templates": {"default": {"name": "平台Cookie", "items": {
                 "platform": {"type": "list", "description": "平台", "options": [], "default": []},
                 "cookie": {"type": "string", "description": "Cookie", "default": ""},

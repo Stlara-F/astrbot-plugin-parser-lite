@@ -110,15 +110,24 @@ def _is_parser_enabled(platform: str) -> bool:
         return True
 
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_DISABLED_GROUPS_FILE = Path(_HERE).parent / "data" / "parser_lite" / "disabled_groups.json"
+_DISABLED_GROUPS_FILE = None  # 延迟解析 (统一路径, 消除 __file__ 环境差异)
+
+
+def _disabled_groups_path() -> Path:
+    global _DISABLED_GROUPS_FILE
+    if _DISABLED_GROUPS_FILE is None:
+        from bridge.paths import ensure_state_dir
+
+        _DISABLED_GROUPS_FILE = ensure_state_dir() / "disabled_groups.json"
+    return _DISABLED_GROUPS_FILE
 
 
 def _load_disabled_groups() -> set[str]:
     try:
-        if _DISABLED_GROUPS_FILE.exists():
+        _f = _disabled_groups_path()
+        if _f.exists():
             import json
-            return set(json.loads(_DISABLED_GROUPS_FILE.read_text(encoding="utf-8")))
+            return set(json.loads(_f.read_text(encoding="utf-8")))
     except Exception:
         pass
     return set()
@@ -127,8 +136,9 @@ def _load_disabled_groups() -> set[str]:
 def _save_disabled_groups(data: set[str]) -> None:
     try:
         import json
-        _DISABLED_GROUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _DISABLED_GROUPS_FILE.write_text(json.dumps(sorted(data)), encoding="utf-8")
+        _f = _disabled_groups_path()
+        _f.parent.mkdir(parents=True, exist_ok=True)
+        _f.write_text(json.dumps(sorted(data)), encoding="utf-8")
     except Exception:
         pass
 

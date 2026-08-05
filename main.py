@@ -199,13 +199,13 @@ class ParserLitePlugin(Star):
 
             self._parser = ParserLite()
             self._plugin_start_time = time.time()
-            # 频率限制器 + 防抖器 (配置驱动, data/ 下持久化)
+            # 频率限制器 + 防抖器 (配置驱动, 统一状态目录持久化)
             try:
                 from bridge.debounce import make_debouncer
+                from bridge.paths import state_dir as _state_dir
                 from bridge.rate_limit import make_limiter
-                _base_dir = os.environ.get("PARSER_LITE_BASE_DIR", str(Path.cwd() / "data"))
-                self._limiter = make_limiter(Path(_base_dir) / "parser_lite")
-                self._debouncer = make_debouncer(Path(_base_dir) / "parser_lite")
+                self._limiter = make_limiter(_state_dir())
+                self._debouncer = make_debouncer(_state_dir())
             except Exception:
                 self._limiter = None
                 self._debouncer = None
@@ -217,8 +217,8 @@ class ParserLitePlugin(Star):
                 from bridge.push import load_cfg as _push_cfg
                 from bridge.push import make_pusher
                 _push_raw, _interval = _push_cfg()
-                _base_dir = os.environ.get("PARSER_LITE_BASE_DIR", str(Path.cwd() / "data"))
-                self._pusher = make_pusher(Path(_base_dir) / "parser_lite")
+                from bridge.paths import state_dir as _state_dir
+                self._pusher = make_pusher(_state_dir())
                 # template_list: [{uid, groups("1,2"), enabled}]
                 _subs: dict[str, list[str]] = {}
                 if isinstance(_push_raw, list):
@@ -254,9 +254,9 @@ class ParserLitePlugin(Star):
             try:
                 from bridge.cookie_health import load_cfg as _ch_cfg
                 from bridge.cookie_health import make_cookie_health
+                from bridge.paths import state_dir as _state_dir
                 _ck_cfg = _ch_cfg()
-                _base_dir = os.environ.get("PARSER_LITE_BASE_DIR", str(Path.cwd() / "data"))
-                self._cookie_health = make_cookie_health(Path(_base_dir) / "parser_lite")
+                self._cookie_health = make_cookie_health(_state_dir())
                 _ck_interval = float(_ck_cfg.get("interval_sec", 3600) or 3600)
                 _cookies = {
                     "bilibili": _bridge_cfg("plite_bili_ck", "") or "",
