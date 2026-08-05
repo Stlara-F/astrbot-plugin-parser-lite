@@ -109,8 +109,6 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         import logging
         logger = logging.getLogger("parser-lite.bridge.send")
 
-    from astrbot.api.message_components import Image, Record, Video
-
     p = Path(path)
     if not p.exists():
         logger.warning(f"[ParserLite] send_media_file: file missing {p}")
@@ -120,6 +118,8 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
     except Exception:
         pass
     converters = converters or {}
+    # 组件延迟 import (CI/离线无 astrbot 时可导入模块, 发送时才需组件)
+    from astrbot.api.message_components import Image, Record, Video
 
     if media_type == "image":
         try:
