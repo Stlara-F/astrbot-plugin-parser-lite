@@ -5,15 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-import pytest
+from _pytest.monkeypatch import MonkeyPatch
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import bridge.send as send  # noqa: E402
 from bridge.context import BridgeConfig  # noqa: E402
+import bridge.send as send  # noqa: E402
 
 
 def test_sendable_types_dynamic():
@@ -57,12 +57,17 @@ class FakeEvent:
         self.sent.append(segs)
 
 
-def test_send_card_fallback_text():
+def test_send_card_fallback_text(monkeypatch: MonkeyPatch):
     """渲染失败 → 回退纯文本 (发送仍成功)."""
 
     async def fake_render(result):
         raise RuntimeError("render boom")
 
+    class FakePlain:
+        def __init__(self, text):
+            self.text = text
+
+    monkeypatch.setattr(send, "_plain", lambda text: FakePlain(text))
     orig = send.up_renderer
     try:
         send.up_renderer = lambda: type("R", (), {"render_image": fake_render})()
@@ -73,5 +78,6 @@ def test_send_card_fallback_text():
             ev, type("R", (), {"url": "https://x"}), lambda r: "回退文本"))
         assert ok is True
         assert len(ev.sent) == 1
+        assert ev.sent[0][0].text == "回退文本"
     finally:
         send.up_renderer = orig
