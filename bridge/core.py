@@ -90,8 +90,13 @@ def _build_feature_table():
 
 
 def _is_parser_enabled(platform: str) -> bool:
-    """平台启用: platforms[].enable (默认 True), 兼容 disabled_platforms."""
+    """平台启用: platforms.items.enabled 勾选 (默认全部), 兼容旧 enable/disabled_platforms."""
     try:
+        from bridge.proxy import enabled_platforms as _enabled_platforms
+
+        _en = _enabled_platforms()
+        if _en is not None:
+            return platform.lower() in _en
         _pc = _platform_cfg(platform)
         if "enable" in _pc:
             return bool(_pc["enable"])

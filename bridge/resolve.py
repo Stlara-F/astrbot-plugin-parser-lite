@@ -43,6 +43,13 @@ class ParserLite:
     async def parse_url(self, url: str) -> Any:
         """解析 URL → 上游 ParseResult (薄封装: 超时/代理语义/httpx 守卫)."""
         BridgeConfig.configure()
+        # 平台 cookie 同步: platforms.cookies 条目 → 上游 plite_*_ck (动态源, 幂等)
+        try:
+            from bridge.proxy import sync_cookies_to_upstream
+
+            sync_cookies_to_upstream()
+        except Exception:
+            pass
         proxy_url = read_proxy_config()
         target = self._route_url(url)
         ordered = list(up_base_parser().get_all_subclass())

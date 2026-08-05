@@ -30,7 +30,8 @@ def _collect_from_imports(path: Path) -> list[tuple[str, str, str]]:
 
 def test_bridge_imports_exist():
     """main.py 与 bridge/*.py 中 from bridge.* import 的符号均存在."""
-    files = [p for p in _ROOT.glob("**/*.py") if p.is_file()]
+    files = [p for p in _ROOT.glob("**/*.py") if p.is_file()
+             and "/bridge/tests/" not in str(p).replace("\\", "/")]
     missing = []
     for f in files:
         for _f, module, name in _collect_from_imports(f):

@@ -77,6 +77,18 @@ def up_creator():
 # ── 字段标签 (features 双向映射用) ───────────────────────────────────────────
 
 def label(k: str) -> str:
+    # 翻译表优先; 未翻译字段回退英文驼峰 (未翻译状态, 新增字段可见)
+    try:
+        from bridge.inject import tr as _tr
+
+        return _tr(k)
+    except Exception:
+        pass
+    return label_en(k)
+
+
+def label_en(k: str) -> str:
+    """英文驼峰标签 (旧配置 features 值兼容)."""
     s = k.removeprefix("plite_").replace("_", " ")
     if s.startswith("bili "):
         s = "B站" + s[4:]
@@ -101,12 +113,12 @@ class BridgeConfig:
             cls._source = _config
         elif kwargs:
             cls._source = data  # AstrBot configure(**self.config) 走此分支
-        # features 标签 → plite_* bool 反向映射
+        # features 标签 → plite_* bool 反向映射 (兼容中英文旧值)
         features_list = data.get("features", [])
         if isinstance(features_list, list):
             for k, f in _UpConfig.model_fields.items():
                 if f.annotation is bool and k.startswith("plite_"):
-                    data[k] = label(k) in features_list
+                    data[k] = (label(k) in features_list) or (label_en(k) in features_list)
         valid = {k: v for k, v in data.items() if k in _UpConfig.model_fields}
         # parser_extra 冲突覆盖: 注入到 valid 中 (优先于顶级 plite_ 同名字段)
         cls._inject_parser_extra(valid, data)

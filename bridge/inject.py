@@ -15,10 +15,59 @@ import typing
 from bridge.context import label, up_base_parser, up_config
 from bridge.core import CustomParser
 
+# ── 配置项翻译列表: 注入字段 → 中文标签 ─────────────────────────────────────
+# 未翻译的 key 原样显示 (新增字段以未翻译状态进入配置, 后续在此补充即可)
+TRANSLATIONS: dict[str, str] = {
+    "features": "功能开关",
+    "platforms": "平台配置",
+    "parser_extra": "平台解析扩展",
+    "custom_parsers": "自定义解析器",
+    "test_urls": "测试URL",
+    "parsers": "解析器控制",
+    "send_strategy": "发送策略",
+    "plite_http_proxy": "全局代理",
+    "plite_direct_link": "直链免下载",
+    "plite_send_cover_only": "视频仅发封面",
+    "plite_image_compress_mb": "图片压缩阈值MB",
+    "plite_dedup_ttl": "链接去重TTL秒",
+    "plite_cache_interval": "缓存清理间隔秒",
+    "plite_forward_max_nodes": "合并转发最大节点数",
+    "card_semantic": "QQ卡片语义注入",
+    "push": "B站UP订阅推送",
+    "push_interval": "推送轮询间隔秒",
+    "delay_send": "延迟发送表情触发",
+    "arbiter": "多Bot表情仲裁",
+    "cookie_health": "Cookie健康检查",
+    "plite_need_upload": "上传音视频文件",
+    "plite_need_upload_audio": "上传音频文件",
+    "plite_need_upload_video": "上传视频文件",
+    "plite_use_base64": "Base64编码发送",
+    "plite_max_size": "资源最大大小MB",
+    "plite_duration_maximum": "视频音频最大时长秒",
+    "plite_append_url": "结果附加原始URL",
+    "plite_append_qrcode": "结果附加原始URL二维码",
+    "plite_disabled_platforms": "禁用的解析平台",
+    "plite_blacklist_users": "黑名单用户",
+    "plite_bili_video_codes": "B站视频编码",
+    "plite_bili_video_quality": "B站视频清晰度",
+    "plite_need_forward_contents": "合并转发内容",
+    "plite_lazy_download": "懒下载模式",
+    "plite_lazy_download_tip": "懒下载命令提示",
+    "plite_lazy_download_timeout": "懒下载等待命令超时",
+    "plite_download_command": "懒下载命令列表",
+    "plite_browser_path": "浏览器程序路径",
+    "plite_live_photo": "Live Photo转码",
+    "plite_headless": "无头浏览器",
+    "plite_max_comments": "最大评论数量",
+    "plite_forward_text_threshold": "纯文本强制转发阈值",
+    "plite_max_retries": "最大下载重试次数",
+    "plite_day_range": "白天时间范围",
+}
 
-def schema_desc(fname: str) -> str:
-    s = fname.removeprefix("plite_").replace("_", " ")
-    return " ".join(w[0].upper() + w[1:] for w in s.split())
+
+def tr(key: str) -> str:
+    """翻译查找: 未翻译 key 原样返回 (新增字段以未翻译状态进入配置)."""
+    return TRANSLATIONS.get(key, key)
 
 
 def is_enum_field(finfo) -> bool:
@@ -76,7 +125,7 @@ def _build_field_entry(fname: str, finfo, slider_hints: dict) -> dict | None:
     except Exception:
         default_val = None
 
-    entry = {"description": schema_desc(fname)}
+    entry = {"description": tr(fname)}
     if ann is int or (hasattr(ann, "__origin__") and ann.__origin__ is int):
         entry["type"] = "int"
         slider = extract_slider(finfo) or slider_hints.get(fname)
@@ -118,39 +167,39 @@ def _get_sendable_types() -> list[str]:
 
 # ── 桥接扩展字段声明 (非硬编码平台: 仅桥接功能开关) ──────────────────────────
 _BRIDGE_FIELDS: list[dict] = [
-    {"path": "plite_http_proxy", "type": "string", "desc": "HTTP代理", "default": "",
-     "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。平台级走代理需在 platforms 勾选 proxy"},
-    {"path": "send_strategy", "type": "list", "desc": "发送策略",
+    {"path": "plite_http_proxy", "type": "string", "desc": tr("plite_http_proxy"), "default": "",
+     "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。平台级走代理需在 platforms 勾选 proxied"},
+    {"path": "send_strategy", "type": "list", "desc": tr("send_strategy"),
      "default": _get_sendable_types, "options": _get_sendable_types},
-    {"path": "plite_direct_link", "type": "bool", "desc": "直链免下载模式", "default": False,
+    {"path": "plite_direct_link", "type": "bool", "desc": tr("plite_direct_link"), "default": False,
      "hint": "开启后视频/图片优先以 URL 直链发送, 不落盘"},
-    {"path": "plite_send_cover_only", "type": "bool", "desc": "视频仅发封面", "default": False},
-    {"path": "plite_image_compress_mb", "type": "int", "desc": "图片压缩阈值MB", "default": 20},
-    {"path": "plite_dedup_ttl", "type": "int", "desc": "链接去重TTL秒", "default": 60},
-    {"path": "plite_cache_interval", "type": "int", "desc": "缓存清理间隔秒", "default": 3600},
-    {"path": "plite_forward_max_nodes", "type": "int", "desc": "合并转发最大节点数", "default": 50},
-    {"path": "card_semantic", "type": "bool", "desc": "QQ卡片语义注入", "default": True},
-    {"path": "push", "type": "template_list", "desc": "B站UP订阅推送", "default": [],
+    {"path": "plite_send_cover_only", "type": "bool", "desc": tr("plite_send_cover_only"), "default": False},
+    {"path": "plite_image_compress_mb", "type": "int", "desc": tr("plite_image_compress_mb"), "default": 20},
+    {"path": "plite_dedup_ttl", "type": "int", "desc": tr("plite_dedup_ttl"), "default": 60},
+    {"path": "plite_cache_interval", "type": "int", "desc": tr("plite_cache_interval"), "default": 3600},
+    {"path": "plite_forward_max_nodes", "type": "int", "desc": tr("plite_forward_max_nodes"), "default": 50},
+    {"path": "card_semantic", "type": "bool", "desc": tr("card_semantic"), "default": True},
+    {"path": "push", "type": "template_list", "desc": tr("push"), "default": [],
      "templates": {"default": {"name": "订阅", "items": {
          "uid": {"type": "string", "description": "UP的UID", "default": ""},
          "groups": {"type": "string", "description": "群号(逗号分隔)", "default": ""},
          "enabled": {"type": "bool", "description": "启用", "default": True},
      }}}},
-    {"path": "push_interval", "type": "int", "desc": "推送轮询间隔秒", "default": 300},
-    {"path": "delay_send", "type": "object", "desc": "延迟发送表情触发", "default": {},
+    {"path": "push_interval", "type": "int", "desc": tr("push_interval"), "default": 300},
+    {"path": "delay_send", "type": "object", "desc": tr("delay_send"), "default": {},
      "items": {
          "enabled": {"type": "bool", "description": "启用", "default": False},
          "threshold_mb": {"type": "int", "description": "阈值MB", "default": 20},
          "timeout_sec": {"type": "int", "description": "超时秒", "default": 300},
          "emoji_ids": {"type": "list", "description": "触发表情ID", "items": {"type": "string"}, "default": ["128077"]},
      }},
-    {"path": "arbiter", "type": "object", "desc": "多Bot表情仲裁", "default": {},
+    {"path": "arbiter", "type": "object", "desc": tr("arbiter"), "default": {},
      "items": {
          "enabled": {"type": "bool", "description": "启用", "default": False},
          "emoji": {"type": "string", "description": "竞争表情", "default": "👍"},
          "window_sec": {"type": "float", "description": "窗口秒", "default": 1.5},
      }},
-    {"path": "cookie_health", "type": "object", "desc": "Cookie健康检查", "default": {},
+    {"path": "cookie_health", "type": "object", "desc": tr("cookie_health"), "default": {},
      "items": {
          "enabled": {"type": "bool", "description": "启用", "default": False},
          "interval_sec": {"type": "int", "description": "间隔秒", "default": 3600},
@@ -159,8 +208,10 @@ _BRIDGE_FIELDS: list[dict] = [
 
 _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
 
+_BRIDGE_PATHS: list[str] = [bf["path"] for bf in _BRIDGE_FIELDS]
+
 # 配置 schema 版本: 新增配置字段时递增 → 触发重新注入 (保留用户已编辑字段值)
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 def get_parser_extra_mapping() -> dict:
@@ -198,18 +249,17 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
 
     schema = json.loads(schema_path.read_text("utf-8")) if schema_path.exists() else {}
     has_markers = "__INJECT__" in json.dumps(schema)
-    # 版本化标记: 同版本跳过 (保留用户 WebUI 编辑); 版本变化 (插件更新新增字段) → 重新注入
+    # 版本化标记: 同版本仅幂等同步 (描述/结构/options, 保留用户编辑);
+    # 版本变化 (插件更新新增字段) → 完整注入 (新增字段 + 默认值对齐)
     flag_version = flag_path.read_text("utf-8").strip() if flag_path.exists() else ""
-    if flag_version == str(SCHEMA_VERSION) and not has_markers:
-        _rebuild_parser_extra_map()
-        return []
+    _inject_new = (flag_version != str(SCHEMA_VERSION)) or has_markers
     updated = False
     injected: list[str] = []
 
     # 0) custom_parsers 模板: 从 CustomParser.SCHEMA 扫描生成
-    cp = schema.setdefault("custom_parsers", {"type": "template_list", "description": "自定义解析器", "templates": {}})
+    cp = schema.setdefault("custom_parsers", {"type": "template_list", "description": tr("custom_parsers"), "templates": {}})
     template = cp.setdefault("templates", {}).setdefault("default", {})
-    if not template.get("items"):
+    if _inject_new and not template.get("items"):
         items = {}
         for cm in CustomParser.SCHEMA:
             entry = {"type": cm["type"], "description": cm["desc"]}
@@ -223,43 +273,79 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
         updated = True
         injected.append("custom_parsers")
 
-    # platforms 模板: 每平台独立配置 (enable/proxy/cookies), 动态从 BaseParser 扫描
-    pfm = schema.setdefault("platforms", {"type": "template_list", "description": "平台配置", "templates": {}})
-    _pf_items = {
-        "enable": {"type": "bool", "description": "启用该平台解析", "default": True},
-        "proxy": {"type": "bool", "description": "该平台走代理", "default": False},
-        "cookies": {"type": "string", "description": "该平台Cookie", "default": ""},
-    }
-    _pf_templates = pfm.setdefault("templates", {})
-    _changed_platform = False
+    # platforms: 统一勾选列表 (27 平台模板废弃) — enabled/proxied 全局勾选,
+    # cookies 为动态模板列表 (平台下拉仅含源码支持平台)
+    # 旧格式 (template_list 27 模板) → 强制重建为 object 勾选结构
+    _old_pfm = schema.get("platforms")
+    if isinstance(_old_pfm, list) or (
+            isinstance(_old_pfm, dict) and _old_pfm.get("type") != "object"):
+        schema["platforms"] = {"type": "object", "description": tr("platforms"), "items": {}}
+        updated = True
+    pfm = schema.setdefault("platforms", {"type": "object", "description": tr("platforms"), "items": {}})
+    pfm.setdefault("type", "object")
+    pfm.setdefault("description", tr("platforms"))
+    pfm.setdefault("items", {})
+    _plats = []
     for _cls in BaseParser.get_all_subclass():
         _p = getattr(_cls, "platform", None)
         _pname = getattr(_p, "name", None)
-        if not _pname:
-            continue
-        _pname = str(_pname).lower()
-        if _pname not in _pf_templates:
-            _pf_templates[_pname] = {
-                "name": getattr(_p, "display_name", _pname),
-                "items": {k: dict(v) for k, v in _pf_items.items()},
-            }
+        if _pname:
+            _plats.append({"value": str(_pname).lower(),
+                           "label": str(getattr(_p, "display_name", _pname))})
+    _plats = sorted(_plats, key=lambda x: x["value"])
+    _pf_items = pfm.setdefault("items", {})
+    _changed_platform = False
+
+    # enabled: 启用解析的平台勾选 (替代旧 27 模板 enable)
+    _enabled = _pf_items.setdefault("enabled", {"type": "list", "description": "启用解析的平台", "options": [], "default": []})
+    if _enabled.get("options") != _plats:
+        _enabled["options"] = _plats
+        _changed_platform = True
+    if not _enabled.get("default"):
+        _enabled["default"] = [p["value"] for p in _plats]
+        _changed_platform = True
+
+    # proxied: 走代理的平台勾选 (替代旧 27 模板 proxy 开关)
+    _proxied = _pf_items.setdefault("proxied", {"type": "list", "description": "走代理的平台", "options": [], "default": []})
+    if _proxied.get("options") != _plats:
+        _proxied["options"] = _plats
+        _changed_platform = True
+
+    # 动态源: 源码支持 cookie 的平台 (Config 中 plite_<platform>_ck 字段)
+    _ck_platforms = []
+    for _fname in _UpConfig.model_fields:
+        if _fname.startswith("plite_") and _fname.endswith("_ck"):
+            _plat = _fname[len("plite_"):-len("_ck")]
+            _ck_platforms.append({"value": _plat, "label": tr(_fname)})
+
+    # cookies: 动态模板列表 (平台下拉仅含支持 cookie 的源码平台)
+    if _ck_platforms:
+        _cookies = _pf_items.setdefault("cookies", {
+            "type": "template_list", "description": "平台 Cookie (自动同步至解析器)",
+            "templates": {"default": {"name": "平台Cookie", "items": {
+                "platform": {"type": "list", "description": "平台", "options": [], "default": []},
+                "cookie": {"type": "string", "description": "Cookie", "default": ""},
+            }}}})
+        _c_tpl = _cookies.setdefault("templates", {}).setdefault("default", {})
+        _c_platform = _c_tpl.setdefault("items", {}).setdefault("platform", {})
+        if _c_platform.get("options") != _ck_platforms:
+            _c_platform["options"] = _ck_platforms
             _changed_platform = True
+
     if _changed_platform:
         updated = True
         injected.append("platforms")
 
-    # 1) features: bool 字段 (增量合并: 新字段追加, 用户已编辑保留)
+    # 1) features: bool 字段 (options 恒为当前扫描值, default 保留用户勾选)
     bool_fields = sorted(k for k, f in _UpConfig.model_fields.items()
                          if f.annotation is bool and k.startswith("plite_"))
     _features = schema.setdefault("features", {"type": "list", "options": [], "default": []})
     _new_opts = [label(k) for k in bool_fields]
-    _existing_opts = list(_features.get("options") or [])
-    _merged_opts = list(dict.fromkeys([*_existing_opts, *_new_opts]))
-    if _existing_opts != _merged_opts:
-        _features["options"] = _merged_opts
+    if _features.get("options") != _new_opts:
+        _features["options"] = _new_opts
         updated = True
         injected.append("features")
-    if not _existing_opts:
+    if _inject_new and not _features.get("default"):
         # 首次注入: 初始化默认勾选
         _features["default"] = [
             label(k) for k in bool_fields if _UpConfig.model_fields[k].default is True
@@ -281,12 +367,16 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
         if is_bool or is_enum:
             continue  # bool → features; enum → parser_extra
         if fname in schema and schema[fname] != ["__INJECT__"] and not isinstance(schema[fname], list):
-            default = finfo.default
-            if default is not None and not isinstance(default, (int, float, str, bool, list, dict)):
-                default = None
-            if default is not None and "default" in schema[fname]:
-                schema[fname]["default"] = default
+            if schema[fname].get("description") != tr(fname):
+                schema[fname]["description"] = tr(fname)  # 描述恒等于翻译 (升级/翻译更新生效)
                 updated = True
+            if _inject_new:
+                default = finfo.default
+                if default is not None and not isinstance(default, (int, float, str, bool, list, dict)):
+                    default = None
+                if default is not None and "default" in schema[fname]:
+                    schema[fname]["default"] = default
+                    updated = True
             continue
         entry = _build_field_entry(fname, finfo, _slider_hints)
         if entry:
@@ -295,7 +385,6 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
             injected.append(fname)
 
     # 3) bridge 语义字段: 从 _BRIDGE_FIELDS 声明式扫描注入
-    schema.setdefault("parsers", {"type": "object", "description": "解析器控制", "items": {}})
     for bf in _BRIDGE_FIELDS:
         parts = bf["path"].split(".")
         obj = schema
@@ -306,7 +395,7 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
         needs_inject = (
             isinstance(existing, dict) and existing.get("options") == ["__INJECT__"]
         ) or (not isinstance(existing, dict) or not existing)
-        if needs_inject:
+        if _inject_new and needs_inject:
             entry = {"type": bf["type"], "description": bf["desc"]}
             dv = bf.get("default")
             entry["default"] = dv() if callable(dv) else (dv if dv is not None else [])
@@ -334,23 +423,26 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
 
     # 4) plite_disabled_platforms
     platforms = sorted({p.name for p in PlatformEnum})
-    if schema.get("plite_disabled_platforms", {}).get("options") in (["__INJECT__"], None):
+    if _inject_new and schema.get("plite_disabled_platforms", {}).get("options") in (["__INJECT__"], None):
         schema["plite_disabled_platforms"] = {
             "type": "list",
-            "description": schema_desc("plite_disabled_platforms"),
+            "description": tr("plite_disabled_platforms"),
             "options": platforms,
             "default": [],
         }
         updated = True
         injected.append("plite_disabled_platforms")
+    elif isinstance(schema.get("plite_disabled_platforms"), dict):
+        if schema["plite_disabled_platforms"].get("description") != tr("plite_disabled_platforms"):
+            schema["plite_disabled_platforms"]["description"] = tr("plite_disabled_platforms")
+            updated = True
 
-    # 5) parser_extra: 枚举字段
+    # 5) parser_extra: 枚举字段 (description 恒翻译)
     _PARSER_EXTRA_MAP.clear()
     extra = {}
+    _pe_obj = schema.get("parser_extra")
     for fname, finfo in _UpConfig.model_fields.items():
         if not is_enum_field(finfo):
-            continue
-        if fname in schema:
             continue
         ann = finfo.annotation
         is_list = hasattr(ann, "__args__")
@@ -367,44 +459,73 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
         except Exception:
             fallback = [] if is_list else ""
         _PARSER_EXTRA_MAP[short_key] = (fname, enum_cls, is_list)
-        if (not schema.get("parser_extra", {}).get("items")
-                or short_key not in schema["parser_extra"].get("items", {})):
-            extra[short_key] = {
-                "description": schema_desc(fname),
-                "type": "string" if not is_list else "list",
-                "options": list(enum_cls.__members__),
-                "default": fallback,
-                "hint": "",
-            }
+        _entry = {
+            "description": tr(fname),
+            "type": "string" if not is_list else "list",
+            "options": list(enum_cls.__members__),
+            "default": fallback,
+            "hint": "",
+        }
+        if _pe_obj and isinstance(_pe_obj, dict):
+            _old = (_pe_obj.get("items") or {}).get(short_key)
+            if isinstance(_old, dict) and "default" in _old:
+                _entry["default"] = _old["default"]  # 保留用户值
+        extra[short_key] = _entry  # 描述恒翻译, 全量同步
     if extra:
-        schema.setdefault("parser_extra", {"type": "object", "description": "解析器专属扩展", "items": {}})
+        schema.setdefault("parser_extra", {"type": "object", "description": tr("parser_extra"), "items": {}})
         schema["parser_extra"]["items"] = {**(schema.get("parser_extra", {}).get("items") or {}), **extra}
         updated = True
         injected.append("parser_extra")
 
+    # 5.5) 清理: parsers 空容器 (废弃) + custom_parsers 描述恒翻译
+    _parsers_blk = schema.get("parsers")
+    if isinstance(_parsers_blk, dict) and not (_parsers_blk.get("items") or {}):
+        schema.pop("parsers", None)
+        updated = True
+    _cp_blk = schema.get("custom_parsers")
+    if isinstance(_cp_blk, dict):
+        if _cp_blk.get("description") != tr("custom_parsers"):
+            _cp_blk["description"] = tr("custom_parsers")
+            updated = True
+
     # 6) test_urls
     tu = schema.get("test_urls", {})
-    if tu.get("default") in ([], None, ["__INJECT__"]):
+    if _inject_new and tu.get("default") in ([], None, ["__INJECT__"]):
         try:
             from test.test_parsers import _FALLBACK_URLS as _tufb
         except ImportError:
             _tufb = []
         schema["test_urls"] = {
-            "type": "list", "description": "测试URL", "default": list(_tufb),
+            "type": "list", "description": tr("test_urls"), "default": list(_tufb),
             "hint": "每行一条URL, 平台自动识别", "items": {"type": "string"},
         }
         updated = True
         injected.append("test_urls")
 
     if updated or not flag_path.exists():
-        # 顺序重排: bridge 字段按 _BRIDGE_FIELDS 使用频率序 (高频在前), 其余保持
+        # 顺序: 注入的 standalone 源码实现配置项在前 (上游模型序), 扩展自实现配置项在后
         _ordered = {}
-        _bridge_paths = [bf["path"] for bf in _BRIDGE_FIELDS]
-        for _key in _bridge_paths:
-            if _key in schema:
+        _up_keys = [k for k in _UpConfig.model_fields
+                    if k in schema or k.startswith("plite_")]
+        _known_order = [
+            *[k for k in _up_keys if k in schema],
+            "plite_disabled_platforms",
+            "parser_extra",
+            "custom_parsers",
+            "test_urls",
+            "platforms",
+        ]
+        _seen = set()
+        for _key in _known_order:
+            if _key in schema and _key not in _seen:
                 _ordered[_key] = schema[_key]
-        for _k, _v in schema.items():
-            if _k not in _ordered:
+                _seen.add(_key)
+        for _key in _BRIDGE_PATHS:  # 扩展字段固定序 (声明序, 语义分组)
+            if _key in schema and _key not in _seen:
+                _ordered[_key] = schema[_key]
+                _seen.add(_key)
+        for _k, _v in schema.items():  # 其余 (未知新增) 保持稳定
+            if _k not in _seen:
                 _ordered[_k] = _v
         schema = _ordered
         schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), "utf-8")

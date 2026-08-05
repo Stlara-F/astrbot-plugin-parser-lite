@@ -522,6 +522,15 @@ class ParserLitePlugin(Star):
         ok = await send_media_file(event, p, media_type, source_url, converters, astrbot_logger)
         if ok:
             return
+        # 发送失败回显 (OneBot11 发送反馈: 可倒查发送功能缺陷)
+        try:
+            from bridge.send import last_send_report
+
+            _why = "; ".join(last_send_report.get("errors", [])[-3:]) or "OneBot API 不可用"
+            await event.send(event.chain_result([
+                Comp.Plain(f"[ParserLite] {media_type} 发送失败: {_why}")]))
+        except Exception:
+            pass
         # delay_send 兜底: 大视频三路失败 → 表情触发延迟发送 (扩展逻辑保留 main)
         if media_type == "video" and p.exists():
             from bridge.delay_send import load_cfg as _dl_cfg_fn
@@ -599,9 +608,19 @@ class ParserLitePlugin(Star):
 
     async def _send_card(self, event: AstrMessageEvent, result: ParseResult):
         # 委托 bridge.send (薄发送层: 上游渲染 → AstrBot 发送, 文本回退)
-        from bridge.send import send_card
+        # OneBot11 发送反馈: 失败时向用户回显原因 (可倒查发送功能缺陷)
+        from bridge.send import last_send_report, reset_send_report, send_card
 
-        await send_card(event, result, format_full, astrbot_logger)
+        reset_send_report()
+        ok = await send_card(event, result, format_full, astrbot_logger)
+        if not ok:
+            _why = "; ".join(last_send_report.get("errors", [])[-2:]) or "未知原因"
+            try:
+                await event.send(event.chain_result([
+                    Comp.Plain(f"[ParserLite] 解析成功但卡片发送失败: {_why}")]))
+            except Exception:
+                pass
+        return ok
 
     # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
     async def on_url_auto(self, event: AstrMessageEvent):

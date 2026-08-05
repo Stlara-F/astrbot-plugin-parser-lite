@@ -87,9 +87,10 @@ def test_bridge_fields_no_deprecated():
     src = _bridge_fields_src()
     assert '"path": "parsers.items.cookies"' not in src
     assert '"path": "parsers.items.proxied"' not in src
-    # platforms 动态注入含统一三字段
-    assert '"proxy": {"type": "bool"' in src
-    assert '"cookies": {"type": "string"' in src
+    # platforms 统一勾选列表 (enabled/proxied) + cookies 动态模板
+    assert 'setdefault("proxied", {"type": "list"' in src
+    assert 'setdefault("enabled", {"type": "list"' in src
+    assert '"type": "template_list", "description": "平台 Cookie' in src
 
 
 def test_object_fields_have_items():

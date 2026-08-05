@@ -107,21 +107,125 @@ def apply_downloader_proxy(proxy_url: str):
         f"[ParserLite] downloader proxy: {proxy_url or 'disabled'}")
 
 
-# ── 平台级代理决策 ──────────────────────────────────────────────────────────
+# ── 平台级决策 (统一勾选列表: platforms.items.{enabled,proxied,cookies}) ──
 
-def platform_cfg(platform: str) -> dict:
-    """每平台独立配置 (platforms template_list 单一事实来源)."""
+def _platforms_block() -> dict:
+    """读取 platforms 配置块 (新格式 object / 旧格式 template_list 迁移).
+
+    AstrBot 生成配置时会把 object 类型配置展平为顶层键:
+    schema 形式 {"items": {"enabled": [...]}} → 配置形式 {"enabled": [...]}
+    """
     try:
-        pfm = (BridgeConfig._source or {}).get("platforms", []) or []
-        if isinstance(pfm, list):
-            for item in pfm:
-                if isinstance(item, dict) and str(item.get("platform", "")).lower() == platform.lower():
-                    return item
-        elif isinstance(pfm, dict):
-            return pfm.get(platform, {}) or {}
+        pfm = (BridgeConfig._source or {}).get("platforms", {}) or {}
+        if isinstance(pfm, dict):
+            if "enabled" in pfm or "proxied" in pfm or "cookies" in pfm:
+                return {"items": pfm}  # AstrBot 展平形态 → 归一化
+            return pfm
+        if isinstance(pfm, list):  # 旧 27 模板格式 → 模拟块
+            return {"items": {}, "_legacy_list": pfm}
     except Exception:
         pass
     return {}
+
+
+def platform_cfg(platform: str) -> dict:
+    """平台配置 (旧 27 模板迁移兼容: enable/proxy/cookies).
+
+    新格式 (items.enabled/proxied/cookies) 由 enabled_platforms/
+    proxied_platforms/cookies_entries 统一读取.
+    """
+    try:
+        _blk = _platforms_block()
+        _items = _blk.get("items", {}) if isinstance(_blk, dict) else {}
+        # 新格式: 勾选列表内联读取
+        if _items:
+            _ret = {}
+            _enabled = _items.get("enabled", [])
+            if isinstance(_enabled, list) and _enabled:
+                _ret["enable"] = platform.lower() in _value_set(_enabled)
+            _proxied = _items.get("proxied", [])
+            if isinstance(_proxied, list) and _proxied:
+                _ret["proxy"] = platform.lower() in _value_set(_proxied)
+            for _ck in _items.get("cookies", []) or []:
+                if isinstance(_ck, dict) and str(_ck.get("platform", "")).lower() == platform.lower():
+                    _ret["cookies"] = str(_ck.get("cookie", "") or "")
+                    break
+            return _ret
+        # 旧格式: template_list / dict
+        _legacy = _blk.get("_legacy_list")
+        if isinstance(_legacy, list):
+            for item in _legacy:
+                if isinstance(item, dict) and str(item.get("platform", "")).lower() == platform.lower():
+                    return item
+        elif isinstance(_blk, dict):
+            return _blk.get(platform, {}) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _value_set(values: list) -> set[str]:
+    """勾选列表值归一化: 支持 {"value": str} / 纯字符串."""
+    out = set()
+    for v in values or []:
+        if isinstance(v, dict):
+            v = v.get("value", v.get("label", ""))
+        if isinstance(v, str):
+            out.add(v.strip().lower())
+    return out
+
+
+def enabled_platforms() -> set[str] | None:
+    """新格式勾选启用的平台集合 (None = 未配置 → 全部启用)."""
+    try:
+        _items = _platforms_block().get("items", {})
+        _en = _items.get("enabled", [])
+        return _value_set(_en) if isinstance(_en, list) and _en else None
+    except Exception:
+        return None
+
+
+def proxied_platforms() -> set[str]:
+    """新格式勾选走代理的平台集合 (默认空)."""
+    try:
+        _items = _platforms_block().get("items", {})
+        _px = _items.get("proxied", [])
+        return _value_set(_px) if isinstance(_px, list) else set()
+    except Exception:
+        return set()
+
+
+def cookies_entries() -> list[dict]:
+    """新格式 cookie 条目列表 [{platform, cookie}]."""
+    try:
+        _items = _platforms_block().get("items", {})
+        _ck = _items.get("cookies", [])
+        return [e for e in (_ck or []) if isinstance(e, dict) and e.get("platform") and e.get("cookie")]
+    except Exception:
+        return []
+
+
+def sync_cookies_to_upstream() -> None:
+    """将新格式 cookies 同步至上游 Config 的 plite_<platform>_ck 字段 (动态源).
+
+    仅同步源码声明了 _ck 字段的平台; 无 astrbot/无上游时静默跳过.
+    """
+    try:
+        from bridge.context import up_config
+
+        _cfg = up_config()
+        _sync = False
+        for entry in cookies_entries():
+            _fname = f"plite_{str(entry['platform']).lower()}_ck"
+            if _fname in _cfg.model_fields and getattr(_cfg, _fname, None) != entry["cookie"]:
+                setattr(_cfg, _fname, entry["cookie"])
+                _sync = True
+        if _sync:
+            import logging
+            logging.getLogger("nonebot_plugin_parser_lite").info(
+                "[ParserLite] cookies synced to upstream config")
+    except Exception:
+        pass
 
 
 def load_parsers_config() -> dict:
@@ -138,8 +242,14 @@ def load_parsers_config() -> dict:
 
 
 def use_proxy_for(platform: str) -> bool:
-    """平台是否走代理: platforms[].proxy 勾选 (默认直连)."""
+    """平台是否走代理: platforms.items.proxied 勾选 (默认直连).
+
+    旧格式兼容: 27 模板 platforms[].proxy / parsers.items.proxied (废弃).
+    """
     try:
+        _proxied = proxied_platforms()
+        if _proxied:
+            return platform.lower() in _proxied
         _pc = platform_cfg(platform)
         if "proxy" in _pc:
             return bool(_pc["proxy"])
@@ -153,10 +263,18 @@ def use_proxy_for(platform: str) -> bool:
 
 
 def get_cookies_for(platform: str) -> dict:
-    """平台 Cookie: platforms[].cookies (单一来源)."""
+    """平台 Cookie: platforms.items.cookies 条目 (新格式, 自动同步上游).
+
+    旧格式兼容: 27 模板 platforms[].cookies / parsers.items.cookies (废弃).
+    """
     import json as _json
 
     try:
+        for entry in cookies_entries():
+            if str(entry.get("platform", "")).lower() == platform.lower():
+                ck = str(entry.get("cookie", "") or "").strip()
+                if ck:
+                    return {"Cookie": ck}
         _pc = platform_cfg(platform)
         _ck = (_pc.get("cookies", "") or "").strip()
         if _ck:
