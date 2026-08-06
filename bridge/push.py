@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-import json
 import logging
 from pathlib import Path
 
@@ -25,45 +24,34 @@ _SendFn = Callable[[str, list[str]], Awaitable[None]]
 
 class UpPusher:
     def __init__(self, state_path: str | Path | None = None):
-        self._state_path = Path(state_path) if state_path else None
-        self._seen_dynamics: dict[str, list[str]] = {}  # uid -> [dynamic_id]
-        self._live_status: dict[str, bool] = {}  # uid -> is_living
-        self._subs: dict[str, list[str]] = {}  # uid -> [group_id]
+        from bridge.state_store import JsonStateStore
+
+        self._store = JsonStateStore(state_path)
+        _d = self._store.data
+        self._seen_dynamics: dict[str, list[str]] = _d.setdefault("seen_dynamics", {})
+        self._live_status: dict[str, bool] = _d.setdefault("live_status", {})
+        self._subs: dict[str, list[str]] = _d.setdefault("subs", {})
         self._task: asyncio.Task | None = None
         self._send: _SendFn | None = None
-        self._load()
 
-    # ── 持久化 ──
-    def _load(self) -> None:
-        if not self._state_path or not self._state_path.exists():
-            return
-        try:
-            data = json.loads(self._state_path.read_text("utf-8"))
-            self._seen_dynamics = data.get("seen_dynamics", {})
-            self._live_status = data.get("live_status", {})
-            self._subs = data.get("subs", {})
-        except Exception:
-            pass
+    # ── 持久化 (JsonStateStore: 锁 + 写节流 + 原子落盘) ──
+    def _persist(self) -> None:
+        def _set(d: dict):
+            d["seen_dynamics"] = self._seen_dynamics
+            d["live_status"] = self._live_status
+            d["subs"] = self._subs
+
+        self._store.update(_set)
 
     def save(self) -> None:
-        if not self._state_path:
-            return
-        try:
-            self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            self._state_path.write_text(
-                json.dumps({
-                    "seen_dynamics": self._seen_dynamics,
-                    "live_status": self._live_status,
-                    "subs": self._subs,
-                }), encoding="utf-8")
-        except Exception:
-            pass
+        """显式落盘 (兼容旧调用)."""
+        self._store.flush()
 
     # ── 订阅管理 ──
     def set_subscriptions(self, subs: dict[str, list[str]]) -> None:
         """更新订阅: {uid: [group_ids]} (全量替换, 由配置驱动)."""
         self._subs = {str(k): [str(g) for g in v] for k, v in subs.items()}
-        self.save()
+        self._persist()
 
     def get_subscriptions(self) -> dict[str, list[str]]:
         return dict(self._subs)
@@ -136,7 +124,7 @@ class UpPusher:
             # 首次订阅只记录不推送 (避免历史刷屏)
             if seen and new_items:
                 self._seen_dynamics[uid] = seen[-50:]
-                self.save()
+                self._persist()
                 for did, text in new_items[-3:]:  # 最多推送最近 3 条
                     try:
                         await self._send(
@@ -149,7 +137,7 @@ class UpPusher:
                 self._seen_dynamics[uid] = [did for did, _ in
                                             [self._dynamic_info(i) for i in items]
                                             if did]
-                self.save()
+                self._persist()
 
         # 直播状态
         live = await self._fetch_live(list(self._subs.keys()))
@@ -162,7 +150,7 @@ class UpPusher:
                 except Exception as e:
                     logger.warning(f"[ParserLite] 直播推送失败: {e}")
             self._live_status[uid] = is_living
-        self.save()
+        self._persist()
 
     async def run(self, interval_sec: float, send_fn: _SendFn) -> None:
         """常驻轮询循环 (宿主在 initialize 启动, terminate 取消)."""

@@ -146,7 +146,7 @@ def test_send_card_fallback_text(monkeypatch: MonkeyPatch):
 
         ok = asyncio.run(send.send_card(
             ev, type("R", (), {"url": "https://x"}), lambda r: "回退文本"))
-        assert ok is True
+        assert ok
         assert len(ev.sent) == 1
         assert ev.sent[0][0].text == "回退文本"
     finally:
@@ -168,7 +168,7 @@ def test_send_media_file_missing():
 
     ok = asyncio.run(send.send_media_file(
         FakeEvent(), Path("nonexistent/x.jpg"), "image"))
-    assert ok is False
+    assert not ok
 
 
 def test_no_record_frombytes_reference():
@@ -188,7 +188,7 @@ def test_video_file_threshold_dispatch(monkeypatch: MonkeyPatch, tmp_path):
     BridgeConfig._source = {"plite_video_file_threshold_mb": 1, "plite_use_base64": False}
     ev = FakeEvent()
     ok = asyncio.run(send.send_media_file(ev, fake_video, "video"))
-    assert ok is True
+    assert ok
     assert len(ev.sent) == 1
     assert ev.sent[0][0].type.value == "File"
     BridgeConfig._source = {}
@@ -205,7 +205,7 @@ def test_video_cover_chain(monkeypatch: MonkeyPatch, tmp_path):
     BridgeConfig._source = {"plite_video_file_threshold_mb": 100}
     ev = FakeEvent()
     ok = asyncio.run(send.send_media_file(ev, small_video, "video", cover_path=str(cover)))
-    assert ok is True
+    assert ok
     assert len(ev.sent) == 1
     types = [s.type.value for s in ev.sent[0]]
     assert "Image" in types
@@ -220,4 +220,4 @@ def test_empty_file_intercepted(tmp_path):
     empty = tmp_path / "empty.mp4"
     empty.write_bytes(b"")
     ok = asyncio.run(send.send_media_file(FakeEvent(), empty, "video"))
-    assert ok is False
+    assert not ok

@@ -16,6 +16,9 @@ from bridge.context import BridgeConfig, up_downloader
 PROXY_PROTOCOLS = ("http://", "https://", "socks5://", "socks5h://")
 
 _last_proxy: str | None = None
+import threading
+
+_PROXY_LOCK = threading.Lock()
 
 
 def resolve_proxy_url(raw: str) -> str:
@@ -38,13 +41,37 @@ def resolve_proxy_url(raw: str) -> str:
     return raw
 
 
+def _mask_proxy(raw: str) -> str:
+    """脱敏代理 URL: 仅保留 scheme + host[:port], 隐藏凭证 (user:pass@).
+
+    形如 socks5://user:pass@1.2.3.4:1080 → socks5://1.2.3.4:1080
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return "<not set>"
+    try:
+        from urllib.parse import urlsplit
+
+        p = urlsplit(raw if "://" in raw else f"http://{raw}")
+        netloc = p.netloc
+        if "@" in netloc:
+            netloc = netloc.rsplit("@", 1)[1]  # 去凭证
+        host = netloc or p.path
+        return f"{p.scheme}://{host}" if p.scheme else host
+    except Exception:
+        return "***"
+
+
 def read_proxy_config() -> str:
-    """读取全局代理配置 (单一来源: read_cfg)."""
+    """读取全局代理配置 (单一来源: read_cfg).
+
+    日志脱敏: 凭证 (user:pass@) 不落日志 (隐私).
+    """
     import logging
 
     px = read_cfg(BridgeConfig._source or {}, "plite_http_proxy", "") or ""
     logging.getLogger("nonebot_plugin_parser_lite").info(
-        f"[ParserLite] proxy config: pyx={px or '<not set>'}")
+        f"[ParserLite] proxy config: proxy={_mask_proxy(px)}")
     return px
 
 
@@ -71,40 +98,47 @@ async def _safe_close(_c):
 def apply_downloader_proxy(proxy_url: str):
     """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端.
 
-    proxy 未变但 client 已关闭 (插件更新重载后) → 强制重建.
+    并发安全: threading.Lock 互斥重建 (避免 client 抖动/重复替换).
+    早期返回: proxy 未变且 httpx 客户端存活 (None 视为未初始化 → 需重建).
+    日志脱敏: 凭证不落日志.
     """
     global _last_proxy
     proxy_url = resolve_proxy_url(proxy_url)
-    client = up_downloader().client
-    if proxy_url == (_last_proxy or "") and not client_closed(client):
-        return
-    _last_proxy = proxy_url
-    from curl_cffi import AsyncSession as CurlSession
-    from httpx import AsyncClient as HttpxClient
-    from httpx import Timeout
-    # 调度旧客户端关闭 (同次解析中可能轮询多个协议, 旧客户端需释放)
-    for _old_attr in ("_httpx", "_curl"):
-        _old = getattr(client, _old_attr, None)
-        if _old is not None:
-            try:
-                asyncio.get_running_loop().create_task(_safe_close(_old))
-            except RuntimeError:
-                pass
-    if not proxy_url:
-        client._httpx = HttpxClient(verify=False, follow_redirects=True,
-                                    timeout=Timeout(timeout=15))
-        client._curl = CurlSession(impersonate="chrome146", timeout=240,
-                                   verify=False, allow_redirects=True)
-    else:
-        _p = proxy_url if "://" in proxy_url else f"http://{proxy_url}"
-        client._httpx = HttpxClient(proxy=_p, verify=False,
-                                    follow_redirects=True, timeout=Timeout(timeout=15))
-        client._curl = CurlSession(proxies={"http": _p, "https": _p},
-                                   impersonate="chrome146",
-                                   timeout=240, verify=False, allow_redirects=True)
+    with _PROXY_LOCK:
+        client = up_downloader().client
+        _httpx = getattr(client, "_httpx", None)
+        _curl = getattr(client, "_curl", None)
+        _httpx_alive = _httpx is not None and not getattr(_httpx, "is_closed", False)
+        _curl_alive = _curl is not None and not getattr(_curl, "is_closed", False)
+        if proxy_url == (_last_proxy or "") and _httpx_alive and _curl_alive:
+            return
+        _last_proxy = proxy_url
+        from curl_cffi import AsyncSession as CurlSession
+        from httpx import AsyncClient as HttpxClient
+        from httpx import Timeout
+        # 调度旧客户端关闭 (同次解析中可能轮询多个协议, 旧客户端需释放)
+        for _old_attr in ("_httpx", "_curl"):
+            _old = getattr(client, _old_attr, None)
+            if _old is not None:
+                try:
+                    asyncio.get_running_loop().create_task(_safe_close(_old))
+                except RuntimeError:
+                    pass
+        if not proxy_url:
+            client._httpx = HttpxClient(verify=False, follow_redirects=True,
+                                        timeout=Timeout(timeout=15))
+            client._curl = CurlSession(impersonate="chrome146", timeout=240,
+                                       verify=False, allow_redirects=True)
+        else:
+            _p = proxy_url if "://" in proxy_url else f"http://{proxy_url}"
+            client._httpx = HttpxClient(proxy=_p, verify=False,
+                                        follow_redirects=True, timeout=Timeout(timeout=15))
+            client._curl = CurlSession(proxies={"http": _p, "https": _p},
+                                       impersonate="chrome146",
+                                       timeout=240, verify=False, allow_redirects=True)
     import logging
     logging.getLogger("nonebot_plugin_parser_lite").info(
-        f"[ParserLite] downloader proxy: {proxy_url or 'disabled'}")
+        f"[ParserLite] downloader proxy: {_mask_proxy(proxy_url) or 'disabled'}")
 
 
 # ── 平台级决策 (统一勾选列表: platforms.items.{enabled,proxied,cookies}) ──

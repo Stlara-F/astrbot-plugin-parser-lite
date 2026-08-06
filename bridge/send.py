@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
 from bridge.cfg import read_cfg
 from bridge.context import BridgeConfig, up_renderer
@@ -29,11 +30,33 @@ def _get_components():
     return _COMPONENTS_CACHE
 
 # 最近一次发送报告 (OneBot11 发送反馈回显: 成功/失败 + 段结构 + 原因)
+# 主渠道: 函数返回 SendReport (dataclass); 模块级仅为最近快照 (诊断用)
 last_send_report: dict = {"ok": None, "segments": [], "errors": [], "stage": ""}
 
 
 def reset_send_report() -> None:
     last_send_report.update({"ok": None, "segments": [], "errors": [], "stage": ""})
+
+
+@dataclass
+class SendReport:
+    """发送结果报告 (bool(report) = report.ok, 兼容旧调用).
+
+    并发安全: 每次调用返回独立实例, 不再共享全局可变状态.
+    """
+
+    ok: bool = False
+    stage: str = ""
+    segments: list = field(default_factory=list)
+    errors: list = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return self.ok
+
+    def snapshot(self) -> dict:
+        """模块级诊断快照 (并发下仅反映最近一次完成的任务)."""
+        return {"ok": self.ok, "segments": self.segments,
+                "errors": self.errors, "stage": self.stage}
 
 
 def _onebot11_segments(segments) -> list[dict]:
@@ -95,11 +118,12 @@ def should_send(media_type: str) -> bool:
         return True
 
 
-async def send_card(event, result, format_full: Callable, logger=None) -> bool:
+async def send_card(event, result, format_full: Callable, logger=None) -> SendReport:
     """渲染卡片并发送 (上游渲染 → AstrBot 发送); 失败回退文本.
 
-    :return: 是否成功
+    :return: SendReport (bool(report)=ok, 兼容旧调用)
     """
+    _report = SendReport(stage="card")
     if logger is None:
         import logging
         logger = logging.getLogger("parser-lite.bridge.send")
@@ -120,8 +144,10 @@ async def send_card(event, result, format_full: Callable, logger=None) -> bool:
         _log_onebot11(logger, "card-cache", _segs)
         await event.send(event.chain_result(_segs))
         logger.info(f"[ParserLite] card cache hit ({len(data)} bytes)")
-        last_send_report.update({"ok": True, "stage": "card-cache"})
-        return True
+        _report.ok, _report.stage = True, "card-cache"
+        _report.segments = _onebot11_segments(_segs)
+        last_send_report.update(_report.snapshot())
+        return _report
 
     try:
         data = await up_renderer().render_image(result)
@@ -134,24 +160,29 @@ async def send_card(event, result, format_full: Callable, logger=None) -> bool:
         _log_onebot11(logger, "card", _segs)
         await event.send(event.chain_result(_segs))
         logger.info(f"[ParserLite] card rendered ({len(data)} bytes)")
-        last_send_report.update({"ok": True, "stage": "card"})
-        return True
+        _report.ok, _report.stage = True, "card"
+        _report.segments = _onebot11_segments(_segs)
+        last_send_report.update(_report.snapshot())
+        return _report
     except Exception as _e:
         _reason = f"{type(_e).__name__}: {_e}"
         logger.warning(f"[ParserLite] 卡片渲染失败, 回退文本 ({_reason})")
-        last_send_report["errors"].append(f"render: {_reason}")
+        _report.errors.append(f"render: {_reason}")
         try:
             _segs = [_plain(format_full(result))]
             _log_onebot11(logger, "card-fallback", _segs)
             await event.send(event.chain_result(_segs))
-            last_send_report.update({"ok": True, "stage": "card-fallback"})
-            return True
+            _report.ok, _report.stage = True, "card-fallback"
+            _report.segments = _onebot11_segments(_segs)
+            last_send_report.update(_report.snapshot())
+            return _report
         except Exception as _e2:
             _reason2 = f"{type(_e2).__name__}: {_e2}"
             logger.error(f"[ParserLite] 回退文本发送也失败 (OneBot API 可能不可用): {_reason2}")
-            last_send_report.update({"ok": False, "stage": "card-fallback"})
-            last_send_report["errors"].append(f"send: {_reason2}")
-            return False
+            _report.stage = "card-fallback"
+            _report.errors.append(f"send: {_reason2}")
+            last_send_report.update(_report.snapshot())
+            return _report
 
 
 def _image_from_bytes(data: bytes):
@@ -169,13 +200,13 @@ def _plain(text: str):
 
 async def send_media_file(event, path, media_type: str, source_url: str = "",
                           converters: dict | None = None, logger=None,
-                          cover_path: str = "") -> bool:
-    """媒体三路发送骨架 (fromFileSystem → bytes/base64 → fromURL).
+                          cover_path: str = "") -> SendReport:
+    """媒体发送骨架 (md5 秒传 → 正常路径多级 failback).
 
     :param converters: 扩展回调 {"image": async fn(path)->bytes, "video": async fn(path)->Path,
                        "audio": async fn(path)->Path} — 由调用方注入 (FFmpeg 转换保持扩展)
     :param cover_path: 视频封面路径 (OneBot11 视频+封面链, 上游 VideoContent.cover)
-    :return: 是否成功发送
+    :return: SendReport (bool(report)=ok, 兼容旧调用)
 
     OneBot11 发送语义 (参考协议与 AstrBot 组件事实):
     - image: use_base64 → fromBytes(base64://), 否则 fromFileSystem → 压缩 → fromURL
@@ -183,6 +214,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
              base64 估算 >20MB → Comp.File; 否则 Video.fromBase64 + 封面链
     - audio: Record.fromBase64 (组件无 fromBytes)
     """
+    _report = SendReport(stage="media")
     import base64
     from pathlib import Path
 
@@ -193,16 +225,18 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
     p = Path(path)
     if not p.exists():
         logger.warning(f"[ParserLite] send_media_file: file missing {p}")
-        last_send_report.update({"ok": False, "stage": "media", "errors": [f"file missing: {p}"]})
-        return False
+        _report.errors.append(f"file missing: {p}")
+        last_send_report.update(_report.snapshot())
+        return _report
     try:
         p.chmod(0o644)
     except Exception:
         pass
     if p.stat().st_size == 0:
         logger.warning(f"[ParserLite] send_media_file: empty file {p}")
-        last_send_report.update({"ok": False, "stage": "media", "errors": [f"empty file: {p.name}"]})
-        return False
+        _report.errors.append(f"empty file: {p.name}")
+        last_send_report.update(_report.snapshot())
+        return _report
     converters = converters or {}
     _Cmps = _get_components()
     File, Image, Record, Video = _Cmps["File"], _Cmps["Image"], _Cmps["Record"], _Cmps["Video"]
@@ -221,11 +255,13 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             _segs = [File(name=p_.name, file=p_.as_uri())]
             await event.send(event.chain_result(_segs))
             _try_send(stage, _segs)
-            last_send_report["ok"] = True
-            return True
+            _report.ok, _report.stage = True, stage
+            _report.segments = _onebot11_segments(_segs)
+            last_send_report.update(_report.snapshot())
+            return _report
         except Exception as _e:
             _try_send(stage, [], _e)
-            return False
+            return _report
 
     # 上游 use_base64 (原始调用优先): true → 强制 base64 发送
     # 读取单一事实来源 _source (与 read_cfg 一致, 避免上游单例缓存污染)
@@ -242,10 +278,12 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
     _md5_failed = None
     _fsz = 0
 
-    def _ok(stage: str, segs) -> bool:
+    def _ok(stage: str, segs) -> SendReport:
         """发送成功统一出口: 反馈 + md5 缓存记录 (秒传命中后不再重复记录)."""
         _try_send(stage, segs)
-        last_send_report["ok"] = True
+        _report.ok, _report.stage = True, stage
+        _report.segments = _onebot11_segments(segs)
+        last_send_report.update(_report.snapshot())
         if _m5 and _md5_failed != _m5:
             try:
                 from bridge.media_cache import get_cache as _gc
@@ -253,7 +291,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
                 _gc().put(_m5, media_type, _fsz if _fsz else p.stat().st_size)
             except Exception:
                 pass
-        return True
+        return _report
     # md5 秒传: 有缓存指纹 → file://md5 引用 (QQ 服务器资源秒回应, 参考
     # SnowLuma fast-upload; 失败 → 回退正常路径, 多级 failback)
     try:
@@ -275,8 +313,10 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
                 try:
                     await event.send(event.chain_result([_md5_seg]))
                     _try_send(f"{media_type}-md5", [_md5_seg])
-                    last_send_report["ok"] = True
-                    return True
+                    _report.ok, _report.stage = True, f"{media_type}-md5"
+                    _report.segments = _onebot11_segments([_md5_seg])
+                    last_send_report.update(_report.snapshot())
+                    return _report
                 except Exception as _e:
                     _try_send(f"{media_type}-md5", [], _e)
                     _md5_failed = _m5  # 引用失败, 后续正常路径重试
@@ -295,9 +335,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
                     raw = await compress(p)
                 _segs = [Image.fromBytes(raw)]
                 await event.send(event.chain_result(_segs))
-                _try_send("image-b64", _segs)
-                last_send_report["ok"] = True
-                return True
+                return _ok("image-b64", _segs)
             except Exception as _e:
                 _try_send("image-b64", [], _e)
         try:
@@ -320,9 +358,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             try:
                 _segs = [Image.fromURL(source_url)]
                 await event.send(event.chain_result(_segs))
-                _try_send("image-url", _segs)
-                last_send_report["ok"] = True
-                return True
+                return _ok("image-url", _segs)
             except Exception as _e:
                 _try_send("image-url", [], _e)
 
@@ -332,8 +368,9 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
         mp4 = Path(mp4)
         _fsz = mp4.stat().st_size if mp4.exists() else 0
         if _fsz == 0:
-            last_send_report.update({"ok": False, "stage": "video", "errors": ["empty video"]})
-            return False
+            _report.errors.append("empty video")
+            last_send_report.update(_report.snapshot())
+            return _report
         # 大文件阈值: 超限 → Comp.File 文件发送 (OneBot11 base64 大视频必失败)
         try:
             from bridge.cfg import read_cfg as _read_cfg
@@ -344,11 +381,11 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             _th_mb = 100
         if _fsz > _th_mb * 1024 * 1024:
             if await _send_file_stage("video-file", mp4):
-                return True
+                return _report
         # base64 估算 >20MB → File (OneBot11 单消息上限)
         if _fsz * 4 / 3 > 20 * 1024 * 1024:
             if await _send_file_stage("video-file-big", mp4):
-                return True
+                return _report
         # 视频 + 封面链 (OneBot11 常见组合, cover_path 由调用方注入)
         _segs = []
         if cover_path and Path(cover_path).exists():
@@ -362,9 +399,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
                 b64 = base64.b64encode(raw).decode()
                 _segs = [*_segs, Video.fromBase64(b64)]
                 await event.send(event.chain_result(_segs))
-                _try_send("video-b64", _segs)
-                last_send_report["ok"] = True
-                return True
+                return _ok("video-b64", _segs)
             except Exception as _e:
                 _try_send("video-b64", [], _e)
         try:
@@ -385,9 +420,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             try:
                 _segs = [Video.fromURL(source_url)]
                 await event.send(event.chain_result(_segs))
-                _try_send("video-url", _segs)
-                last_send_report["ok"] = True
-                return True
+                return _ok("video-url", _segs)
             except Exception as _e:
                 _try_send("video-url", [], _e)
 
@@ -401,9 +434,7 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
                 b64 = base64.b64encode(raw).decode()
                 _segs = [Record.fromBase64(b64)]
                 await event.send(event.chain_result(_segs))
-                _try_send("audio-b64", _segs)
-                last_send_report["ok"] = True
-                return True
+                return _ok("audio-b64", _segs)
             except Exception as _e:
                 _try_send("audio-b64", [], _e)
         try:
@@ -424,10 +455,8 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
             try:
                 _segs = [Record.fromURL(source_url)]
                 await event.send(event.chain_result(_segs))
-                _try_send("audio-url", _segs)
-                last_send_report["ok"] = True
-                return True
+                return _ok("audio-url", _segs)
             except Exception as _e:
                 _try_send("audio-url", [], _e)
-    last_send_report["ok"] = False
-    return False
+    last_send_report.update(_report.snapshot())
+    return _report

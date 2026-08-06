@@ -142,12 +142,12 @@ def test_md5_second_send_uses_file_ref(tmp_path):
     media.write_bytes(b"\xff\xd8" + b"\x00" * 2048)
     ev = FakeEvent()
     ok1 = asyncio.run(send.send_media_file(ev, media, "image"))
-    assert ok1 is True
+    assert ok1
     assert ev.sent[0][0].type.value == "Image"  # 首次正常上传
 
     ev2 = FakeEvent()
     ok2 = asyncio.run(send.send_media_file(ev2, media, "image"))
-    assert ok2 is True
+    assert ok2
     assert ev2.sent[0][0].type.value == "Image"
     # 二次走 md5 引用 (file://md5)
     assert is_md5_ref(ev2.sent[0][0].file) is True
@@ -177,11 +177,11 @@ def test_md5_ref_failure_falls_back(tmp_path):
 
     ev = RefFailingEvent()
     ok1 = asyncio.run(send.send_media_file(ev, media, "image"))
-    assert ok1 is True
+    assert ok1
     # 二次调用同样内容: md5 引用又失败 → 回退成功
     ev2 = RefFailingEvent()
     ok2 = asyncio.run(send.send_media_file(ev2, media, "image"))
-    assert ok2 is True
+    assert ok2
     assert ev2.sent, "应回退到正常路径发送成功"
 
 
@@ -193,5 +193,5 @@ def test_md5_fast_send_disabled(tmp_path):
     media.write_bytes(b"\xff\xd8" + b"\x00" * 2048)
     ev = FakeEvent()
     ok = asyncio.run(send.send_media_file(ev, media, "image"))
-    assert ok is True
+    assert ok
     assert is_md5_ref(getattr(ev.sent[0][0], "file", "")) is False

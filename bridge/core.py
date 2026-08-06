@@ -171,6 +171,14 @@ from bridge.custom_parser import CustomParser  # noqa: F401,E402
 # ── LazyManager (保留: 懒下载会话) ──────────────────────────────────────────
 class LazyManager:
     Session = None  # type: ignore[assignment]
+    _lock = None  # 延迟初始化 (threading.Lock)
+
+    @classmethod
+    def _get_lock(cls):
+        if cls._lock is None:
+            import threading
+            cls._lock = threading.Lock()
+        return cls._lock
 
     @classmethod
     def add(cls, key: str, result, url: str, timeout_sec: float) -> None:
@@ -187,16 +195,19 @@ class LazyManager:
             cls.Session = _Session
         cls.remove(key)
         task = asyncio.create_task(cls._timeout_handler(key, timeout_sec))
-        cls._sessions[key] = cls.Session(result=result, url=url, task=task,
-                                         deadline=time.time() + timeout_sec)
+        with cls._get_lock():
+            cls._sessions[key] = cls.Session(result=result, url=url, task=task,
+                                             deadline=time.time() + timeout_sec)
 
     @classmethod
     def get(cls, key: str):
-        return cls._sessions.get(key)
+        with cls._get_lock():
+            return cls._sessions.get(key)
 
     @classmethod
     def remove(cls, key: str) -> None:
-        s = cls._sessions.pop(key, None)
+        with cls._get_lock():
+            s = cls._sessions.pop(key, None)
         if s and getattr(s, "task", None):
             s.task.cancel()
 
@@ -207,8 +218,9 @@ class LazyManager:
 
     @classmethod
     def cleanup(cls) -> int:
-        n = len(cls._sessions)
-        cls._sessions.clear()
+        with cls._get_lock():
+            n = len(cls._sessions)
+            cls._sessions.clear()
         return n
 
 

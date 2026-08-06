@@ -519,15 +519,13 @@ class ParserLitePlugin(Star):
             "video": self._convert_video,
             "audio": lambda path: self._convert_audio(path, fmt="mp3"),
         }
-        ok = await send_media_file(event, p, media_type, source_url, converters,
-                                   astrbot_logger, cover_path=cover_path)
-        if ok:
+        report = await send_media_file(event, p, media_type, source_url, converters,
+                                       astrbot_logger, cover_path=cover_path)
+        if report:
             return
         # 发送失败回显 (OneBot11 发送反馈: 可倒查发送功能缺陷)
         try:
-            from bridge.send import last_send_report
-
-            _why = "; ".join(last_send_report.get("errors", [])[-3:]) or "OneBot API 不可用"
+            _why = "; ".join(report.errors[-3:]) or "OneBot API 不可用"
             await event.send(event.chain_result([
                 Comp.Plain(f"[ParserLite] {media_type} 发送失败: {_why}")]))
         except Exception:
@@ -610,18 +608,17 @@ class ParserLitePlugin(Star):
     async def _send_card(self, event: AstrMessageEvent, result: ParseResult):
         # 委托 bridge.send (薄发送层: 上游渲染 → AstrBot 发送, 文本回退)
         # OneBot11 发送反馈: 失败时向用户回显原因 (可倒查发送功能缺陷)
-        from bridge.send import last_send_report, reset_send_report, send_card
+        from bridge.send import send_card
 
-        reset_send_report()
-        ok = await send_card(event, result, format_full, astrbot_logger)
-        if not ok:
-            _why = "; ".join(last_send_report.get("errors", [])[-2:]) or "未知原因"
+        report = await send_card(event, result, format_full, astrbot_logger)
+        if not report:
+            _why = "; ".join(report.errors[-2:]) or "未知原因"
             try:
                 await event.send(event.chain_result([
                     Comp.Plain(f"[ParserLite] 解析成功但卡片发送失败: {_why}")]))
             except Exception:
                 pass
-        return ok
+        return report
 
     # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
     async def on_url_auto(self, event: AstrMessageEvent):

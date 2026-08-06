@@ -3,6 +3,7 @@
 配置驱动: 通过 configure(plite_rate_limit=...) 或 _source["rate_limit"] 传入
     {"enabled": true, "max_per_window": 5, "window_seconds": 300,
      "max_per_user_window": 10}
+并发安全: JsonStateStore (锁 + 写节流 + 原子落盘)
 """
 
 from __future__ import annotations
@@ -11,46 +12,34 @@ import json
 from pathlib import Path
 import time
 
+from bridge.state_store import JsonStateStore
+
+_MAX_PER_KEY = 50  # 每个 key 内存上限 (含 prune 语义, 超出即截断)
+
 
 class RateLimiter:
     def __init__(self, state_path: str | Path | None = None):
-        self._state_path = Path(state_path) if state_path else None
-        self._hits: dict[str, list[float]] = {}
-        self._load()
-
-    def _load(self) -> None:
-        if not self._state_path or not self._state_path.exists():
-            return
-        try:
-            data = json.loads(self._state_path.read_text("utf-8"))
-            self._hits = data.get("hits", {})
-        except Exception:
-            self._hits = {}
+        # 即时落盘 (原子写): 限频计数跨重启即时性优先
+        self._store = JsonStateStore(state_path, flush_every=1, flush_interval=0.5)
+        self._hits: dict[str, list[float]] = self._store.data  # 共享 dict 引用
 
     def save(self) -> None:
-        if not self._state_path:
-            return
-        try:
-            self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            self._state_path.write_text(
-                json.dumps({"hits": self._hits}), encoding="utf-8"
-            )
-        except Exception:
-            pass
-
-    def _prune(self, key: str, window: float) -> None:
-        now = time.time()
-        self._hits[key] = [t for t in self._hits.get(key, []) if now - t < window]
+        """显式落盘 (兼容旧调用)."""
+        self._store.flush()
 
     def _hit(self, key: str, window: float) -> int:
         now = time.time()
-        self._prune(key, window)
-        self._hits.setdefault(key, []).append(now)
-        # 限制内存: 每个 key 最多 50 条
-        if len(self._hits[key]) > 50:
-            self._hits[key] = self._hits[key][-50:]
-        self.save()
-        return len(self._hits[key])
+
+        def _record(d: dict):
+            _pruned = [t for t in d.get(key, []) if now - t < window]
+            _pruned.append(now)
+            # 限制内存: 每 key 最多 _MAX_PER_KEY 条
+            if len(_pruned) >= _MAX_PER_KEY:
+                _pruned = _pruned[-_MAX_PER_KEY:]
+            d[key] = _pruned
+
+        self._store.update(_record)
+        return len(self._hits.get(key, []))
 
     def allow(self, *, url: str, user_id: str = "", cfg: dict | None = None) -> tuple[bool, str]:
         """检查是否允许解析.

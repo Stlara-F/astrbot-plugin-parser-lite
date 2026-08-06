@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-import json
 import logging
 from pathlib import Path
 
@@ -60,28 +59,16 @@ async def check_zhihu_cookie(ck: str) -> tuple[bool, str]:
 
 class CookieHealth:
     def __init__(self, state_path: str | Path | None = None):
-        self._state_path = Path(state_path) if state_path else None
-        self._last_status: dict[str, dict] = {}
+        from bridge.state_store import JsonStateStore
+
+        self._store = JsonStateStore(state_path)
+        self._last_status: dict[str, dict] = self._store.data
         self._task: asyncio.Task | None = None
         self._notify: _NotifyFn | None = None
-        self._load()
-
-    def _load(self) -> None:
-        if not self._state_path or not self._state_path.exists():
-            return
-        try:
-            self._last_status = json.loads(self._state_path.read_text("utf-8"))
-        except Exception:
-            self._last_status = {}
 
     def save(self) -> None:
-        if not self._state_path:
-            return
-        try:
-            self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            self._state_path.write_text(json.dumps(self._last_status), encoding="utf-8")
-        except Exception:
-            pass
+        """显式落盘 (兼容旧调用)."""
+        self._store.flush()
 
     async def check_once(self, cookies: dict[str, str]) -> None:
         """检查所有已配置平台 cookie, 状态变化时通知."""
@@ -96,8 +83,11 @@ class CookieHealth:
                 continue
             prev = self._last_status.get(platform, {}).get("ok")
             changed = prev is None or prev != ok
-            self._last_status[platform] = {"ok": ok, "info": info, "ts": __import__("time").time()}
-            self.save()
+
+            def _set(d: dict):
+                d[platform] = {"ok": ok, "info": info, "ts": __import__("time").time()}
+
+            self._store.update(_set)
             if not ok and changed and self._notify:
                 try:
                     await self._notify(f"[ParserLite] {platform} cookie 失效: {info}, 请重新扫码登录")
