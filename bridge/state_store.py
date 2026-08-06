@@ -1,6 +1,5 @@
 """统一 JSON 状态存储 — 锁保护 + 写节流 + 原子落盘.
 
-合并 debounce/rate_limit/push/cookie_health 的重复 JSON 持久化:
 - threading.Lock 保护内存变更 (同步/异步调用均安全, 不阻塞事件循环)
 - 写节流 (write-coalescing): 累计 N 次变更或距上次落盘超时 → 原子写
   (tmp 文件 + os.replace), 崩溃一致性

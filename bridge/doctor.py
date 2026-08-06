@@ -204,7 +204,7 @@ async def check_schema() -> tuple[bool, str, bool]:
         src = global_source()
         if not src:
             return False, "未初始化 (首次运行注入)", True  # 警告非致命
-        required = ["send_strategy", "plite_dedup_ttl"]  # T2: plite_http_proxy 已移除
+        required = ["send_strategy", "plite_direct_link"]  # r9: 现存键
         missing = [k for k in required if k not in src]
         ok = not missing
         return (

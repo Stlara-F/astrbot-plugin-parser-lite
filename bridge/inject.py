@@ -162,8 +162,27 @@ _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
 
 _BRIDGE_PATHS: list[str] = [bf["path"] for bf in _BRIDGE_FIELDS]
 
+# 已删自研字段清理列表 (r7/r8/r9 删除模块对应键, 注入时从用户配置清除回潮残留)
+_STALE_CONFIG_KEYS = (
+    "parsers",
+    "custom_parsers",
+    "test_urls",
+    "plite_disabled_platforms",
+    "plite_http_proxy",
+    "plite_md5_fast_send",
+    "plite_md5_cache_max",
+    "plite_dedup_ttl",
+    "plite_cache_interval",
+    "card_semantic",
+    "push",
+    "push_interval",
+    "delay_send",
+    "arbiter",
+    "cookie_health",
+)
+
 # 配置 schema 版本: 新增配置字段时递增 → 触发重新注入 (保留用户已编辑字段值)
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # 注入反馈: 成功/失败报告 (模块加载与 WebUI 诊断可查询)
 inject_report: dict = {
@@ -254,7 +273,7 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         schema.pop("custom_parsers", None)
         updated = True
 
-    # platforms: 统一勾选列表 (27 平台模板废弃) — enabled/proxied 全局勾选,
+    # platforms: 统一勾选列表 (27 平台模板废弃) — enabled 全局勾选,
     # cookies 为动态模板列表 (平台下拉仅含源码支持平台)
     # 旧格式 (template_list 27 模板) → 强制重建为 object 勾选结构
     _old_pfm = schema.get("platforms")
@@ -507,31 +526,20 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         updated = True
         injected.append("parser_extra")
 
-    # 5.5) 清理: parsers 空容器 (废弃) + custom_parsers 残留 (r8 已删模块)
-    _parsers_blk = schema.get("parsers")
-    if isinstance(_parsers_blk, dict) and not (_parsers_blk.get("items") or {}):
-        schema.pop("parsers", None)
+    # 5.5) 清理: 已删自研字段残留 (r8/r9 删除的模块对应键, 防 AstrBot 陈旧残留)
+    for _stale in _STALE_CONFIG_KEYS:
+        if _stale in schema:
+            schema.pop(_stale, None)
+            updated = True
+    # platforms.items 内 proxied 残留清理
+    _pfi = (
+        schema.get("platforms", {}).get("items")
+        if isinstance(schema.get("platforms"), dict)
+        else None
+    )
+    if isinstance(_pfi, dict) and "proxied" in _pfi:
+        _pfi.pop("proxied", None)
         updated = True
-    if "custom_parsers" in schema:
-        schema.pop("custom_parsers", None)
-        updated = True
-
-    # 6) test_urls
-    tu = schema.get("test_urls", {})
-    if _inject_new and tu.get("default") in ([], None, ["__INJECT__"]):
-        try:
-            from test.test_parsers import _FALLBACK_URLS as _tufb
-        except ImportError:
-            _tufb = []
-        schema["test_urls"] = {
-            "type": "list",
-            "description": tr("test_urls"),
-            "default": list(_tufb),
-            "hint": "每行一条URL, 平台自动识别",
-            "items": {"type": "string"},
-        }
-        updated = True
-        injected.append("test_urls")
 
     if updated or not flag_path.exists():
         # 顺序: 注入的 standalone 源码实现配置项在前 (上游模型序), 扩展自实现配置项在后
@@ -542,7 +550,6 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         _known_order = [
             *[k for k in _up_keys if k in schema],
             "parser_extra",
-            "test_urls",
             "platforms",
         ]
         _seen = set()

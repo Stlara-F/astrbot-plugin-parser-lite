@@ -20,20 +20,20 @@ from bridge.cfg import read_cfg  # noqa: E402
 
 
 def test_read_cfg_missing_returns_default():
-    assert read_cfg({}, "plite_dedup_ttl", 60) == 60
+    assert read_cfg({}, "plite_max_size", 90) == 90
 
 
 def test_read_cfg_value_returned():
-    assert read_cfg({"plite_dedup_ttl": 120}, "plite_dedup_ttl", 60) == 120
+    assert read_cfg({"plite_max_size": 120}, "plite_max_size", 90) == 120
 
 
 def test_read_cfg_none_uses_default():
-    assert read_cfg({"plite_dedup_ttl": None}, "plite_dedup_ttl", 60) == 60
+    assert read_cfg({"plite_max_size": None}, "plite_max_size", 90) == 90
 
 
 def test_read_cfg_zero_respected():
     # 0 是合法值 (TTL=0 表示不去重), 不应被回退覆盖
-    assert read_cfg({"plite_dedup_ttl": 0}, "plite_dedup_ttl", 60) == 0
+    assert read_cfg({"plite_max_size": 0}, "plite_max_size", 90) == 0
 
 
 def test_read_cfg_none_source():

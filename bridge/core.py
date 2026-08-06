@@ -5,18 +5,15 @@
 - proxy.py     : 代理注入 + 平台决策 + 特征表
 - resolve.py   : ParserLite 薄解析编排
 - inject.py    : 0 硬编码动态注入决策树
-- core.py      : 兼容 re-export + 独有功能 (CustomParser/LazyManager/disabled_groups)
+- core.py      : 兼容 re-export + disabled_groups 持久化 + 环境检测
 """
 
 # ruff: noqa: F401
 from __future__ import annotations
 
-import asyncio  # noqa: F401  (LazyManager 使用)
 import os
 from pathlib import Path
 import time
-
-from nonebot_plugin_parser_lite.utils.common import LimitedSizeDict
 
 
 def _get_logger():
@@ -48,9 +45,6 @@ from bridge.proxy import (  # noqa: F401,E402
     apply_downloader_proxy as _apply_downloader_proxy,
 )
 from bridge.proxy import (
-    build_feature_table,
-)
-from bridge.proxy import (
     client_closed as _client_closed,
 )
 from bridge.proxy import (
@@ -65,10 +59,6 @@ from bridge.proxy import (
 
 # ── re-export: 解析编排 ─────────────────────────────────────────────────────
 from bridge.resolve import PARSE_TIMEOUT, ParserLite  # noqa: F401,E402
-
-# r8: 自研 _RESULT_CACHE/FEATURE_TABLE 已删 (缓存由上游 pipeline._RESULT_CACHE,
-# 匹配由上游 Parser.match 承载)
-CACHE_INTERVAL = 24 * 3600
 
 
 def _is_parser_enabled(platform: str) -> bool:

@@ -59,7 +59,7 @@ from astrbot.api.star import Context, Star
 
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
 from bridge.cfg import bridge_cfg
-from bridge.core import (
+from bridge.core import (  # noqa: F401
     BridgeConfig,
     ParserLite,
     _detect_missing_libs,
@@ -130,8 +130,6 @@ class _LoguruBridge(logging.Handler):
 
 
 # ── 上游 imports ───────────────────────────────────────────────────────────────
-# CACHE_INTERVAL 单一来源: bridge.core (与 core.py 同值)
-from bridge.core import CACHE_INTERVAL  # noqa: F401
 from bridge.format import format_full
 
 # ── 动态注入 ──────────────────────────────────────────────────────────────────

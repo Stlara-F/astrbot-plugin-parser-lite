@@ -12,7 +12,7 @@ from typing import Any
 def read_cfg(source: dict | None, key: str, default: Any = None) -> Any:
     """从配置源读取值, 缺失或 None 回退默认.
 
-    支持点路径嵌套: "delay_send.enabled", "push.interval".
+    支持点路径嵌套: "platforms.enabled", "plite_max_size".
     注意: 0 是合法值 (如 TTL=0 表示禁用), 不被回退覆盖.
     """
     if not source:
@@ -32,7 +32,7 @@ def module_cfg(source: dict | None, section: str, default: Any = None) -> Any:
     """提取模块配置段 (功能模块自包含: 每模块只读自己的 section).
 
     :param source: 配置源 (可注入; None/空 → 默认)
-    :param section: 模块配置段名 (如 "delay_send", "push", "arbiter")
+    :param section: 模块配置段名 (如 "platforms", "parser_extra")
     :param default: 段缺失/非 dict 时的默认
     """
     if not source:

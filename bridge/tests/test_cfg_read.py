@@ -22,21 +22,19 @@ def test_read_cfg_dot_path():
     """read_cfg 支持点路径嵌套 (配置读取统一入口)."""
     from bridge.cfg import read_cfg
 
-    src = {"delay_send": {"enabled": True, "timeout_sec": 300}, "push": [{"uid": "1"}]}
-    assert read_cfg(src, "delay_send.enabled") is True
-    assert read_cfg(src, "delay_send.timeout_sec") == 300
-    assert read_cfg(src, "delay_send.nope", 42) == 42
-    assert read_cfg(src, "push") == [{"uid": "1"}]
+    src = {"platforms": {"enabled": True}, "delay_send": {"enabled": True}}
+    assert read_cfg(src, "platforms.enabled") is True
+    assert read_cfg(src, "platforms.nope", 42) == 42
     assert read_cfg(src, "missing", "d") == "d"
     assert read_cfg(None, "x", "d") == "d"
-    assert read_cfg(src, "delay_send.enabled.deep", "d") == "d"
+    assert read_cfg(src, "platforms.enabled.deep", "d") == "d"
 
 
 def test_read_cfg_zero_valid():
     """0 是合法值 (TTL=0 禁用), 不被回退覆盖."""
     from bridge.cfg import read_cfg
 
-    assert read_cfg({"plite_dedup_ttl": 0}, "plite_dedup_ttl", 60) == 0
+    assert read_cfg({"plite_max_size": 0}, "plite_max_size", 90) == 0
 
 
 def test_load_parsers_config_nested_items():

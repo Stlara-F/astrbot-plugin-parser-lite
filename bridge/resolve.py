@@ -2,7 +2,7 @@
 
 上游原生调用链 (与 nonebot-plugin-parser-lite 一致):
   Parser.match(text) → _key_patterns 关键词正则 (同 bridge search_url 数据源)
-  Parser.parse(text, until=PARSE) → match → _RESULT_CACHE → parser.parse
+  Parser.parse(text, until=PARSE) → match → 上游结果缓存 → parser.parse
 bridge 仅做 AstrBot 平台适配: 配置热载 / cookies 同步 / 直连客户端重建 / 超时守卫.
 """
 
@@ -53,7 +53,7 @@ class ParserLite:
     async def parse_url(self, url: str) -> Any:
         """解析 URL → 上游 ParseResult (薄包装: 配置/同步/重建/超时).
 
-        上游 Parser 自带: 平台匹配 (_key_patterns), _RESULT_CACHE 缓存,
+        上游 Parser 自带: 平台匹配 (_key_patterns), 结果缓存,
         disabled_platforms 过滤, 解析器实例管理.
         """
         BridgeConfig.configure()

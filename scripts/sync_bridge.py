@@ -10,7 +10,7 @@ bridge 无法 rebase 跟随. 本脚本从旧 bridge 提交树提取功能文件,
 流程:
   1. fetch upstream standalone
   2. 若 bridge-standalone 落后上游 → 用 git 树提取 bridge 功能文件
-  3. checkout 新基底 → 恢复文件 → commit → (可选 push)
+  3. checkout 新基底 → 恢复文件 → commit → (可选推送到 origin)
 """
 
 from __future__ import annotations

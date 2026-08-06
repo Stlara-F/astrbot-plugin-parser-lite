@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # 修改频率分组 (用于断言排序: 高→低)
 # 重新设计后: 平台统一配置 platforms (enable/proxy/cookies) 最高频
 HIGH = {"platforms", "send_strategy"}
-LOW = {"push", "delay_send", "arbiter", "cookie_health"}
+LOW: set[str] = set()
 
 
 def parse_bridge_fields(src: str) -> list[dict]:
@@ -58,14 +58,14 @@ def main() -> int:
     if paths and paths[1] != "plite_direct_link":
         errors.append(f"FAIL: 第二个配置应为 plite_direct_link, 实际 {paths[1]}")
     # 已废弃的 parsers.items 不应再注入 (统一 platforms)
-    for deprecated in ("parsers.items.cookies", "parsers.items.proxied"):
+    for deprecated in ("parsers.items.cookies",):
         if deprecated in paths:
             errors.append(f"FAIL: 已废弃配置 {deprecated} 不应注入 (统一 platforms)")
     # 低频应在最后
     last_low = [i for i, p in enumerate(paths) if p in LOW]
     first_high_end = max([i for i, p in enumerate(paths) if p in HIGH] or [-1])
     if last_low and min(last_low) < first_high_end:
-        errors.append("FAIL: 低频配置 (push/arbiter 等) 应在高频之后")
+        errors.append("FAIL: 配置顺序错误")
 
     # 3. 必含新配置项 (r8: dedup/cache_interval 已删)
     for key in (
