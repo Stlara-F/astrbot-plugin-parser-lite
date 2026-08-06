@@ -138,22 +138,8 @@ class _LoguruBridge(logging.Handler):
 
 
 # ── 上游 imports ───────────────────────────────────────────────────────────────
-from nonebot_plugin_parser_lite.data import (
-    AudioContent,
-    GraphicContent,
-    ImageContent,
-    ParseResult,
-    StickerContent,
-    VideoContent,
-)
-from nonebot_plugin_parser_lite.parsers.base import BaseParser
-from nonebot_plugin_parser_lite.utils.cache import CacheManager
-from nonebot_plugin_parser_lite.utils.common import LimitedSizeDict
-
-CACHE_INTERVAL = 24 * 3600
-_RESULT_CACHE: LimitedSizeDict[str, ParseResult] = LimitedSizeDict(max_size=50)
-_CARD_CACHE: dict[str, bytes] = {}
-_CARD_CACHE_MAX = 20  # LRU 上限 (动态可调)
+# CACHE_INTERVAL 单一来源: bridge.core (与 core.py 同值)
+from bridge.core import CACHE_INTERVAL  # noqa: F401
 from bridge.format import format_full
 
 # ── 动态注入 ──────────────────────────────────────────────────────────────────
@@ -165,6 +151,16 @@ from bridge.url_extract import (
     extract_urls,
     url_from_text,
 )
+from nonebot_plugin_parser_lite.data import (
+    AudioContent,
+    GraphicContent,
+    ImageContent,
+    ParseResult,
+    StickerContent,
+    VideoContent,
+)
+from nonebot_plugin_parser_lite.parsers.base import BaseParser
+from nonebot_plugin_parser_lite.utils.cache import CacheManager
 from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
 
 inject_dynamic_options_static(
@@ -194,13 +190,7 @@ class ParserLitePlugin(Star):
 
     async def initialize(self) -> None:
         try:
-            # 上游 render 兼容补丁: safe_src 默认 method (模板省略调用)
-            try:
-                from bridge.render_patch import apply_render_patch
-
-                apply_render_patch()
-            except Exception as _rp_e:
-                astrbot_logger.debug(f"[ParserLite] render 补丁跳过: {_rp_e}")
+            # 上游 render 兼容补丁: 由 context.up_renderer() 首次渲染时自动应用 (收敛一处)
             self._log_bridge = _LoguruBridge()
             self._log_bridge.setFormatter(logging.Formatter("%(name)s | %(message)s"))
             sdk = logging.getLogger("nonebot_plugin_parser_lite")
@@ -595,6 +585,9 @@ class ParserLitePlugin(Star):
     async def _parse_raw(self, url: str) -> ParseResult | None:
         if self._parser is None:
             return None
+        # _RESULT_CACHE 单一来源: bridge.core (main/commands 共享同实例)
+        from bridge.core import _RESULT_CACHE
+
         if url in _RESULT_CACHE:
             return _RESULT_CACHE[url]
         try:

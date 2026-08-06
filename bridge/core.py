@@ -92,14 +92,14 @@ def _build_feature_table():
 
 
 def _is_parser_enabled(platform: str) -> bool:
-    """平台启用判定 (B8: 显式三路, 无配置 → 全部启用).
+    """平台启用判定 (复用 proxy 单一实现, 无配置 → 全部启用).
 
     优先级: platforms.items.enabled 勾选 → 旧模板 enable → 上游 disabled_platforms.
     """
     try:
-        from bridge.proxy import enabled_platforms as _enabled_platforms
+        from bridge.proxy import enabled_platforms
 
-        _en = _enabled_platforms()
+        _en = enabled_platforms()
         if _en is not None:
             return platform.lower() in _en
         _pc = _platform_cfg(platform)

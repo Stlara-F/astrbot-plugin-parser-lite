@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import threading
 
 from bridge.cfg import bridge_cfg, global_source
 from bridge.context import up_downloader
@@ -15,8 +17,15 @@ from bridge.context import up_downloader
 # 代理协议轮询列表 (curl_cffi 全支持, httpx 需 httpx[socks])
 PROXY_PROTOCOLS = ("http://", "https://", "socks5://", "socks5h://")
 
+_logger = logging.getLogger("nonebot_plugin_parser_lite")
+
+
+def _log_cfg_fallback(exc: Exception) -> None:
+    """统一"配置读取回退"日志 (debug 级, 不刷屏)."""
+    _logger.debug(f"[ParserLite] 配置读取回退: {exc}")
+
+
 _last_proxy: str | None = None
-import threading
 
 _PROXY_LOCK = threading.Lock()
 
@@ -67,12 +76,9 @@ def read_proxy_config() -> str:
 
     日志脱敏: 凭证 (user:pass@) 不落日志 (隐私).
     """
-    import logging
 
     px = bridge_cfg("plite_http_proxy", "") or ""
-    logging.getLogger("nonebot_plugin_parser_lite").info(
-        f"[ParserLite] proxy config: proxy={_mask_proxy(px)}"
-    )
+    _logger.info(f"[ParserLite] proxy config: proxy={_mask_proxy(px)}")
     return px
 
 
@@ -152,14 +158,16 @@ def apply_downloader_proxy(proxy_url: str):
                 verify=False,
                 allow_redirects=True,
             )
-    import logging
 
-    logging.getLogger("nonebot_plugin_parser_lite").info(
+    _logger.info(
         f"[ParserLite] downloader proxy: {_mask_proxy(proxy_url) or 'disabled'}"
     )
 
 
 # ── 平台级决策 (统一勾选列表: platforms.items.{enabled,proxied,cookies}) ──
+
+# 平台块惰性缓存: {源哈希: 归一化块}; configure() 更新 _source 后哈希变化自动失效
+_PLATFORMS_CACHE: dict[str, dict] = {}
 
 
 def _platforms_block() -> dict:
@@ -167,22 +175,33 @@ def _platforms_block() -> dict:
 
     AstrBot 生成配置时会把 object 类型配置展平为顶层键:
     schema 形式 {"items": {"enabled": [...]}} → 配置形式 {"enabled": [...]}
+    惰性缓存: 配置源哈希不变则复用解析结果 (热路径免重复归一化).
     """
+    import hashlib
+
+    _src = global_source()
+    _h = hashlib.md5(
+        repr(sorted(_src.items(), key=lambda kv: str(kv[0]))).encode()
+    ).hexdigest()
+    _cached = _PLATFORMS_CACHE.get(_h)
+    if _cached is not None:
+        return _cached
     try:
-        pfm = (global_source()).get("platforms", {}) or {}
+        pfm = _src.get("platforms", {}) or {}
         if isinstance(pfm, dict):
             if "enabled" in pfm or "proxied" in pfm or "cookies" in pfm:
-                return {"items": pfm}  # AstrBot 展平形态 → 归一化
-            return pfm
-        if isinstance(pfm, list):  # 旧 27 模板格式 → 模拟块
-            return {"items": {}, "_legacy_list": pfm}
+                _block = {"items": pfm}  # AstrBot 展平形态 → 归一化
+            else:
+                _block = pfm
+        elif isinstance(pfm, list):  # 旧 27 模板格式 → 模拟块
+            _block = {"items": {}, "_legacy_list": pfm}
+        else:
+            _block = {}
     except Exception as _cfg_e:
-        import logging
-
-        logging.getLogger("nonebot_plugin_parser_lite").debug(
-            f"[ParserLite] 配置读取回退: {_cfg_e}"
-        )
-    return {}
+        _log_cfg_fallback(_cfg_e)
+        _block = {}
+    _PLATFORMS_CACHE[_h] = _block
+    return _block
 
 
 def platform_cfg(platform: str) -> dict:
@@ -223,11 +242,7 @@ def platform_cfg(platform: str) -> dict:
         elif isinstance(_blk, dict):
             return _blk.get(platform, {}) or {}
     except Exception as _cfg_e:
-        import logging
-
-        logging.getLogger("nonebot_plugin_parser_lite").debug(
-            f"[ParserLite] 配置读取回退: {_cfg_e}"
-        )
+        _log_cfg_fallback(_cfg_e)
     return {}
 
 
@@ -295,17 +310,9 @@ def sync_cookies_to_upstream() -> None:
                 setattr(_cfg, _fname, entry["cookie"])
                 _sync = True
         if _sync:
-            import logging
-
-            logging.getLogger("nonebot_plugin_parser_lite").info(
-                "[ParserLite] cookies synced to upstream config"
-            )
+            _logger.info("[ParserLite] cookies synced to upstream config")
     except Exception as _cfg_e:
-        import logging
-
-        logging.getLogger("nonebot_plugin_parser_lite").debug(
-            f"[ParserLite] 配置读取回退: {_cfg_e}"
-        )
+        _log_cfg_fallback(_cfg_e)
 
 
 def load_parsers_config() -> dict:
@@ -317,11 +324,7 @@ def load_parsers_config() -> dict:
             if isinstance(inner, dict):
                 return inner
     except Exception as _cfg_e:
-        import logging
-
-        logging.getLogger("nonebot_plugin_parser_lite").debug(
-            f"[ParserLite] 配置读取回退: {_cfg_e}"
-        )
+        _log_cfg_fallback(_cfg_e)
     return {}
 
 
@@ -384,11 +387,7 @@ def get_cookies_for(platform: str) -> dict:
         if ck:
             return {"Cookie": ck}
     except Exception as _cfg_e:
-        import logging
-
-        logging.getLogger("nonebot_plugin_parser_lite").debug(
-            f"[ParserLite] 配置读取回退: {_cfg_e}"
-        )
+        _log_cfg_fallback(_cfg_e)
     return {}
 
 

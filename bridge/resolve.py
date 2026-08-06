@@ -22,8 +22,19 @@ from bridge.proxy import (
 
 PARSE_TIMEOUT = 60.0  # 单次解析总超时(秒) — 防慢代理/死链拖死
 
-# 支持 cookie 同步到上游 plite_*_ck 的平台 (平台能力集中声明, A5 同模式)
-_COOKIE_SYNC_PLATFORMS = frozenset({"bilibili"})
+
+def ck_sync_platforms() -> set[str]:
+    """上游声明 cookie 字段的平台集 (plite_<name>_ck → name, 0 硬编码动态推导)."""
+    from bridge.context import up_config
+
+    out = set()
+    try:
+        for f in up_config().model_fields:
+            if f.startswith("plite_") and f.endswith("_ck"):
+                out.add(f[len("plite_") : -len("_ck")])
+    except Exception:
+        pass
+    return out
 
 
 class ParserLite:
@@ -114,7 +125,6 @@ class ParserLite:
         import logging
 
         _logger = logging.getLogger("nonebot_plugin_parser_lite")
-        from bridge.proxy import get_cookies_for
 
         _matched_err = None
         for parser_cls in ordered:
@@ -126,15 +136,7 @@ class ParserLite:
                 continue
             try:
                 parser = self._get_parser(parser_cls)
-                _pname = str(
-                    getattr(getattr(parser_cls, "platform", None), "name", "")
-                ).lower()
-                cookies = get_cookies_for(_pname)
-                if cookies and _pname in _COOKIE_SYNC_PLATFORMS:
-                    # B4: 统一入口写入 (source 原位更新 + 显式 configure 刷新)
-                    from bridge.cfg import set_plite_bili_ck
-
-                    set_plite_bili_ck(next(iter(cookies.values())) or "")
+                # cookie 同步走单通道: parse_url 入口 sync_cookies_to_upstream 已处理
                 return await parser.parse(kw, mwp)
             except Exception as e:
                 _matched_err = e

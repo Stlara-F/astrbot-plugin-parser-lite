@@ -136,13 +136,7 @@ async def send_card(event, result, format_full: Callable, logger=None) -> SendRe
 
         logger = logging.getLogger("parser-lite.bridge.send")
 
-    # 确保渲染补丁已应用 (safe_src 默认 method + pl_esc/pl_str 注册, 幂等)
-    try:
-        from bridge.render_patch import apply_render_patch
-
-        apply_render_patch()
-    except Exception:
-        pass
+    # 渲染补丁: up_renderer() 首次渲染时自动应用 (收敛一处, 无需重复调用)
 
     cache_key = result.url
     if cache_key in _CARD_CACHE:
