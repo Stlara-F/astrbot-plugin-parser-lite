@@ -13,7 +13,6 @@ from pathlib import Path
 import typing
 
 from bridge.context import up_base_parser, up_config
-from bridge.core import CustomParser
 from bridge.i18n import (  # noqa: F401 (翻译/标签单一来源, 兼容外部引用)
     TRANSLATIONS,
     is_bool_annotation,
@@ -114,7 +113,7 @@ def _build_field_entry(fname: str, finfo, slider_hints: dict) -> dict | None:
     return entry
 
 
-# ── 桥接扩展字段声明 (非硬编码平台: 仅桥接功能开关) ──────────────────────────
+# ── 桥接扩展字段声明 (仅 AstrBot 发送适配字段; r8: 自研业务模块字段已删) ─────
 _BRIDGE_FIELDS: list[dict] = [
     {
         "path": "send_strategy",
@@ -150,70 +149,13 @@ _BRIDGE_FIELDS: list[dict] = [
         "hint": "视频超过此大小(MB)时以文件形式发送 (OneBot11 base64 有上限, 默认 100MB; 20MB 以上 base64 亦转文件)",
     },
     {
-        "path": "plite_md5_fast_send",
-        "type": "bool",
-        "desc": tr("plite_md5_fast_send"),
-        "default": True,
-        "hint": "媒体指纹缓存: 相同内容 (md5) 再次发送时用 file://md5 引用 QQ 服务器资源秒回应 (参考 SnowLuma fast-upload); 失败自动回退正常上传",
-    },
-    {
-        "path": "plite_md5_cache_max",
-        "type": "int",
-        "desc": tr("plite_md5_cache_max"),
-        "default": 200,
-        "hint": "md5 指纹缓存最大条目数 (LRU 淘汰)",
-    },
-    {
-        "path": "plite_dedup_ttl",
-        "type": "int",
-        "desc": tr("plite_dedup_ttl"),
-        "default": 60,
-    },
-    {
-        "path": "plite_cache_interval",
-        "type": "int",
-        "desc": tr("plite_cache_interval"),
-        "default": 3600,
-    },
-    {
         "path": "plite_forward_max_nodes",
         "type": "int",
         "desc": tr("plite_forward_max_nodes"),
         "default": 50,
     },
-    {
-        "path": "card_semantic",
-        "type": "bool",
-        "desc": tr("card_semantic"),
-        "default": True,
-    },
-    {
-        "path": "push",
-        "type": "template_list",
-        "desc": tr("push"),
-        "default": [],
-        "templates": {
-            "default": {
-                "name": "订阅",
-                "items": {
-                    "uid": {"type": "string", "description": "UP的UID", "default": ""},
-                    "groups": {
-                        "type": "string",
-                        "description": "群号(逗号分隔)",
-                        "default": "",
-                    },
-                    "enabled": {"type": "bool", "description": "启用", "default": True},
-                },
-            }
-        },
-    },
-    {
-        "path": "push_interval",
-        "type": "int",
-        "desc": tr("push_interval"),
-        "default": 300,
-    },
-    # T3: delay_send/arbiter/cookie_health 已移除 (依赖 OneBot11 notice, AstrBot 无法触发)
+    # r8 已删除的自研字段: md5_fast_send/md5_cache_max/dedup_ttl/cache_interval/
+    # card_semantic/push/push_interval (对应模块已随 r8 移除)
 ]
 
 _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
@@ -306,25 +248,11 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
     updated = False
     injected: list[str] = []
 
-    # 0) custom_parsers 模板: 从 CustomParser.SCHEMA 扫描生成
-    cp = schema.setdefault(
-        "custom_parsers",
-        {"type": "template_list", "description": tr("custom_parsers"), "templates": {}},
-    )
-    template = cp.setdefault("templates", {}).setdefault("default", {})
-    if _inject_new and not template.get("items"):
-        items = {}
-        for cm in CustomParser.SCHEMA:
-            entry = {"type": cm["type"], "description": cm["desc"]}
-            if "default" in cm and cm["default"] is not None:
-                entry["default"] = cm["default"]
-            if "hint" in cm:
-                entry["hint"] = cm["hint"]
-            items[cm["key"]] = entry
-        template["name"] = "自定义"
-        template["items"] = items
+    # r8: custom_parsers 注入已删 (自研正则自定义解析器模块移除);
+    # 旧 schema 残留键清理 (防 AstrBot 陈旧残留显示)
+    if "custom_parsers" in schema:
+        schema.pop("custom_parsers", None)
         updated = True
-        injected.append("custom_parsers")
 
     # platforms: 统一勾选列表 (27 平台模板废弃) — enabled/proxied 全局勾选,
     # cookies 为动态模板列表 (平台下拉仅含源码支持平台)
@@ -579,16 +507,14 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         updated = True
         injected.append("parser_extra")
 
-    # 5.5) 清理: parsers 空容器 (废弃) + custom_parsers 描述恒翻译
+    # 5.5) 清理: parsers 空容器 (废弃) + custom_parsers 残留 (r8 已删模块)
     _parsers_blk = schema.get("parsers")
     if isinstance(_parsers_blk, dict) and not (_parsers_blk.get("items") or {}):
         schema.pop("parsers", None)
         updated = True
-    _cp_blk = schema.get("custom_parsers")
-    if isinstance(_cp_blk, dict):
-        if _cp_blk.get("description") != tr("custom_parsers"):
-            _cp_blk["description"] = tr("custom_parsers")
-            updated = True
+    if "custom_parsers" in schema:
+        schema.pop("custom_parsers", None)
+        updated = True
 
     # 6) test_urls
     tu = schema.get("test_urls", {})
@@ -616,7 +542,6 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         _known_order = [
             *[k for k in _up_keys if k in schema],
             "parser_extra",
-            "custom_parsers",
             "test_urls",
             "platforms",
         ]

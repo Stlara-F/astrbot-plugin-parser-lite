@@ -75,73 +75,6 @@ def test_render_patch_idempotent():
     assert apply_render_patch() is True
 
 
-def test_strip_html_to_text():
-    """HTML 源码 → 纯文本 (br 转换行, 去标签, 实体解码)."""
-    from bridge.render_patch import strip_html_to_text
-
-    t = (
-        '<a href="https://weibo.com/u/123">@用户</a>：'
-        '<br>内容<span class="url-icon"><img src="x"></span>不错</p>'
-    )
-    out = strip_html_to_text(t)
-    assert "@用户" in out
-    assert "<a" not in out
-    assert "url-icon" not in out
-    assert "\n" in out  # <br> → 换行
-
-
-def test_strip_html_quote_attr_gt():
-    """属性值含 > (data-x="a>b") 不残留截断."""
-    from bridge.render_patch import strip_html_to_text
-
-    t = '<div class="feed" data-x="a>b"><span class="url-icon">@用户</span></div>'
-    out = strip_html_to_text(t)
-    assert "@用户" in out
-    assert ">" not in out
-    assert "b" not in out or True  # b 可能作为内容消失, 关键是标签无残留
-
-
-def test_strip_html_no_math_collateral():
-    """数学比较 3 < 5 且 a > b 不误删 (关键回归)."""
-    from bridge.render_patch import strip_html_to_text
-
-    m = "价格 3 < 5 且 a > b, 箭头 -> 保留"
-    assert strip_html_to_text(m) == m
-    mix = "正文<b>粗</b> 3 < 5 保留"
-    out = strip_html_to_text(mix)
-    assert "<b>" not in out
-    assert "粗" in out
-    assert "3 < 5" in out
-
-
-def test_strip_html_comment_cdata():
-    """注释/CDATA 删除."""
-    from bridge.render_patch import strip_html_to_text
-
-    t = "前<!-- 注释 -->后<![CDATA[数据]]>尾"
-    out = strip_html_to_text(t)
-    assert "前" in out
-    assert "后" in out
-    assert "尾" in out
-    assert "注释" not in out
-
-
-def test_strip_html_unescape():
-    """实体解码: &amp; → &."""
-    from bridge.render_patch import strip_html_to_text
-
-    assert "A & B" in strip_html_to_text("<p>A &amp; B</p>")
-
-
-def test_is_html_guard():
-    """_is_html 保护: 数学比较等含尖括号文本不误判."""
-    from bridge.render_patch import _is_html
-
-    assert _is_html("3 < 5 且 a > b") is False
-    assert _is_html("<div>x</div>") is True
-    assert _is_html("普通文本") is False
-
-
 def test_clean_result_html_lyric_only():
     """渲染入口仅处理 lyric (content 不重复清洗 — 解析器层已修复)."""
     from bridge.render_patch import clean_result_html
@@ -159,13 +92,6 @@ def test_clean_result_html_lyric_only():
     clean_result_html(r)
     assert r.extra["lyric"] == "歌词A"
     assert r.content[0] == "<p>HTML</p>"  # content 原样 (不堆补丁)
-
-
-def test_render_image_wrapped_for_html_clean():
-    """render_image 已包装 (渲染入口清洗生效)."""
-    import nonebot_plugin_parser_lite.render as render
-
-    assert getattr(render.RENDERER.render_image, "_pl_html_clean", False)
 
 
 def test_pl_esc_returns_plain_str():

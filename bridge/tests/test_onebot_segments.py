@@ -3,12 +3,10 @@
 覆盖:
 - _onebot11_segments: 段数组格式 (type/data, 值字符串)
 - 媒体类型 → OneBot 段 type 映射 (image/record/video/file/text)
-- md5 引用降级 (media_cache 秒发失败 → 正常路径)
 """
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 import sys
 
@@ -19,7 +17,6 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge.media_cache import is_md5_ref  # noqa: E402
 import bridge.send as send  # noqa: E402
 
 # OneBot 11 规范消息段 type 集合
@@ -98,13 +95,8 @@ def _mk_cmp_cls(name):
 
 
 @pytest.fixture(autouse=True)
-def _fake_components(monkeypatch, tmp_path):
-    """CI 无 astrbot: 组件与 md5 缓存隔离打桩."""
-    import bridge.media_cache as _mc
-
-    _mc.reset_cache()
-    _iso = _mc.MediaMd5Cache(tmp_path / "md5.json", max_entries=50)
-    monkeypatch.setattr(_mc, "get_cache", lambda *a, **k: _iso)
+def _fake_components(monkeypatch):
+    """CI 无 astrbot: 组件打桩."""
     monkeypatch.setattr(
         send,
         "_get_components",
@@ -115,8 +107,6 @@ def _fake_components(monkeypatch, tmp_path):
             "Video": _mk_cmp_cls("Video"),
         },
     )
-    yield
-    _mc.reset_cache()
 
 
 def test_segments_structure():
@@ -150,39 +140,3 @@ def test_segment_types_in_spec():
     # 组件枚举 (Image/Record/Video) 或规范名 (image/record/video)
     for t in types:
         assert t in ONEBOT11_TYPES or t.lower() in ONEBOT11_TYPES
-
-
-def test_md5_ref_downgrade_on_failure(tmp_path, monkeypatch):
-    """md5 引用失败 → 降级正常路径 (V14: 秒发不可用不阻断)."""
-    from bridge.context import BridgeConfig
-    import bridge.media_cache as mc
-    from bridge.media_cache import MediaMd5Cache, reset_cache
-
-    reset_cache()
-    iso = MediaMd5Cache(tmp_path / "m.json", max_entries=10)
-    monkeypatch.setattr(mc, "get_cache", lambda *a, **k: iso)
-
-    media = tmp_path / "img.jpg"
-    media.write_bytes(b"\xff\xd8" + b"\x00" * 2048)
-    BridgeConfig._source = {"plite_md5_fast_send": True, "plite_use_base64": False}
-
-    class Ev:
-        def __init__(self):
-            self.sent = []
-            self._ref_fail = True
-
-        def chain_result(self, segs):
-            return segs
-
-        async def send(self, segs):
-            if self._ref_fail and any(is_md5_ref(getattr(s, "file", "")) for s in segs):
-                self._ref_fail = False
-                raise RuntimeError("md5 not on server")
-            self.sent.append(segs)
-
-    ev = Ev()
-    ok = asyncio.run(send.send_media_file(ev, media, "image"))
-    assert ok
-    assert ev.sent, "应降级到正常路径发送"
-    assert not is_md5_ref(getattr(ev.sent[0][0], "file", ""))
-    reset_cache()

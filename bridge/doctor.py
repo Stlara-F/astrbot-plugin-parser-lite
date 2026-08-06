@@ -174,12 +174,15 @@ async def check_coverage() -> tuple[bool, str, bool]:
 
 
 async def check_route_table() -> tuple[bool, str, bool]:
-    """特征路由表."""
-    from bridge.core import FEATURE_TABLE, _build_feature_table
+    """匹配能力 (r8: 委托上游 pipeline.Parser.match 验证)."""
+    try:
+        from nonebot_plugin_parser_lite.pipeline import Parser
 
-    _build_feature_table()
-    ok = len(FEATURE_TABLE) > 0
-    return ok, f"{len(FEATURE_TABLE)} keywords", False
+        m = Parser().match("https://www.bilibili.com/video/BV1GJ411x7h7")
+        ok = m is not None
+        return ok, f"match={'ok' if ok else 'fail'}", not ok
+    except Exception as e:
+        return False, f"match error: {e}", True
 
 
 async def check_render() -> tuple[bool, str, bool]:

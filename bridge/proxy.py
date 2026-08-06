@@ -109,7 +109,7 @@ def _platforms_block() -> dict:
     try:
         pfm = _src.get("platforms", {}) or {}
         if isinstance(pfm, dict):
-            if "enabled" in pfm or "proxied" in pfm or "cookies" in pfm:
+            if "enabled" in pfm or "cookies" in pfm:
                 _block = {"items": pfm}  # AstrBot 展平形态 → 归一化
             else:
                 _block = pfm
@@ -229,31 +229,6 @@ def sync_cookies_to_upstream() -> None:
             _logger.info("[ParserLite] cookies synced to upstream config")
     except Exception as _cfg_e:
         _log_cfg_fallback(_cfg_e)
-
-
-def lazy_download_platforms() -> set[str]:
-    """懒下载能力平台 (R1: 从解析器类能力声明动态推导, 0 硬编码).
-
-    能力声明: 解析器类属性 `lazy_download` (非 None) 或 `_pl_lazy` 标记;
-    上游当前未声明 → 回退默认 B站 (行为不变, 声明点集中于此).
-    """
-    try:
-        from bridge.context import up_base_parser
-
-        out = set()
-        for cls in up_base_parser().get_all_subclass():
-            _name = str(getattr(getattr(cls, "platform", None), "name", "")).lower()
-            if not _name:
-                continue
-            if getattr(cls, "lazy_download", None) is not None or getattr(
-                cls, "_pl_lazy", False
-            ):
-                out.add(_name)
-        if out:
-            return out
-    except Exception:
-        pass
-    return {"bilibili"}  # 上游未声明 → 默认 B站 (唯一实现 lazy 下载的解析器)
 
 
 def load_parsers_config() -> dict:

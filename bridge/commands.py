@@ -11,9 +11,8 @@ from typing import Any
 
 
 def status_text(plugin: Any) -> str:
-    """状态报告 (纯数据, 插件实例注入)."""
+    """状态报告 (纯数据, 插件实例注入; r8: 自研缓存/懒下载会话已删)."""
     from bridge.context import get_config, up_base_parser
-    from bridge.core import _RESULT_CACHE, LazyManager
     from nonebot_plugin_parser_lite.constants import PlatformEnum
     from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg  # noqa: E402
 
@@ -22,11 +21,9 @@ def status_text(plugin: Any) -> str:
     h, m = divmod(uptime, 3600)
     m2, s = divmod(m, 60)
     lines = [
-        "ParserLite v1.3.1",
+        "ParserLite v1.3.2",
         f"Uptime: {h}h{m2}m{s}s",
-        f"Cache: {len(_RESULT_CACHE)} entries",
         f"Disabled groups: {len(plugin._disabled_groups)}",
-        f"Lazy: {len(LazyManager._sessions)} sessions",
         f"Platforms: {len(PlatformEnum)}",
         f"Parsers: {len(list(up_base_parser().get_all_subclass()))}",
     ]
@@ -50,13 +47,24 @@ def toggle_group(plugin: Any, gid: str, enable: bool) -> str:
 
 
 def clean_cache(plugin: Any) -> str:
-    """清理缓存 (委托插件清理循环)."""
+    """清理缓存 (r8: 委托上游 clear_result_cache + CacheManager)."""
     import asyncio
 
     try:
-        count = asyncio.run(plugin._do_clean_cache())
-        return f"清理完成: {count} files"
-    except RuntimeError:
-        # 已在事件循环中: 同步清理
-        count = 0
-        return f"清理完成: {count} files"
+        from nonebot_plugin_parser_lite.pipeline import clear_result_cache
+        from nonebot_plugin_parser_lite.utils.cache import CacheManager
+
+        async def _clean():
+            await CacheManager.clean_expired()
+            clear_result_cache()
+
+        try:
+            asyncio.get_running_loop()
+            _t = asyncio.create_task(_clean())
+            _t.add_done_callback(lambda _t2: None)  # 持有引用防 GC
+            return "缓存清理已触发"
+        except RuntimeError:
+            asyncio.run(_clean())
+            return "缓存清理完成"
+    except Exception as e:
+        return f"缓存清理失败: {e}"

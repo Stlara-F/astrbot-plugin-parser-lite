@@ -12,40 +12,17 @@
 from __future__ import annotations
 
 import functools
-import re
 from typing import Any
 
 # 原方法引用 (P2-9: restore_render_patch 可还原)
 _ORIGINALS: dict[str, Any] = {}
 
 
-def strip_html_to_text(text: str) -> str:
-    """HTML 源码 → 纯文本 (BeautifulSoup 浏览器级解析).
-
-    解析器已正确解析 HTML 进 content (根因修复); 此处为渲染层防御,
-    仅处理残留 HTML 字符串.
-    """
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(text, "html.parser")
-    for tag in soup(["script", "style"]):
-        tag.decompose()
-    return soup.get_text(separator="\n", strip=True)
-
-
-def _is_html(text: str) -> bool:
-    return bool(re.search(r"(?i)</?[a-zA-Z][^>]*>", text))
-
-
-def _clean_items(items: list[Any]) -> None:
-    """就地清洗 content 列表中的 HTML 字符串 (0 侵入, 不重建对象)."""
-    for i, item in enumerate(items):
-        if isinstance(item, str) and _is_html(item):
-            items[i] = strip_html_to_text(item)
-
-
 def lyric_to_text(lyric) -> str:
-    """歌词 dict/list → 文本 (网易云新格式 {t, c:[{tx}]} / 标准 lrc)."""
+    """歌词 dict/list → 文本 (网易云新格式 {t, c:[{tx}]} / 标准 lrc).
+
+    上游模板 lyric 渲染兼容 (上游解析器产出 dict/list, 模板期望文本).
+    """
     if isinstance(lyric, str):
         return lyric
     if isinstance(lyric, list):
@@ -75,10 +52,10 @@ def lyric_to_text(lyric) -> str:
 
 
 def clean_result_html(result: Any) -> None:
-    """渲染入口防御: 仅处理歌词 dict→文本 (多平台 lyric 字段格式差异).
+    """渲染入口防御 (r8 精简): 仅处理歌词 dict→文本 (上游渲染缺陷修复).
 
     注: content/comments 的 HTML 已在解析器层修复 (微博 BS4 / 上游 API 纯文本),
-    此处不再重复清洗 (避免补丁堆叠).
+    r8 移除 render_image 入口 HTML 清洗包装 (自研防御补丁去重).
     """
     if result is None:
         return
@@ -111,7 +88,7 @@ def pl_str(value) -> str:
 
 
 def apply_render_patch() -> bool:
-    """safe_src 默认 method + render_image 入口清洗 HTML.
+    """上游渲染缺陷修复 (r8 最小集): ① safe_src 默认 method + ③ env 注册.
 
     可还原: 原方法引用保存在 _ORIGINALS, restore_render_patch() 恢复.
 
@@ -133,19 +110,8 @@ def apply_render_patch() -> bool:
         _patched_safe_src._pl_default_method = True  # type: ignore[attr-defined]
         _render.safe_src = _patched_safe_src
 
-        # ② render_image 入口清洗 HTML 字符串 (微博评论等平台)
-        _orig_render_image = _render.RENDERER.render_image
-        _ORIGINALS["render_image"] = _orig_render_image
-
-        @functools.wraps(_orig_render_image)
-        async def _patched_render_image(result, *args, **kwargs):
-            clean_result_html(result)
-            return await _orig_render_image(result, *args, **kwargs)
-
-        _patched_render_image._pl_html_clean = True  # type: ignore[attr-defined]
-        _render.RENDERER.render_image = _patched_render_image
-
-        # ③ render_html 重建 env: 注入 pl_esc/pl_str (模板 ~ 拼接与 join 转义修复)
+        # ③ render_html 重建 env: 注入 pl_esc/pl_str + 歌词 dict→文本兼容
+        # (上游模板引用但上游 env 未注册; lyric 为渲染缺陷修复)
         # 注意: 赋值到实例属性 → 必须是"无 self"裸函数 (调用方直接传 result),
         # 否则 render_image 内部 self.render_html(result) 会把 result 当 self.
         _orig_render_html = _render.RENDERER.render_html
@@ -158,6 +124,7 @@ def apply_render_patch() -> bool:
 
             from nonebot_plugin_parser_lite.render import get_theme
 
+            clean_result_html(result)  # lyric dict→文本 (渲染前归一)
             # 回上游原样 env: 无 autoescape (与上游一致)
             # 仅注册 pl_esc/pl_str (模板 |e Markup ~ 拼接修复, 上游模板同样引用)
             environment = Environment(

@@ -1,4 +1,4 @@
-"""DOWNLOAADER 客户端关闭检测 + 小黑盒评论 HTML 解析测试."""
+"""DOWNLOADER 客户端关闭检测 + 小黑盒评论 HTML 解析测试 (r8: _ensure_parser_httpx 已删)."""
 
 from __future__ import annotations
 
@@ -49,55 +49,17 @@ def test_client_closed_missing_session():
     assert core._client_closed(client) is True
 
 
-def test_ensure_parser_httpx_rebuilds_closed():
-    """解析器 httpx 已关闭 (重载残留) → 请求前重建."""
-    import asyncio
+def test_parserlite_no_self_managed_parsers():
+    """r8: ParserLite 不再自研解析器实例管理 (委托上游 pipeline.Parser)."""
+    import inspect
 
-    from httpx import AsyncClient
+    from bridge.resolve import ParserLite
 
-    class FakeCls:
-        __name__ = "FakeParserCls"
-
-    class FakeParser:
-        headers: dict = None  # type: ignore[assignment]
-        timeout = 15
-        httpx = None
-
-    p = FakeParser()
-    p.headers = {"User-Agent": "t"}
-    p.httpx = AsyncClient(timeout=15)
-    asyncio.run(p.httpx.aclose())
-    assert p.httpx.is_closed is True
-
-    pl = core.ParserLite()
-    pl._parsers = {"FakeParserCls": p}
-    pl._ensure_parser_httpx([FakeCls()])
-    assert p.httpx.is_closed is False, "httpx 应被重建"
-
-
-def test_ensure_parser_httpx_keeps_open():
-    """httpx 正常 (未关闭) → 不重建 (同一实例)."""
-    import asyncio
-
-    from httpx import AsyncClient
-
-    class FakeCls:
-        __name__ = "FakeParserCls2"
-
-    class FakeParser:
-        headers: dict = None  # type: ignore[assignment]
-        timeout = 15
-        httpx = None
-
-    p = FakeParser()
-    p.headers = {}
-    p.httpx = AsyncClient(timeout=15)
-    orig = p.httpx
-    pl = core.ParserLite()
-    pl._parsers = {"FakeParserCls2": p}
-    pl._ensure_parser_httpx([FakeCls()])
-    assert p.httpx is orig, "未关闭的 httpx 不应重建"
-    asyncio.run(p.httpx.aclose())
+    src = inspect.getsource(ParserLite)
+    assert "_parsers" not in src
+    assert "_ensure_parser_httpx" not in src
+    assert "_try_all_parsers" not in src
+    assert "UpParser" in src or "pipeline" in src
 
 
 def test_heybox_comment_html_to_text():

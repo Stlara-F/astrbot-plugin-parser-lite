@@ -67,10 +67,8 @@ def test_bridge_fields_structure():
     paths = re.findall(r'"path": "([^"]+)"', block)
     assert paths, "未解析到配置路径"
 
-    # 必含新键
+    # 必含新键 (r8: dedup/cache_interval 已删)
     for key in (
-        "plite_dedup_ttl",
-        "plite_cache_interval",
         "plite_image_compress_mb",
         "plite_forward_max_nodes",
         "send_strategy",
@@ -83,7 +81,9 @@ def test_bridge_fields_structure():
     # 修改频率排序: 高频 (发送策略) 在前 (platforms 动态注入不在此列表)
     assert paths[0] == "send_strategy"
     assert paths[1] == "plite_direct_link"
-    assert paths[-1] in ("push_interval", "push")  # T3: arbiter/cookie_health 已移除
+    assert (
+        paths[-1] == "plite_forward_max_nodes"
+    )  # r8: 自研字段已删, 最后为发送适配字段
 
 
 def test_bridge_fields_no_deprecated():

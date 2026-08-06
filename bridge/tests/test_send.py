@@ -112,12 +112,8 @@ def _mk_cmp_cls(name):
 
 
 @pytest.fixture(autouse=True)
-def _fake_components(monkeypatch, tmp_path):
-    import bridge.media_cache as _mc
-
-    _mc.reset_cache()
-    _iso = _mc.MediaMd5Cache(tmp_path / "md5.json", max_entries=50)
-    monkeypatch.setattr(_mc, "get_cache", lambda *a, **k: _iso)
+def _fake_components(monkeypatch):
+    """CI 无 astrbot: 组件打桩 (r8: media_cache 已删)."""
     monkeypatch.setattr(
         send,
         "_get_components",
@@ -128,8 +124,6 @@ def _fake_components(monkeypatch, tmp_path):
             "Video": _mk_cmp_cls("Video"),
         },
     )
-    yield
-    _mc.reset_cache()
     BridgeConfig._source = {}
 
 

@@ -24,9 +24,7 @@ LITERAL = re.compile(
 )
 
 # 平台能力声明上下文 (集中声明点, 可审计): 注册表/能力集合初始化
-ALLOW_LINES = (
-    'return {"bilibili"}',  # lazy_download_platforms 回退默认 (声明点)
-)
+ALLOW_LINES = ()
 
 
 def main() -> int:

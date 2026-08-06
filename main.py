@@ -60,7 +60,6 @@ from astrbot.api.star import Context, Star
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
 from bridge.cfg import bridge_cfg
 from bridge.core import (
-    LazyManager,
     ParserLite,
     _detect_missing_libs,
     _load_disabled_groups,
@@ -151,7 +150,6 @@ from nonebot_plugin_parser_lite.data import (
     StickerContent,
     VideoContent,
 )
-from nonebot_plugin_parser_lite.utils.cache import CacheManager
 from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
 
 inject_dynamic_options_static(
@@ -169,14 +167,9 @@ class ParserLitePlugin(Star):
         self.config = config
         self._log_bridge: _LoguruBridge | None = None
         self._parser: ParserLite | None = None
-        self._cleanup_task: asyncio.Task[None] | None = None
         self._chromium_task: asyncio.Task[None] | None = None
         self._plugin_start_time: float = time.time()
         self._disabled_groups: set[str] = set()
-        self._recently_processed: dict[int, float] = {}
-        self._recently_lock = __import__("threading").Lock()
-        self._limiter = None  # 延迟到 initialize 创建 (需要 base_dir)
-        self._debouncer = None  # 链接级防抖 (E5)
 
     async def initialize(self) -> None:
         try:
@@ -202,66 +195,9 @@ class ParserLitePlugin(Star):
 
             self._parser = ParserLite()
             self._plugin_start_time = time.time()
-            # 频率限制器 + 防抖器 (配置驱动, 统一状态目录持久化)
-            try:
-                from bridge.debounce import make_debouncer
-                from bridge.paths import state_dir as _state_dir
-                from bridge.rate_limit import make_limiter
-
-                self._limiter = make_limiter(_state_dir())
-                self._debouncer = make_debouncer(_state_dir())
-            except Exception:
-                self._limiter = None
-                self._debouncer = None
-            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+            # r8: push/limiter/debouncer 已移除 (自研业务模块删除);
+            # 缓存清理由上游 pipeline scheduler 承载 (每 2h)
             self._chromium_task = asyncio.create_task(self._auto_ensure_chromium())
-            # F1: B站 UP 订阅推送 (配置驱动, 默认关闭; push 为可增删 template_list)
-            self._pusher = None
-            try:
-                from bridge.push import load_cfg as _push_cfg
-                from bridge.push import make_pusher
-
-                _push_raw, _interval = _push_cfg()
-                from bridge.paths import state_dir as _state_dir
-
-                self._pusher = make_pusher(_state_dir())
-                # template_list: [{uid, groups("1,2"), enabled}]
-                _subs: dict[str, list[str]] = {}
-                if isinstance(_push_raw, list):
-                    for entry in _push_raw:
-                        if not isinstance(entry, dict):
-                            continue
-                        if not entry.get("enabled", True):
-                            continue
-                        _uid = str(entry.get("uid", "") or "").strip()
-                        _grp = str(entry.get("groups", "") or "").strip()
-                        if _uid:
-                            _subs[_uid] = [
-                                g.strip() for g in _grp.split(",") if g.strip()
-                            ]
-                elif isinstance(_push_raw, dict):
-                    # 兼容旧格式 {uid: [groups]}
-                    _subs = {str(k): [str(g) for g in v] for k, v in _push_raw.items()}
-                self._pusher.set_subscriptions(_subs)
-
-                async def _push_send(msg: str, groups: list[str]):
-                    for gid in groups:
-                        try:
-                            await self.context.send_message(
-                                f"aiocqhttp:GroupMessage:{gid}", [Comp.Plain(msg)]
-                            )
-                        except Exception as _e:
-                            astrbot_logger.warning(f"[ParserLite] 推送失败 {gid}: {_e}")
-
-                if _subs:
-                    self._pusher.start(_interval, _push_send)
-                    astrbot_logger.info(
-                        f"[ParserLite] UP 推送已启动: {len(_subs)} 订阅, 间隔 {_interval}s"
-                    )
-            except Exception as _e:
-                astrbot_logger.warning(f"[ParserLite] 推送初始化跳过: {_e}")
-                self._pusher = None
-            # T3: cookie_health / delay_send 已移除 (依赖 OneBot11 notice, AstrBot 无法触发)
             astrbot_logger.info("[ParserLite] ✓ initialize 完成")
         except Exception:
             astrbot_logger.error(
@@ -269,7 +205,7 @@ class ParserLitePlugin(Star):
             )
 
     async def terminate(self) -> None:
-        for _task_attr in ("_cleanup_task", "_chromium_task"):
+        for _task_attr in ("_chromium_task",):
             _task = getattr(self, _task_attr, None)
             if _task:
                 _task.cancel()
@@ -282,14 +218,7 @@ class ParserLitePlugin(Star):
                 await self._parser.close()
             except Exception:
                 pass
-        # F1: 停止 UP 推送轮询
-        if self._pusher is not None:
-            try:
-                await self._pusher.stop()
-            except Exception:
-                pass
-        # T3: cookie_health 已移除 (停止逻辑随模块删除)
-        # 新版 standalone 运行时: 关闭 scheduler + BrowserManager + DOWNLOADER
+        # r8: pusher 已移除; 上游运行时关闭由 ParserLite.close → shutdown_runtime 承载
         try:
             from nonebot_plugin_parser_lite.pipeline import shutdown_runtime
 
@@ -303,24 +232,6 @@ class ParserLitePlugin(Star):
                 )
             except Exception:
                 pass
-
-    async def _cleanup_loop(self) -> None:
-        while True:
-            _interval = float(
-                bridge_cfg("plite_cache_interval", CACHE_INTERVAL) or 3600
-            )
-            await asyncio.sleep(_interval)
-            await self._do_clean_cache()
-
-    async def _do_clean_cache(self) -> int:
-        try:
-            count = await CacheManager.clean_expired()
-            if count:
-                astrbot_logger.info(f"[ParserLite] 缓存清理: {count} files")
-            return count
-        except Exception:
-            astrbot_logger.error(f"[ParserLite] 缓存清理异常\n{traceback.format_exc()}")
-            return 0
 
     async def _auto_ensure_chromium(self) -> None:
         try:
@@ -471,9 +382,6 @@ class ParserLitePlugin(Star):
     def _blacklisted(self, event: AstrMessageEvent) -> bool:
         return event.get_sender_id() in get_config().blacklist_users
 
-    def _clean_lazy(self) -> int:
-        return LazyManager.cleanup()
-
     @staticmethod
     def _url_from_text(event: AstrMessageEvent) -> str | None:
         return url_from_text(event.get_message_str)
@@ -532,15 +440,9 @@ class ParserLitePlugin(Star):
     async def _parse_raw(self, url: str) -> ParseResult | None:
         if self._parser is None:
             return None
-        # _RESULT_CACHE 单一来源: bridge.core (main/commands 共享同实例)
-        from bridge.core import _RESULT_CACHE
-
-        if url in _RESULT_CACHE:
-            return _RESULT_CACHE[url]
+        # r8: 缓存由上游 pipeline._RESULT_CACHE 承载 (委托后无需自研缓存)
         try:
-            result = await self._parser.parse_url(url)
-            _RESULT_CACHE[url] = result
-            return result
+            return await self._parser.parse_url(url)
         except ValueError:
             return None
         except Exception:
@@ -718,16 +620,7 @@ class ParserLitePlugin(Star):
         await self._handle_card_message(event)
 
     async def on_message(self, event: AstrMessageEvent):
-        # T3: notice 分流 (arbiter) 已移除
-        # F2: QQ 卡片 → LLM 结构化文本注入 (配置驱动, 默认开)
-        try:
-            from bridge.card_semantic import find_json_cards, inject_card_summary
-
-            if bridge_cfg("card_semantic", True):
-                for _entry in find_json_cards(event)[:2]:
-                    inject_card_summary(event, _entry["card"])
-        except Exception:
-            pass
+        # r8: card_semantic 注入已移除 (自研模块删除)
         await self._handle_card_message(event)
 
     def _should_send(self, media_type: str) -> bool:
@@ -963,29 +856,7 @@ class ParserLitePlugin(Star):
             )
 
     async def _handle_card_message(self, event: AstrMessageEvent):
-        # 二选一门: 用原始 message_id 去重 (跨 handler 实例, TTL=60s)
-        msg_id = None
-        # AstrBot aiocqhttp → event.message_obj.raw_message.message_id
-        msg_obj = getattr(event, "message_obj", None)
-        if msg_obj:
-            raw = getattr(msg_obj, "raw_message", None)
-            if isinstance(raw, dict):
-                msg_id = raw.get("message_id")
-        # fallback: event.get_message_str() 取 hash
-        if msg_id is None:
-            msg_id = hash(event.get_message_str())
-        now = time.time()
-        _dedup_ttl = float(bridge_cfg("plite_dedup_ttl", 60) or 60)
-        with self._recently_lock:
-            if msg_id in self._recently_processed:
-                if now - self._recently_processed[msg_id] < _dedup_ttl:
-                    return
-            self._recently_processed[msg_id] = now
-            if len(self._recently_processed) > 50:
-                cutoff = now - _dedup_ttl
-                self._recently_processed = {
-                    k: v for k, v in self._recently_processed.items() if v > cutoff
-                }
+        # r8: 消息级去重/限频/防抖已移除 (自研模块删除); 缓存由上游承载
         urls = self._extract_urls(event)
         if not urls:
             urls = self._reply_urls(event)  # 引用消息逃生通道 (小程序卡片)
@@ -993,49 +864,15 @@ class ParserLitePlugin(Star):
             return
         if self._disabled(event) or self._blacklisted(event):
             return
-        # 频率限制 (配置驱动)
-        if self._limiter is not None:
-            from bridge.rate_limit import clean_url, load_rate_cfg
-
-            _rcfg = load_rate_cfg()  # R9: 内部默认 global_source(), 不直接摸 _source
-            _sender = event.get_sender_id() or ""
-            for _u in urls[:3]:
-                _ok, _why = self._limiter.allow(
-                    url=clean_url(_u), user_id=str(_sender), cfg=_rcfg
-                )
-                if not _ok:
-                    astrbot_logger.info(f"[ParserLite] 限频: {_why}")
-                    try:
-                        await event.send(event.chain_result([Comp.Plain(_why)]))
-                    except Exception:
-                        pass
-                    return
         for url in urls[:3]:
-            # E5: 链接级防抖 (持久化) — 窗口秒数动态从配置读取, 失败回滚
-            if self._debouncer is not None:
-                from bridge.debounce import debounce_key
-                from bridge.rate_limit import clean_url
-
-                _session = self._key(event)
-                _dkey = debounce_key(_session, clean_url(url))
-                # 防抖窗口: plite_dedup_ttl (自实现字段, 不误用上游 lazy_download_timeout)
-                _dwin = float(bridge_cfg("plite_dedup_ttl", 60) or 60)
-                if not self._debouncer.should_parse(_dkey, _dwin):
-                    continue  # 防抖命中
             try:
                 result = await self._parse_raw(url)
                 if result is None:
-                    if self._debouncer is not None:
-                        self._debouncer.rollback(_dkey)  # 失败回滚, 允许重试
                     continue
-                if self._debouncer is not None:
-                    self._debouncer.mark_success(_dkey)
                 if self._should_send("card"):
                     await self._send_card(event, result)
                 await self._send_items(event, result.content, result)
             except Exception:
-                if self._debouncer is not None:
-                    self._debouncer.rollback(_dkey)
                 astrbot_logger.error(
                     f"[ParserLite] _handle_card_message 异常\n{traceback.format_exc()}"
                 )
@@ -1061,51 +898,11 @@ class ParserLitePlugin(Star):
             if self._should_send("card"):
                 await self._send_card(event, result)
             await self._send_items(event, result.content, result)
-            # R1: 懒下载会话 (平台能力动态推导: proxy.lazy_download_platforms)
-            from bridge.proxy import lazy_download_platforms
-
-            if (
-                result.platform
-                and result.platform.name.lower() in lazy_download_platforms()
-            ):
-                LazyManager.add(
-                    self._key(event),
-                    result,
-                    result.url,
-                    get_config().plite_lazy_download_timeout,
-                )
         except Exception as e:
             astrbot_logger.error(
                 f"[ParserLite] cmd_parse 异常\n{traceback.format_exc()}"
             )
             yield event.plain_result(f"解析失败: {e}")
-
-    async def cmd_parse_dl(self, event: AstrMessageEvent):
-        urls = self._extract_urls(event)
-        if urls:
-            async for _ in self.cmd_parse(event):
-                yield _
-        else:
-            yield event.plain_result("未找到链接")
-
-    async def _on_download_trigger(self, event: AstrMessageEvent):
-        text = event.get_message_str().strip()
-        if not re.match(r"^(xz|下载)$", text):
-            return
-        key = self._key(event)
-        session = LazyManager.get(key)
-        if not session:
-            yield event.plain_result("没有待下载的链接")
-            return
-        LazyManager.remove(key)
-        result = await self._parse_raw(session.url)
-        if result is None:
-            yield event.plain_result("不支持的链接")
-            return
-        if self._should_send("card"):
-            await self._send_card(event, result)
-        await self._send_items(event, result.content, result)
-        yield event.plain_result("已下载")
 
     async def cmd_clean(self, event: AstrMessageEvent):
         from bridge.commands import clean_cache
@@ -1292,13 +1089,7 @@ class ParserLitePlugin(Star):
         if m:
             bvid = m.group(0)
 
-        # 2) 懒下载会话中提取 (先回复了 bilibili 链接, 再发 cmd_bm)
-        if not bvid:
-            session = LazyManager.get(self._key(event))
-            if session and session.url:
-                m = re.search(r"[Bb][Vv][A-Za-z0-9]{10}", session.url)
-                if m:
-                    bvid = m.group(0)
+        # 2) r8: 懒下载会话已移除 (LazyManager 删除)
 
         # 3) 从被回复的消息中提取 BV (上游 BvReplyMergeExtension 等价实现)
         if not bvid:
@@ -1361,7 +1152,6 @@ class ParserLitePlugin(Star):
 
 # ── 装饰器注册 ────────────────────────────────────────────────────────────────
 filter.command("parse")(ParserLitePlugin.cmd_parse)
-filter.command("parse_dl")(ParserLitePlugin.cmd_parse_dl)
 filter.command("parse_clean")(ParserLitePlugin.cmd_clean)
 filter.command("parse_status")(ParserLitePlugin.cmd_status)
 filter.command("parse_enable")(ParserLitePlugin.cmd_enable)
@@ -1373,5 +1163,4 @@ filter.command("parser_doctor")(
 filter.command("parse_install_chromium")(ParserLitePlugin.cmd_install_chromium)
 filter.command("cmd_bm")(ParserLitePlugin.cmd_bm)
 filter.command("cmd_blogin")(ParserLitePlugin.cmd_blogin)
-filter.regex(r"^(xz|下载)$")(ParserLitePlugin._on_download_trigger)
 filter.llm_tool(name="parse_url")(ParserLitePlugin.parse_url)

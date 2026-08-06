@@ -310,53 +310,14 @@ async def _send_media_impl(
     except Exception:
         _use_b64 = False
 
-    _m5 = None
-    _md5_failed = None
     _fsz = 0
 
     def _ok(stage: str, segs) -> SendReport:
-        """发送成功统一出口: 反馈 + md5 缓存记录 (秒传命中后不再重复记录)."""
+        """发送成功统一出口: 反馈记录."""
         _try_send(stage, segs)
         _report.ok, _report.stage = True, stage
         _report.segments = _onebot11_segments(segs)
-        if _m5 and _md5_failed != _m5:
-            try:
-                from bridge.media_cache import get_cache as _gc
-
-                _gc().put(_m5, media_type, _fsz if _fsz else p.stat().st_size)
-            except Exception:
-                pass
         return _report
-
-    # md5 秒传: 有缓存指纹 → file://md5 引用 (QQ 服务器资源秒回应, 参考
-    # SnowLuma fast-upload; 失败 → 回退正常路径, 多级 failback)
-    try:
-        from bridge.media_cache import compute_md5, get_cache, md5_file_ref
-
-        _md5_fast = bool(bridge_cfg("plite_md5_fast_send", True))
-        if _md5_fast and media_type in ("image", "video", "audio"):
-            _m5 = compute_md5(p)
-            if get_cache().has(_m5):
-                _ref = md5_file_ref(_m5)
-                if media_type == "image":
-                    _md5_seg = Image(file=_ref)
-                elif media_type == "video":
-                    _md5_seg = Video(file=_ref)
-                else:
-                    _md5_seg = Record(file=_ref)
-                try:
-                    await event.send(event.chain_result([_md5_seg]))
-                    _try_send(f"{media_type}-md5", [_md5_seg])
-                    _report.ok, _report.stage = True, f"{media_type}-md5"
-                    _report.segments = _onebot11_segments([_md5_seg])
-                    return _report
-                except Exception as _e:
-                    _try_send(f"{media_type}-md5", [], _e)
-                    _md5_failed = _m5  # 引用失败, 后续正常路径重试
-        else:
-            _m5 = None
-    except Exception:
-        _m5 = None
 
     if media_type == "image":
         # base64 优先 (上游配置驱动)

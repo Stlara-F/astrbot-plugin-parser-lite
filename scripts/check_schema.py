@@ -67,10 +67,8 @@ def main() -> int:
     if last_low and min(last_low) < first_high_end:
         errors.append("FAIL: 低频配置 (push/arbiter 等) 应在高频之后")
 
-    # 3. 必含新配置项
+    # 3. 必含新配置项 (r8: dedup/cache_interval 已删)
     for key in (
-        "plite_dedup_ttl",
-        "plite_cache_interval",
         "plite_image_compress_mb",
         "plite_forward_max_nodes",
     ):

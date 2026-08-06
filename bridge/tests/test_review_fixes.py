@@ -1,27 +1,16 @@
-"""Review 修复专项测试: 代理脱敏/限频上限/写节流/原子落盘/LazyManager 锁."""
+"""Review 修复专项测试: 写节流/原子落盘 + 审计回归."""
 
 from __future__ import annotations
 
 from pathlib import Path
 import sys
 
-from _pytest.monkeypatch import MonkeyPatch
-
 _ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge.rate_limit import RateLimiter  # noqa: E402
 from bridge.state_store import JsonStateStore  # noqa: E402
-
-
-def test_rate_limit_max_entries(tmp_path):
-    """限频内存上限: 每 key 最多 _MAX_PER_KEY 条 (>= 截断)."""
-    rl = RateLimiter(tmp_path / "rl.json")
-    for _ in range(60):
-        rl._hit("url:x", 300)
-    assert len(rl._hits["url:x"]) <= 50
 
 
 def test_state_store_atomic_write(tmp_path):
@@ -65,14 +54,6 @@ def test_state_store_concurrent_updates(tmp_path):
     assert len(loaded) == 20
 
 
-def test_lazy_manager_locked(monkeypatch: MonkeyPatch):
-    """LazyManager 方法带锁 (并发安全)."""
-    from bridge.core import LazyManager
-
-    assert LazyManager._get_lock() is not None
-    assert LazyManager.cleanup() == 0
-
-
 # ── 审计报告第二轮修复测试 ────────────────────────────────────────────────
 
 
@@ -108,15 +89,3 @@ def test_no_group_message_zero():
     """P2-5: 移除无效 GroupMessage:0 发送 (通知仅日志)."""
     src = (_ROOT / "main.py").read_text(encoding="utf-8")
     assert "aiocqhttp:GroupMessage:0" not in src
-
-
-def test_media_cache_coalescing(tmp_path):
-    """P1-1: media_cache put 节流 (未达阈值不落盘)."""
-    from bridge.media_cache import MediaMd5Cache
-
-    c = MediaMd5Cache(tmp_path / "m.json", max_entries=50)
-    for i in range(5):
-        c.put(f"{i:032x}", "image", 1)
-    assert not (tmp_path / "m.json").exists()  # 5 < flush_every 10
-    c.save()
-    assert (tmp_path / "m.json").exists()

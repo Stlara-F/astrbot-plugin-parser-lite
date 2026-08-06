@@ -31,7 +31,6 @@ async def main() -> int:
     ap.add_argument("--url", dest="url_opt", help="URL (备用参数名)")
     ap.add_argument("--raw", action="store_true", help="打印原始 ParseResult 字段")
     ap.add_argument("--no-cards", action="store_true", help="跳过渲染卡片验证")
-    ap.add_argument("--proxy", default="", help="代理地址 (可选)")
     args = ap.parse_args()
 
     url = args.url or args.url_opt
@@ -51,7 +50,7 @@ async def main() -> int:
     print(f"URL: {url}")
     print(f"Parsers: {len(BaseParser.get_all_subclass())}")
 
-    p = ParserLite(plite_http_proxy=args.proxy) if args.proxy else ParserLite()
+    p = ParserLite()
     try:
         result = await p.parse_url(url)
         print("\n-- 解析结果 --")

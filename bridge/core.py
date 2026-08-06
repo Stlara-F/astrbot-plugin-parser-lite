@@ -66,16 +66,9 @@ from bridge.proxy import (
 # ── re-export: 解析编排 ─────────────────────────────────────────────────────
 from bridge.resolve import PARSE_TIMEOUT, ParserLite  # noqa: F401,E402
 
-# ── 常量/状态 (保留) ────────────────────────────────────────────────────────
+# r8: 自研 _RESULT_CACHE/FEATURE_TABLE 已删 (缓存由上游 pipeline._RESULT_CACHE,
+# 匹配由上游 Parser.match 承载)
 CACHE_INTERVAL = 24 * 3600
-_RESULT_CACHE: LimitedSizeDict = LimitedSizeDict(max_size=50)
-FEATURE_TABLE: dict[str, str] = {}
-
-
-def _build_feature_table():
-    """重建动态特征表 (0 hardcode)."""
-    FEATURE_TABLE.clear()
-    FEATURE_TABLE.update(build_feature_table())
 
 
 def _is_parser_enabled(platform: str) -> bool:
@@ -186,70 +179,3 @@ def _try_load(path):
         return True
     except OSError:
         return False
-
-
-# ── CustomParser (保留, 上游无关的自定义解析器) ─────────────────────────────
-from bridge.custom_parser import CustomParser  # noqa: F401,E402
-
-
-# ── LazyManager (保留: 懒下载会话) ──────────────────────────────────────────
-class LazyManager:
-    Session = None  # type: ignore[assignment]
-    _lock = None  # 延迟初始化 (threading.Lock)
-
-    @classmethod
-    def _get_lock(cls):
-        if cls._lock is None:
-            import threading
-
-            cls._lock = threading.Lock()
-        return cls._lock
-
-    @classmethod
-    def add(cls, key: str, result, url: str, timeout_sec: float) -> None:
-        import asyncio
-
-        if cls.Session is None:
-            from dataclasses import dataclass
-
-            @dataclass
-            class _Session:
-                result: object
-                url: str
-                task: object
-                deadline: float
-
-            cls.Session = _Session
-        cls.remove(key)
-        task = asyncio.create_task(cls._timeout_handler(key, timeout_sec))
-        with cls._get_lock():
-            cls._sessions[key] = cls.Session(
-                result=result, url=url, task=task, deadline=time.time() + timeout_sec
-            )
-
-    @classmethod
-    def get(cls, key: str):
-        with cls._get_lock():
-            return cls._sessions.get(key)
-
-    @classmethod
-    def remove(cls, key: str) -> None:
-        with cls._get_lock():
-            s = cls._sessions.pop(key, None)
-        if s and getattr(s, "task", None):
-            s.task.cancel()
-
-    @classmethod
-    async def _timeout_handler(cls, key: str, timeout_sec: float) -> None:
-        await asyncio.sleep(timeout_sec)
-        cls.remove(key)
-
-    @classmethod
-    def cleanup(cls) -> int:
-        with cls._get_lock():
-            n = len(cls._sessions)
-            cls._sessions.clear()
-        return n
-
-
-LazyManager._sessions: dict = {}
