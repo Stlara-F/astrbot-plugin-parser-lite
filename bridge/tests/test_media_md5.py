@@ -44,6 +44,7 @@ def test_cache_persist(tmp_path):
     c = MediaMd5Cache(tmp_path / "md5.json", max_entries=5)
     c.put("a" * 32, "image", 100)
     c.put("b" * 32, "video", 200)
+    c.save()  # 显式落盘 (节流下不自动)
     c2 = MediaMd5Cache(tmp_path / "md5.json", max_entries=5)
     assert c2.has("a" * 32)
     assert c2.lookup("b" * 32)["type"] == "video"

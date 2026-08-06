@@ -76,6 +76,15 @@ def up_creator():
 
 # ── 字段标签 (features 双向映射用) ───────────────────────────────────────────
 
+def _is_bool_annotation(ann) -> bool:
+    """bool 注解判定 (兼容 Optional[bool] / bool | None)."""
+    if ann is bool:
+        return True
+    if hasattr(ann, "__args__"):
+        return bool in ann.__args__
+    return False
+
+
 def label(k: str) -> str:
     # 翻译表优先; 未翻译字段回退英文驼峰 (未翻译状态, 新增字段可见)
     try:
@@ -113,11 +122,11 @@ class BridgeConfig:
             cls._source = _config
         elif kwargs:
             cls._source = data  # AstrBot configure(**self.config) 走此分支
-        # features 标签 → plite_* bool 反向映射 (兼容中英文旧值)
+        # features 标签 → plite_* bool 反向映射 (兼容中英文旧值 + Optional[bool])
         features_list = data.get("features", [])
         if isinstance(features_list, list):
             for k, f in _UpConfig.model_fields.items():
-                if f.annotation is bool and k.startswith("plite_"):
+                if _is_bool_annotation(f.annotation) and k.startswith("plite_"):
                     data[k] = (label(k) in features_list) or (label_en(k) in features_list)
         valid = {k: v for k, v in data.items() if k in _UpConfig.model_fields}
         # parser_extra 冲突覆盖: 注入到 valid 中 (优先于顶级 plite_ 同名字段)

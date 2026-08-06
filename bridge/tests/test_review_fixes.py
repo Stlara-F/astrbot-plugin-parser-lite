@@ -81,3 +81,50 @@ def test_lazy_manager_locked(monkeypatch: MonkeyPatch):
 
     assert LazyManager._get_lock() is not None
     assert LazyManager.cleanup() == 0
+
+# ── 审计报告第二轮修复测试 ────────────────────────────────────────────────
+
+def test_doctor_class_model_fields():
+    """P0-2: doctor 不得实例访问 model_fields (pydantic 2.11+ deprecation)."""
+    src = (_ROOT / "bridge" / "doctor.py").read_text(encoding="utf-8")
+    assert "type(cfg).model_fields" in src
+    assert "cfg.model_fields" not in src
+
+
+def test_bool_annotation_helper():
+    """P1-7: bool 判定兼容 Optional[bool] / bool | None."""
+    from bridge.inject import is_bool_field
+
+    class _F:
+        def __init__(self, ann):
+            self.annotation = ann
+
+    assert is_bool_field(_F(bool)) is True
+    assert is_bool_field(_F(bool | None)) is True
+    assert is_bool_field(_F(bool | int)) is True
+    assert is_bool_field(_F(int)) is False
+    assert is_bool_field(_F(str | None)) is False
+
+
+def test_no_on_url_auto():
+    """P2-2: on_url_auto 死代码已删除 (装饰器注册也不存在)."""
+    src = (_ROOT / "main.py").read_text(encoding="utf-8")
+    assert "on_url_auto" not in src
+
+
+def test_no_group_message_zero():
+    """P2-5: 移除无效 GroupMessage:0 发送 (通知仅日志)."""
+    src = (_ROOT / "main.py").read_text(encoding="utf-8")
+    assert "aiocqhttp:GroupMessage:0" not in src
+
+
+def test_media_cache_coalescing(tmp_path):
+    """P1-1: media_cache put 节流 (未达阈值不落盘)."""
+    from bridge.media_cache import MediaMd5Cache
+
+    c = MediaMd5Cache(tmp_path / "m.json", max_entries=50)
+    for i in range(5):
+        c.put(f"{i:032x}", "image", 1)
+    assert not (tmp_path / "m.json").exists()  # 5 < flush_every 10
+    c.save()
+    assert (tmp_path / "m.json").exists()

@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from pathlib import Path
 import time
@@ -49,33 +48,22 @@ def is_md5_ref(file_value: str) -> bool:
 
 
 class MediaMd5Cache:
-    """md5 → {type, size, ts} 持久化缓存 (LRU 上限)."""
+    """md5 → {type, size, ts} 持久化缓存 (LRU 上限).
+
+    落盘经 JsonStateStore: 锁保护 + 写节流 + 原子写 (高频 put 不阻塞).
+    """
 
     def __init__(self, cache_path: str | Path | None = None, max_entries: int = 200):
+        from bridge.state_store import JsonStateStore
+
         self._path = Path(cache_path) if cache_path else None
         self._max = max(max_entries, 1)
-        self._data: dict[str, dict] = {}
-        self._load()
-
-    def _load(self) -> None:
-        if self._path is None or not self._path.exists():
-            return
-        try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                self._data = {k: v for k, v in raw.items()
-                              if isinstance(k, str) and isinstance(v, dict)}
-        except Exception:
-            _logger.warning("[ParserLite] media_md5 cache 读取失败, 重建")
+        self._store = JsonStateStore(self._path, flush_every=10, flush_interval=2.0)
+        self._data: dict = self._store.data
 
     def save(self) -> None:
-        if self._path is None:
-            return
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(self._data), encoding="utf-8")
-        except Exception:
-            pass
+        """显式落盘 (兼容旧调用)."""
+        self._store.flush()
 
     def lookup(self, md5_hex: str) -> dict | None:
         return self._data.get(md5_hex.lower())
@@ -85,30 +73,39 @@ class MediaMd5Cache:
 
     def put(self, md5_hex: str, media_type: str, size: int) -> None:
         _k = md5_hex.lower()
-        self._data[_k] = {"type": media_type, "size": int(size), "ts": time.time()}
-        if len(self._data) > self._max:
-            for _old in sorted(self._data, key=lambda k: self._data[k].get("ts", 0))[:len(self._data) - self._max]:
-                self._data.pop(_old, None)
-        self.save()
+
+        def _set(d: dict):
+            d[_k] = {"type": media_type, "size": int(size), "ts": time.time()}
+            if len(d) > self._max:
+                for _old in sorted(d, key=lambda k2: d[k2].get("ts", 0))[:len(d) - self._max]:
+                    d.pop(_old, None)
+
+        self._store.update(_set)
 
     def purge(self) -> None:
-        self._data.clear()
-        self.save()
+        self._store.reset()
 
     def __len__(self) -> int:
         return len(self._data)
 
 
 _CACHE: MediaMd5Cache | None = None
+_CACHE_GUARD = None
 
 
 def get_cache(max_entries: int = 200) -> MediaMd5Cache:
-    """全局缓存 (延迟初始化, 路径统一)."""
-    global _CACHE
+    """全局缓存 (延迟初始化, 防 TOCTOU: 双检锁)."""
+    global _CACHE, _CACHE_GUARD
     if _CACHE is None:
-        from bridge.paths import state_dir
+        if _CACHE_GUARD is None:
+            import threading
+            _CACHE_GUARD = threading.Lock()
+        with _CACHE_GUARD:
+            if _CACHE is None:
+                from bridge.paths import state_dir
 
-        _CACHE = MediaMd5Cache(state_dir() / "media_md5.json", max_entries=max_entries)
+                _CACHE = MediaMd5Cache(state_dir() / "media_md5.json",
+                                       max_entries=max_entries)
     return _CACHE
 
 

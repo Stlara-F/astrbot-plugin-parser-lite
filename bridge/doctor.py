@@ -53,7 +53,7 @@ async def check_config() -> tuple[bool, str, bool]:
     cfg = get_config()
     if cfg is None:
         return False, "config 未初始化", False
-    return True, f"{len(cfg.model_fields)} fields, cache={cfg.cache_dir}", False
+    return True, f"{len(type(cfg).model_fields)} fields, cache={cfg.cache_dir}", False
 
 
 async def check_ffmpeg() -> tuple[bool, str, bool]:

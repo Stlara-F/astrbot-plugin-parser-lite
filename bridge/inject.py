@@ -109,6 +109,16 @@ def extract_slider(finfo) -> dict | None:
     return slider
 
 
+def is_bool_field(finfo) -> bool:
+    """bool 判定 (兼容 Optional[bool] / bool | None 注解)."""
+    ann = finfo.annotation
+    if ann is bool:
+        return True
+    if hasattr(ann, "__args__"):
+        return bool in typing.get_args(ann)
+    return False
+
+
 def _build_field_entry(fname: str, finfo, slider_hints: dict) -> dict | None:
     """从 pydantic 字段信息生成 AstrBot schema 条目 (0 hardcode)."""
     ann = finfo.annotation
@@ -384,7 +394,7 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
 
     # 1) features: bool 字段 (options 恒为当前扫描值, default 保留用户勾选)
     bool_fields = sorted(k for k, f in _UpConfig.model_fields.items()
-                         if f.annotation is bool and k.startswith("plite_"))
+                         if is_bool_field(f) and k.startswith("plite_"))
     _features = schema.setdefault("features", {"type": "list", "options": [], "default": []})
     _new_opts = [label(k) for k in bool_fields]
     if _features.get("options") != _new_opts:
@@ -408,7 +418,7 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         if not fname.startswith("plite_"):
             continue
         ann = finfo.annotation
-        is_bool = ann is bool
+        is_bool = is_bool_field(finfo)
         is_enum = is_enum_field(finfo)
         if is_bool or is_enum:
             continue  # bool → features; enum → parser_extra

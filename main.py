@@ -168,6 +168,7 @@ class ParserLitePlugin(Star):
         self._plugin_start_time: float = time.time()
         self._disabled_groups: set[str] = set()
         self._recently_processed: dict[int, float] = {}
+        self._recently_lock = __import__("threading").Lock()
         self._limiter = None  # 延迟到 initialize 创建 (需要 base_dir)
         self._debouncer = None  # 链接级防抖 (E5)
         self._delay_sender = None  # 延迟发送 (F7)
@@ -264,12 +265,9 @@ class ParserLitePlugin(Star):
                 }
 
                 async def _ck_notify(msg: str):
+                    # P2-5: 移除无效的 GroupMessage:0 发送 (不存在群 ID, 异常被吞致通知静默失效);
+                    # 通知以 warning 日志呈现 (配置 notify 群功能留待后续)
                     astrbot_logger.warning(msg)
-                    try:
-                        await self.context.send_message(
-                            "aiocqhttp:GroupMessage:0", [Comp.Plain(msg)])
-                    except Exception:
-                        pass
 
                 if _ck_cfg.get("enabled", False):
                     self._cookie_health.start(_ck_interval, _cookies, _ck_notify)
@@ -367,15 +365,18 @@ class ParserLitePlugin(Star):
             if missing:
                 astrbot_logger.warning(f"[ParserLite] 检测到缺失系统库, 尝试 apt-get 安装:\n{missing}")
                 try:
+                    # P1-6: apt-get 输出量大, PIPE 缓冲会死锁 → 重定向到 DEVNULL
                     _apt_proc = await asyncio.create_subprocess_exec(
                         "apt-get", "update",
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL)
                     await asyncio.wait_for(_apt_proc.communicate(), timeout=300)
                     _apt_proc = await asyncio.create_subprocess_exec(
                         "apt-get", "install", "-y", "--no-install-recommends",
                         "libnspr4", "libnss3", "libgbm1", "libasound2", "libxkbcommon0",
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                    _out, _err = await asyncio.wait_for(_apt_proc.communicate(), timeout=600)
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL)
+                    await asyncio.wait_for(_apt_proc.communicate(), timeout=600)
                     if _apt_proc.returncode == 0:
                         astrbot_logger.info("[ParserLite] 系统库安装完成, 验证 Chromium...")
                         try:
@@ -390,8 +391,7 @@ class ParserLitePlugin(Star):
                                 f"[ParserLite] ✗ 系统库已安装但 Chromium 仍无法启动: {_e2}")
                     else:
                         astrbot_logger.error(
-                            f"[ParserLite] ✗ apt-get 安装系统库失败: rc={_apt_proc.returncode} "
-                            f"{_err.decode(errors='replace').strip()[-300:]}")
+                            f"[ParserLite] ✗ apt-get 安装系统库失败: rc={_apt_proc.returncode}")
                 except asyncio.TimeoutError:
                     astrbot_logger.error("[ParserLite] ✗ apt-get 安装系统库超时")
                 except Exception as _e3:
@@ -523,9 +523,9 @@ class ParserLitePlugin(Star):
                                        astrbot_logger, cover_path=cover_path)
         if report:
             return
-        # 发送失败回显 (OneBot11 发送反馈: 可倒查发送功能缺陷)
+        # 发送失败回显 (OneBot11 发送反馈: 完整错误链, 可倒查发送功能缺陷)
         try:
-            _why = "; ".join(report.errors[-3:]) or "OneBot API 不可用"
+            _why = "; ".join(report.errors)[:300] or "OneBot API 不可用"
             await event.send(event.chain_result([
                 Comp.Plain(f"[ParserLite] {media_type} 发送失败: {_why}")]))
         except Exception:
@@ -612,19 +612,13 @@ class ParserLitePlugin(Star):
 
         report = await send_card(event, result, format_full, astrbot_logger)
         if not report:
-            _why = "; ".join(report.errors[-2:]) or "未知原因"
+            _why = "; ".join(report.errors)[:300] or "未知原因"
             try:
                 await event.send(event.chain_result([
                     Comp.Plain(f"[ParserLite] 解析成功但卡片发送失败: {_why}")]))
             except Exception:
                 pass
         return report
-
-    # ── 自动触发的 URL 解析 ────────────────────────────────────────────────────
-    async def on_url_auto(self, event: AstrMessageEvent):
-        # on_message_group/on_message_private 与 regex filter 会先后触发同一条消息,
-        # 导致同一 URL 被解析两次 (dedup 使用 message_id, 两个事件 id 可能不同)
-        return  # 避免重复 — 群聊/私聊由 on_message_group/on_message_private 覆盖
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_message_group(self, event: AstrMessageEvent):
@@ -872,13 +866,14 @@ class ParserLitePlugin(Star):
             msg_id = hash(event.get_message_str())
         now = time.time()
         _dedup_ttl = float(_bridge_cfg("plite_dedup_ttl", 60) or 60)
-        if msg_id in self._recently_processed:
-            if now - self._recently_processed[msg_id] < _dedup_ttl:
-                return
-        self._recently_processed[msg_id] = now
-        if len(self._recently_processed) > 50:
-            cutoff = now - _dedup_ttl
-            self._recently_processed = {k: v for k, v in self._recently_processed.items() if v > cutoff}
+        with self._recently_lock:
+            if msg_id in self._recently_processed:
+                if now - self._recently_processed[msg_id] < _dedup_ttl:
+                    return
+            self._recently_processed[msg_id] = now
+            if len(self._recently_processed) > 50:
+                cutoff = now - _dedup_ttl
+                self._recently_processed = {k: v for k, v in self._recently_processed.items() if v > cutoff}
         # E6: 多 Bot 仲裁 — 武装竞争窗口 (参数动态, 默认关闭)
         from bridge.arbiter import load_cfg as _arb_cfg
         _arbiter_cfg = _arb_cfg()
@@ -1203,5 +1198,4 @@ filter.command("parse_install_chromium")(ParserLitePlugin.cmd_install_chromium)
 filter.command("cmd_bm")(ParserLitePlugin.cmd_bm)
 filter.command("cmd_blogin")(ParserLitePlugin.cmd_blogin)
 filter.regex(r"^(xz|下载)$")(ParserLitePlugin._on_download_trigger)
-filter.regex(r"https?://")(ParserLitePlugin.on_url_auto)
 filter.llm_tool(name="parse_url")(ParserLitePlugin.parse_url)
