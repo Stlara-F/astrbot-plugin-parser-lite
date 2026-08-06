@@ -137,7 +137,9 @@ class RouterData(Struct):
             return page.video_info_res.video_data
         elif page := self.loader_data.note_page:
             return page.video_info_res.video_data
-        raise ValueError("can't find video_(id)/page or note_(id)/page in router data")
+        raise ValueError(
+            "can't find video_(id)/page or note_(id)/page in router data"
+        )
 
     @property
     def comment_list(self) -> CommentList:
@@ -145,7 +147,9 @@ class RouterData(Struct):
             return page.commentListData
         elif page := self.loader_data.note_page:
             return page.commentListData
-        raise ValueError("can't find video_(id)/page or note_(id)/page in router data")
+        raise ValueError(
+            "can't find video_(id)/page or note_(id)/page in router data"
+        )
 
 
 decoder = Decoder(RouterData)

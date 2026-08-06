@@ -222,7 +222,6 @@ def _AES(v: bytes, k: bytes):
     ct = encryptor.update(v) + encryptor.finalize()
     return ct.hex()
 
-
 def GZIP(o: dict):
     json_str = ujson.dumps(o, ensure_ascii=False)
     stream = gzip.compress(json_str.encode("utf-8"), 2, mtime=0)

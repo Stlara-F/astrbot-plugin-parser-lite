@@ -91,6 +91,7 @@ class DynamicMajor(Struct):
             return self.desc.rich_text_nodes
         return []
 
+
     @property
     def medias(self) -> list[ContentItem]:
         """

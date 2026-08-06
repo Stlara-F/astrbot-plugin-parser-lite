@@ -58,8 +58,7 @@ class TvComment(Struct):
     @property
     def content(self):
         plain = BeautifulSoup(self.text_raw, "html.parser").get_text(
-            separator="\n", strip=True
-        )
+            separator="\n", strip=True)
         data = replace_placeholder_to_sticker(plain, WEIBO_PATTERN, "weibo")
         if self.pic_infos:
             data.extend(pic.content for pic in self.pic_infos.values())
