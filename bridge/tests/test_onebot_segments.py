@@ -12,6 +12,8 @@ import asyncio
 from pathlib import Path
 import sys
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
@@ -44,6 +46,71 @@ class _Seg:
         self.type = seg_type
         for k, v in kw.items():
             setattr(self, k, v)
+
+
+class FakeCmp:
+    _name = "Cmp"
+
+    def __init__(self, **kw):
+        self.type = type("T", (), {"value": self._name})()
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+    @staticmethod
+    def fromFileSystem(path, **_):
+        return FakeCmp(file=str(path))
+
+    @staticmethod
+    def fromURL(url, **_):
+        return FakeCmp(url=str(url))
+
+    @staticmethod
+    def fromBase64(b64, **_):
+        return FakeCmp(file=f"base64://{b64}")
+
+    @staticmethod
+    def fromBytes(raw, **_):
+        return FakeCmp(file=f"base64://{len(raw)}")
+
+
+def _mk_cmp_cls(name):
+    class _Cls(FakeCmp):
+        _name = name
+
+        @staticmethod
+        def fromFileSystem(path, **_):
+            return _Cls(file=str(path))
+
+        @staticmethod
+        def fromURL(url, **_):
+            return _Cls(url=str(url))
+
+        @staticmethod
+        def fromBase64(b64, **_):
+            return _Cls(file=f"base64://{b64}")
+
+        @staticmethod
+        def fromBytes(raw, **_):
+            return _Cls(file=f"base64://{len(raw)}")
+
+    _Cls.__name__ = name
+    return _Cls
+
+
+@pytest.fixture(autouse=True)
+def _fake_components(monkeypatch, tmp_path):
+    """CI 无 astrbot: 组件与 md5 缓存隔离打桩."""
+    import bridge.media_cache as _mc
+
+    _mc.reset_cache()
+    _iso = _mc.MediaMd5Cache(tmp_path / "md5.json", max_entries=50)
+    monkeypatch.setattr(_mc, "get_cache", lambda *a, **k: _iso)
+    monkeypatch.setattr(send, "_get_components", lambda: {
+        "File": _mk_cmp_cls("File"), "Image": _mk_cmp_cls("Image"),
+        "Record": _mk_cmp_cls("Record"), "Video": _mk_cmp_cls("Video"),
+    })
+    yield
+    _mc.reset_cache()
 
 
 def test_segments_structure():
