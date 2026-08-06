@@ -34,3 +34,5 @@ jobs:
         run: python scripts/check_schema.py
       - name: Lint no hardcoded platform names (REFACTOR_PLAN 0 硬编码)
         run: python tools/lint_no_hardcoded_platforms.py
+      - name: Check no stale fields (r9b 防回潮门禁)
+        run: python scripts/check_no_stale_fields.py
