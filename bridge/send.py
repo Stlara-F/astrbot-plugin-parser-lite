@@ -10,7 +10,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from bridge.cfg import global_source, read_cfg
+from bridge.cfg import bridge_cfg
 from bridge.context import up_renderer
 
 _CARD_CACHE_MAX = 10
@@ -112,7 +112,7 @@ def get_sendable_types() -> list[str]:
 def should_send(media_type: str) -> bool:
     """发送策略门 (配置驱动, 默认全类型)."""
     try:
-        s = read_cfg(global_source(), "send_strategy", get_sendable_types())
+        s = bridge_cfg("send_strategy", get_sendable_types())
         if isinstance(s, str):
             import json
 
@@ -312,7 +312,7 @@ async def _send_media_impl(
     # 上游 use_base64 (原始调用优先): true → 强制 base64 发送
     # 读取单一事实来源 (global_source, B7: 顶部 import, 无重复软导入)
     try:
-        _use_b64 = bool(read_cfg(global_source(), "plite_use_base64", False))
+        _use_b64 = bool(bridge_cfg("plite_use_base64", False))
     except Exception:
         _use_b64 = False
 
@@ -339,7 +339,7 @@ async def _send_media_impl(
     try:
         from bridge.media_cache import compute_md5, get_cache, md5_file_ref
 
-        _md5_fast = bool(read_cfg(global_source(), "plite_md5_fast_send", True))
+        _md5_fast = bool(bridge_cfg("plite_md5_fast_send", True))
         if _md5_fast and media_type in ("image", "video", "audio"):
             _m5 = compute_md5(p)
             if get_cache().has(_m5):
@@ -411,9 +411,7 @@ async def _send_media_impl(
             return _report
         # 大文件阈值: 超限 → Comp.File 文件发送 (OneBot11 base64 大视频必失败)
         try:
-            _th_mb = int(
-                read_cfg(global_source(), "plite_video_file_threshold_mb", 100) or 100
-            )
+            _th_mb = int(bridge_cfg("plite_video_file_threshold_mb", 100) or 100)
         except Exception:
             _th_mb = 100
         if _fsz > _th_mb * 1024 * 1024:

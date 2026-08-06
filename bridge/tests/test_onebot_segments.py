@@ -105,10 +105,16 @@ def _fake_components(monkeypatch, tmp_path):
     _mc.reset_cache()
     _iso = _mc.MediaMd5Cache(tmp_path / "md5.json", max_entries=50)
     monkeypatch.setattr(_mc, "get_cache", lambda *a, **k: _iso)
-    monkeypatch.setattr(send, "_get_components", lambda: {
-        "File": _mk_cmp_cls("File"), "Image": _mk_cmp_cls("Image"),
-        "Record": _mk_cmp_cls("Record"), "Video": _mk_cmp_cls("Video"),
-    })
+    monkeypatch.setattr(
+        send,
+        "_get_components",
+        lambda: {
+            "File": _mk_cmp_cls("File"),
+            "Image": _mk_cmp_cls("Image"),
+            "Record": _mk_cmp_cls("Record"),
+            "Video": _mk_cmp_cls("Video"),
+        },
+    )
     yield
     _mc.reset_cache()
 

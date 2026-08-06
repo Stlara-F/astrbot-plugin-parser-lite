@@ -67,8 +67,12 @@ def debounce_key(session: str, url: str) -> str:
 
 def load_cfg(source: dict | None = None) -> dict:
     """提取 debounce 配置段 (ttl 秒, 可注入配置源)."""
-    from bridge.cfg import global_source, read_cfg
+    from bridge.cfg import bridge_cfg, global_source, read_cfg
 
     src = source if source is not None else global_source()
-    ttl = read_cfg(src, "plite_dedup_ttl", 60)
+    ttl = (
+        read_cfg(src, "plite_dedup_ttl", 60)
+        if source is not None
+        else bridge_cfg("plite_dedup_ttl", 60)
+    )
     return {"ttl_sec": float(60 if ttl is None else ttl)}

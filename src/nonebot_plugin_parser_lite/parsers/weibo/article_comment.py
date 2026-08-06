@@ -25,7 +25,8 @@ class ArticleComment(Struct):
     def content(self):
         # 微博 API text 是 HTML (<a>/<br>/<span class=url-icon>) - 正确解析为纯文本
         plain = BeautifulSoup(self.text, "html.parser").get_text(
-            separator="\n", strip=True)
+            separator="\n", strip=True
+        )
         return replace_placeholder_to_sticker(plain, WEIBO_PATTERN, "weibo")
 
 

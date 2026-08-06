@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from bridge.cfg import global_source, read_cfg
+from bridge.cfg import bridge_cfg, global_source
 from bridge.context import up_downloader
 
 # 代理协议轮询列表 (curl_cffi 全支持, httpx 需 httpx[socks])
@@ -69,7 +69,7 @@ def read_proxy_config() -> str:
     """
     import logging
 
-    px = read_cfg(global_source(), "plite_http_proxy", "") or ""
+    px = bridge_cfg("plite_http_proxy", "") or ""
     logging.getLogger("nonebot_plugin_parser_lite").info(
         f"[ParserLite] proxy config: proxy={_mask_proxy(px)}"
     )

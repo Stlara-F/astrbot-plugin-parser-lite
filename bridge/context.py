@@ -77,33 +77,8 @@ def up_creator():
 # ── 字段标签 (features 双向映射用) ───────────────────────────────────────────
 
 
-def _is_bool_annotation(ann) -> bool:
-    """bool 注解判定 (兼容 bool | None / bool | None)."""
-    if ann is bool:
-        return True
-    if hasattr(ann, "__args__"):
-        return bool in ann.__args__
-    return False
-
-
-def label(k: str) -> str:
-    # 翻译表优先; 未翻译字段回退英文驼峰 (未翻译状态, 新增字段可见)
-    try:
-        from bridge.inject import tr as _tr
-
-        return _tr(k)
-    except Exception:
-        pass
-    return label_en(k)
-
-
-def label_en(k: str) -> str:
-    """英文驼峰标签 (旧配置 features 值兼容)."""
-    s = k.removeprefix("plite_").replace("_", " ")
-    if s.startswith("bili "):
-        s = "B站" + s[4:]
-    return " ".join(w[0].upper() + w[1:] for w in s.split())
-
+from bridge.i18n import is_bool_annotation as _is_bool_annotation
+from bridge.i18n import label, label_en  # noqa: F401 (features 映射/外部引用)
 
 # ── BridgeConfig 单例 ────────────────────────────────────────────────────────
 

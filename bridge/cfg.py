@@ -57,6 +57,15 @@ def global_source() -> dict:
     return BridgeConfig._source or {}
 
 
+def bridge_cfg(key: str, default: Any = None) -> Any:
+    """全局配置读取唯一入口 (业务代码统一走此函数).
+
+    等价 read_cfg(global_source(), key, default) — 单一来源, 避免
+    各模块直接散用 read_cfg/global_source/BridgeConfig._source.
+    """
+    return read_cfg(global_source(), key, default)
+
+
 def set_plite_bili_ck(ck: str) -> bool:
     """B4: 统一写入 B站 cookie (source 原位更新 + 显式 configure 触发刷新).
 

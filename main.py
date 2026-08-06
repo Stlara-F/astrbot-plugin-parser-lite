@@ -58,6 +58,7 @@ import astrbot.api.message_components as Comp
 from astrbot.api.star import Context, Star
 
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
+from bridge.cfg import bridge_cfg
 from bridge.core import (
     BridgeConfig,
     LazyManager,
@@ -154,14 +155,6 @@ _RESULT_CACHE: LimitedSizeDict[str, ParseResult] = LimitedSizeDict(max_size=50)
 _CARD_CACHE: dict[str, bytes] = {}
 _CARD_CACHE_MAX = 20  # LRU 上限 (动态可调)
 from bridge.format import format_full
-
-
-def _bridge_cfg(key: str, default=None):
-    """读取 bridge 配置 (统一入口, 缺失回退默认值)."""
-    from bridge.cfg import read_cfg
-
-    return read_cfg(BridgeConfig._source, key, default)
-
 
 # ── 动态注入 ──────────────────────────────────────────────────────────────────
 # 模块加载时执行注入 (含 _injected 开关保护) — 委托 bridge.inject 决策树
@@ -303,7 +296,7 @@ class ParserLitePlugin(Star):
                 for _fname in list(BridgeConfig._source or {}):
                     if _fname.startswith("plite_") and _fname.endswith("_ck"):
                         _cookies[_fname[len("plite_") : -len("_ck")]] = (
-                            _bridge_cfg(_fname, "") or ""
+                            bridge_cfg(_fname, "") or ""
                         )
 
                 async def _ck_notify(msg: str):
@@ -377,7 +370,7 @@ class ParserLitePlugin(Star):
     async def _cleanup_loop(self) -> None:
         while True:
             _interval = float(
-                _bridge_cfg("plite_cache_interval", CACHE_INTERVAL) or 3600
+                bridge_cfg("plite_cache_interval", CACHE_INTERVAL) or 3600
             )
             await asyncio.sleep(_interval)
             await self._do_clean_cache()
@@ -847,7 +840,7 @@ class ParserLitePlugin(Star):
         try:
             from bridge.card_semantic import find_json_cards, inject_card_summary
 
-            if _bridge_cfg("card_semantic", True):
+            if bridge_cfg("card_semantic", True):
                 for _entry in find_json_cards(event)[:2]:
                     inject_card_summary(event, _entry["card"])
         except Exception:
@@ -882,8 +875,8 @@ class ParserLitePlugin(Star):
             src_url = getattr(item.path_task, "url", "")
             dur = getattr(item, "duration", 0.0)
             # bridge 语义字段从 _source 读取 (不在上游 Config 模型)
-            _direct = bool(_bridge_cfg("plite_direct_link", False))
-            _cover_only = bool(_bridge_cfg("plite_send_cover_only", False))
+            _direct = bool(bridge_cfg("plite_direct_link", False))
+            _cover_only = bool(bridge_cfg("plite_send_cover_only", False))
             # F5: 直链免下载模式 (配置驱动, 非硬编码)
             if _direct and src_url:
                 sent = await self._try_direct_send(event, item, src_url)
@@ -1015,7 +1008,7 @@ class ParserLitePlugin(Star):
         nodes = []
         author = result.author.name if result.author and result.author.name else "解析"
         platform = result.platform.display_name if result.platform else ""
-        MAX_PER_NODE = int(_bridge_cfg("plite_forward_max_nodes", 90) or 90)
+        MAX_PER_NODE = int(bridge_cfg("plite_forward_max_nodes", 90) or 90)
 
         for item in items:
             if not hasattr(item, "path_task"):
@@ -1131,7 +1124,7 @@ class ParserLitePlugin(Star):
         if msg_id is None:
             msg_id = hash(event.get_message_str())
         now = time.time()
-        _dedup_ttl = float(_bridge_cfg("plite_dedup_ttl", 60) or 60)
+        _dedup_ttl = float(bridge_cfg("plite_dedup_ttl", 60) or 60)
         with self._recently_lock:
             if msg_id in self._recently_processed:
                 if now - self._recently_processed[msg_id] < _dedup_ttl:
@@ -1190,7 +1183,7 @@ class ParserLitePlugin(Star):
                 _session = self._key(event)
                 _dkey = debounce_key(_session, clean_url(url))
                 # 防抖窗口: plite_dedup_ttl (自实现字段, 不误用上游 lazy_download_timeout)
-                _dwin = float(_bridge_cfg("plite_dedup_ttl", 60) or 60)
+                _dwin = float(bridge_cfg("plite_dedup_ttl", 60) or 60)
                 if not self._debouncer.should_parse(_dkey, _dwin):
                     continue  # 防抖命中
             try:

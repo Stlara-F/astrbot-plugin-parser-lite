@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import time
 
@@ -110,13 +109,9 @@ def make_limiter(base_dir: str | Path) -> RateLimiter:
 
 
 def load_rate_cfg(source: dict | None) -> dict:
-    """从 bridge 配置源提取限频配置 (非硬编码)."""
-    if not source:
-        return {}
-    raw = source.get("rate_limit", {})
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except Exception:
-            raw = {}
+    """从 bridge 配置源提取限频配置 (复用 cfg.module_cfg 统一解析)."""
+    from bridge.cfg import global_source, module_cfg
+
+    src = source if source is not None else global_source()
+    raw = module_cfg(src, "rate_limit", {})
     return raw if isinstance(raw, dict) else {}
