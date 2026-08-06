@@ -22,6 +22,9 @@ from bridge.proxy import (
 
 PARSE_TIMEOUT = 60.0  # 单次解析总超时(秒) — 防慢代理/死链拖死
 
+# 支持 cookie 同步到上游 plite_*_ck 的平台 (平台能力集中声明, A5 同模式)
+_COOKIE_SYNC_PLATFORMS = frozenset({"bilibili"})
+
 
 class ParserLite:
     """薄解析编排器: 仅路由 + 调用上游解析器, 不做数据干预."""
@@ -55,8 +58,9 @@ class ParserLite:
         target = self._route_url(url)
         ordered = list(up_base_parser().get_all_subclass())
         if target:
-            ordered = [c for c in ordered if c.__name__ == target] + \
-                      [c for c in ordered if c.__name__ != target]
+            ordered = [c for c in ordered if c.__name__ == target] + [
+                c for c in ordered if c.__name__ != target
+            ]
         self._ensure_parser_httpx(ordered)
         # 默认直连; 代理为附加配置: 仅 platforms[].proxy 勾选的平台走代理
         if proxy_url and target_uses_proxy(ordered, target):
@@ -65,7 +69,8 @@ class ParserLite:
         apply_downloader_proxy("")
         try:
             return await asyncio.wait_for(
-                self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT)
+                self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT
+            )
         except asyncio.TimeoutError as _e:
             raise TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}") from _e
         except Exception:
@@ -83,7 +88,8 @@ class ParserLite:
             apply_downloader_proxy(_px)
             try:
                 return await asyncio.wait_for(
-                    self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT)
+                    self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT
+                )
             except asyncio.TimeoutError:
                 _last_err = TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}")
                 _logger.warning(f"[ParserLite] proxy {_px} 超时, 切换协议")
@@ -96,7 +102,8 @@ class ParserLite:
         apply_downloader_proxy("")
         try:
             return await asyncio.wait_for(
-                self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT)
+                self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT
+            )
         except asyncio.TimeoutError as _e:
             raise TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}") from _e
         except Exception as _e2:
@@ -119,9 +126,11 @@ class ParserLite:
                 continue
             try:
                 parser = self._get_parser(parser_cls)
-                cookies = get_cookies_for(
-                    str(getattr(getattr(parser_cls, "platform", None), "name", "")).lower())
-                if cookies and str(getattr(getattr(parser_cls, "platform", None), "name", "")).lower() == "bilibili":
+                _pname = str(
+                    getattr(getattr(parser_cls, "platform", None), "name", "")
+                ).lower()
+                cookies = get_cookies_for(_pname)
+                if cookies and _pname in _COOKIE_SYNC_PLATFORMS:
                     # B4: 统一入口写入 (source 原位更新 + 显式 configure 刷新)
                     from bridge.cfg import set_plite_bili_ck
 
@@ -130,7 +139,8 @@ class ParserLite:
             except Exception as e:
                 _matched_err = e
                 _logger.warning(
-                    f"[ParserLite] {parser_cls.__name__} matched but failed: {e}")
+                    f"[ParserLite] {parser_cls.__name__} matched but failed: {e}"
+                )
         if _matched_err is not None:
             raise _matched_err
         raise ValueError(f"Unsupported URL: {url}")
@@ -145,8 +155,10 @@ class ParserLite:
                 return await cp.parse(kw, mwp)
             except Exception as e:
                 import logging
+
                 logging.getLogger("nonebot_plugin_parser_lite").warning(
-                    f"[ParserLite] CustomParser failed: {e}")
+                    f"[ParserLite] CustomParser failed: {e}"
+                )
         raise ValueError(f"Unsupported URL: {url}")
 
     def _load_custom_parsers(self):
@@ -171,8 +183,10 @@ class ParserLite:
                 self._custom_parsers.append(CustomParser(entry))
             except Exception as e:
                 import logging
+
                 logging.getLogger("nonebot_plugin_parser_lite").warning(
-                    f"[ParserLite] CustomParser init skip: {e}")
+                    f"[ParserLite] CustomParser init skip: {e}"
+                )
 
     def _get_parser(self, parser_cls):
         name = parser_cls.__name__
@@ -203,7 +217,7 @@ class ParserLite:
                 await parser.aclose()
             except Exception:
                 pass
-        for cp in (self._custom_parsers or []):
+        for cp in self._custom_parsers or []:
             try:
                 await cp.aclose()
             except Exception:

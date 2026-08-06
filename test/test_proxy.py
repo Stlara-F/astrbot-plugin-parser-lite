@@ -2,6 +2,7 @@
 Proxy configuration & network tests.
 Covers: C2, C19, C20, C27, C31, C35
 """
+
 import inspect
 
 import main as _m

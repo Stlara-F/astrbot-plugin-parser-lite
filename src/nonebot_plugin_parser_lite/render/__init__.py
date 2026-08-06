@@ -30,9 +30,7 @@ def get_theme() -> Theme:
     now = datetime.now()
     current = now.hour * 60 + now.minute
     in_day = (
-        start <= current < end
-        if start <= end
-        else current >= start or current < end
+        start <= current < end if start <= end else current >= start or current < end
     )
     return "light" if in_day else "dark"
 

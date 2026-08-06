@@ -2,6 +2,7 @@
 Startup & lifecycle tests.
 Covers: C1, C7, C8, C26, C30
 """
+
 import inspect
 
 import main as _m
@@ -12,7 +13,9 @@ from test._base import _ROOT, bad, finish, ok, sk
 # ═══════════════════════════════════════════════════════════════
 _main_path = _ROOT / "main.py"
 _main_lines = _main_path.read_text("utf-8").splitlines()
-found_main_env = any("PARSER_LITE_STANDALONE" in ln and "setdefault" in ln for ln in _main_lines[:25])
+found_main_env = any(
+    "PARSER_LITE_STANDALONE" in ln and "setdefault" in ln for ln in _main_lines[:25]
+)
 if found_main_env:
     ok("main.py sets PARSER_LITE_STANDALONE before upstream imports")
 else:

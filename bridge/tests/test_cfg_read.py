@@ -66,10 +66,14 @@ def test_use_proxy_for_nested():
 def test_get_cookies_template_list():
     """cookies 为可增删列表 [{platform, cookie}]."""
     core.BridgeConfig._source = {
-        "parsers": {"items": {"cookies": [
-            {"platform": "bilibili", "cookie": "SESSDATA=abc"},
-            {"platform": "zhihu", "cookie": "z_c0=xyz"},
-        ]}},
+        "parsers": {
+            "items": {
+                "cookies": [
+                    {"platform": "bilibili", "cookie": "SESSDATA=abc"},
+                    {"platform": "zhihu", "cookie": "z_c0=xyz"},
+                ]
+            }
+        },
     }
     assert core._get_cookies_for("bilibili") == {"Cookie": "SESSDATA=abc"}
     assert core._get_cookies_for("douyin") == {}
@@ -87,7 +91,12 @@ def test_platform_cfg_template_list():
     """platforms template_list: [{platform, enable, use_proxy, cookies}]."""
     core.BridgeConfig._source = {
         "platforms": [
-            {"platform": "bilibili", "enable": True, "use_proxy": True, "cookies": "ck1"},
+            {
+                "platform": "bilibili",
+                "enable": True,
+                "use_proxy": True,
+                "cookies": "ck1",
+            },
             {"platform": "zhihu", "enable": False},
         ],
     }
@@ -106,7 +115,9 @@ def test_platform_cfg_legacy_dict():
 
 def test_platform_enable_priority():
     """platforms.enable 优先于 disabled_platforms."""
-    core.BridgeConfig._source = {"platforms": [{"platform": "bilibili", "enable": False}]}
+    core.BridgeConfig._source = {
+        "platforms": [{"platform": "bilibili", "enable": False}]
+    }
     # _is_parser_enabled 读取 platforms.enable
     assert core._is_parser_enabled("bilibili") is False
 
@@ -127,7 +138,9 @@ def test_platform_cookies_priority_over_parsers_items():
     """platforms.cookies 优先于 parsers.items.cookies."""
     core.BridgeConfig._source = {
         "platforms": [{"platform": "bilibili", "cookies": "ck_new"}],
-        "parsers": {"items": {"cookies": [{"platform": "bilibili", "cookie": "ck_old"}]}},
+        "parsers": {
+            "items": {"cookies": [{"platform": "bilibili", "cookie": "ck_old"}]}
+        },
     }
     assert core._get_cookies_for("bilibili") == {"Cookie": "ck_new"}
     core.BridgeConfig._source = {

@@ -45,8 +45,8 @@ async def test_cookie_health_stop_interrupts_sleep():
 
 
 @pytest.mark.asyncio
-async def test_cookie_health_check_once_changes_status(tmp_path):
-    """check_once 更新状态 + 通知 (失效变更时)."""
+async def test_cookie_health_check_once_changes_status(tmp_path, monkeypatch):
+    """check_once 更新状态 + 通知 (失效变更时, 校验器打桩避免真实网络)."""
     import bridge.cookie_health as ch
 
     c = CookieHealth(tmp_path / "ck2.json")
@@ -57,11 +57,12 @@ async def test_cookie_health_check_once_changes_status(tmp_path):
         notified.append(msg)
 
     c._notify = notify
-    # 上游 check 函数打桩 (返回失效)
+
+    # 校验器注册表打桩 (monkeypatch 自动还原, 不打真实网络)
     async def fake_fail(ck):
         return False, "401"
 
-    ch.check_bili_cookie = fake_fail
+    monkeypatch.setitem(ch._COOKIE_CHECKERS, "bilibili", fake_fail)
     await c.check_once({"bilibili": "SESSDATA=bad"})
     assert notified, "状态变更应触发通知"
     assert c._last_status["bilibili"]["ok"] is False
@@ -69,6 +70,7 @@ async def test_cookie_health_check_once_changes_status(tmp_path):
 
 def test_format_full_none_platform():
     """P3-3: platform/author 为 None 时不抛异常."""
+
     class FakeResult:
         def __init__(self):
             self.platform = None
@@ -76,8 +78,17 @@ def test_format_full_none_platform():
             self.title = None
             self.timestamp = None
             self.content = []
-            self.stats = type("S", (), {"view_count": 0, "like_count": 0, "comment_count": 0,
-                                        "share_count": 0, "collect_count": 0})()
+            self.stats = type(
+                "S",
+                (),
+                {
+                    "view_count": 0,
+                    "like_count": 0,
+                    "comment_count": 0,
+                    "share_count": 0,
+                    "collect_count": 0,
+                },
+            )()
             self.comments = []
             self.ai_summary = ""
 

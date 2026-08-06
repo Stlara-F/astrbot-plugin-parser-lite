@@ -20,7 +20,8 @@ def test_check_schema_passes():
     """运行提交前校验脚本, 必须退出码 0."""
     r = subprocess.run(
         [sys.executable, str(_ROOT / "scripts" / "check_schema.py")],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 0, f"check_schema 失败:\n{r.stdout}\n{r.stderr}"
     assert "OK" in r.stdout

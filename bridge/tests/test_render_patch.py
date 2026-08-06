@@ -79,8 +79,10 @@ def test_strip_html_to_text():
     """HTML 源码 → 纯文本 (br 转换行, 去标签, 实体解码)."""
     from bridge.render_patch import strip_html_to_text
 
-    t = ('<a href="https://weibo.com/u/123">@用户</a>：'
-         '<br>内容<span class="url-icon"><img src="x"></span>不错</p>')
+    t = (
+        '<a href="https://weibo.com/u/123">@用户</a>：'
+        '<br>内容<span class="url-icon"><img src="x"></span>不错</p>'
+    )
     out = strip_html_to_text(t)
     assert "@用户" in out
     assert "<a" not in out
@@ -218,8 +220,9 @@ def test_lyric_to_text():
     """歌词 dict/list → 文本 (网易云新格式 {t, c:[{tx}]} 不泄漏)."""
     from bridge.render_patch import lyric_to_text
 
-    r1 = lyric_to_text([{"t": 0, "c": [{"tx": "飞べない蝶"}]},
-                        {"t": 5000, "c": [{"tx": "梦见る"}]}])
+    r1 = lyric_to_text(
+        [{"t": 0, "c": [{"tx": "飞べない蝶"}]}, {"t": 5000, "c": [{"tx": "梦见る"}]}]
+    )
     assert "飞べない蝶" in r1
     assert "梦见る" in r1
     assert "{" not in r1
@@ -298,12 +301,15 @@ def test_render_html_instance_attr_no_self():
 
 async def _close_session_like():
     """模拟 curl_cffi 未初始化会话关闭 — 抛 ctype TypeError 也应被吞."""
+
     # 直接调用 core._apply_downloader_proxy 的关闭逻辑太深,
     # 验证 safe_close 模式: 异常不冒泡
     class FakeCurl:
         async def aclose(self):
 
-            raise TypeError("initializer for ctype 'void *' must be a cdata pointer, not NoneType")
+            raise TypeError(
+                "initializer for ctype 'void *' must be a cdata pointer, not NoneType"
+            )
 
     exc = None
     try:

@@ -67,10 +67,12 @@ def test_push_cfg_injected():
     """push: 注入配置源独立运行 (订阅 + 间隔)."""
     from bridge.push import load_cfg
 
-    subs, interval = load_cfg({
-        "push": [{"uid": "1", "groups": "1,2", "enabled": True}],
-        "push_interval": 120,
-    })
+    subs, interval = load_cfg(
+        {
+            "push": [{"uid": "1", "groups": "1,2", "enabled": True}],
+            "push_interval": 120,
+        }
+    )
     assert subs == [{"uid": "1", "groups": "1,2", "enabled": True}]
     assert interval == 120
     # 旧 dict 格式兼容

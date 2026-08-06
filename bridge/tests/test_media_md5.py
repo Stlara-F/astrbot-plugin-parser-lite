@@ -123,11 +123,18 @@ def _mk_cmp_cls(name):
 @pytest.fixture(autouse=True)
 def _fake_env(monkeypatch: MonkeyPatch, tmp_path):
     reset_cache()
-    monkeypatch.setattr(send, "_get_components", lambda: {
-        "File": _mk_cmp_cls("File"), "Image": _mk_cmp_cls("Image"),
-        "Record": _mk_cmp_cls("Record"), "Video": _mk_cmp_cls("Video"),
-    })
+    monkeypatch.setattr(
+        send,
+        "_get_components",
+        lambda: {
+            "File": _mk_cmp_cls("File"),
+            "Image": _mk_cmp_cls("Image"),
+            "Record": _mk_cmp_cls("Record"),
+            "Video": _mk_cmp_cls("Video"),
+        },
+    )
     from bridge.media_cache import _CACHE as _c
+
     if _c is not None:
         _c._path = tmp_path / "md5.json"
     yield

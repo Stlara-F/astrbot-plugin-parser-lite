@@ -64,10 +64,13 @@ def test_format_brief():
     assert "播放1000" in text
     assert "正文文本" not in text  # brief 不含正文
 
+
 def test_format_full_sticker_desc():
     r = _make_result()
-    r.content = ["text", StickerContent(desc="[sticker]", size="medium",
-                                        path_task=object())]
+    r.content = [
+        "text",
+        StickerContent(desc="[sticker]", size="medium", path_task=object()),
+    ]
     out = format_full(r)
     assert "text" in out
     assert "[sticker]" in out  # sticker desc shown in order

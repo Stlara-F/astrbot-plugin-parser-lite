@@ -32,3 +32,5 @@ jobs:
           PARSER_LITE_STANDALONE: "1"
       - name: Check schema ordering (commit gate)
         run: python scripts/check_schema.py
+      - name: Lint no hardcoded platform names (REFACTOR_PLAN 0 硬编码)
+        run: python tools/lint_no_hardcoded_platforms.py

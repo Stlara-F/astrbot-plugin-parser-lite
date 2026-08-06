@@ -41,7 +41,12 @@ def _music():
     return {
         "app": "com.tencent.music",
         "view": "music",
-        "meta": {"music": {"title": "歌名", "jumpUrl": "https://y.qq.com/n/ryqq/songDetail/1"}},
+        "meta": {
+            "music": {
+                "title": "歌名",
+                "jumpUrl": "https://y.qq.com/n/ryqq/songDetail/1",
+            }
+        },
     }
 
 

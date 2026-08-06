@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: PT028 (CLI 脚本非 pytest, 参数默认值是 CLI 默认)
 """
 通用解析器测试标准 (Parser Test Standard).
 用法:
@@ -8,13 +9,18 @@
 
 未来添加新解析器: 在 TEST_URLS 中新加一条即可.
 """
+
 import argparse
 import asyncio
 from dataclasses import dataclass, field
 import os
 
 os.environ["PARSER_LITE_STANDALONE"] = "1"
-os.environ["PARSER_LITE_BASE_DIR"] = str(__import__("pathlib").Path(__file__).parent.parent / "src" / "nonebot_plugin_parser_lite")
+os.environ["PARSER_LITE_BASE_DIR"] = str(
+    __import__("pathlib").Path(__file__).parent.parent
+    / "src"
+    / "nonebot_plugin_parser_lite"
+)
 
 import sys
 
@@ -38,20 +44,22 @@ from nonebot_plugin_parser_lite.parsers.base import BaseParser
 # 测试用例: 格式 {平台名: [(真实URL, 期望显示名)]}
 # 可通过 AstrBot WebUI "test_urls" 表动态维护, 此处为离线回退数据
 # ═══════════════════════════════════════════════════════════════
-_FALLBACK_URLS: list[str] = list({
-    "https://www.bilibili.com/video/BV1y23K6sEV2",
-    "https://v.douyin.com/-kBGJx05iXQ/",
-    "https://weibo.com/1642591402/OBvlKhejP",
-    "http://xhslink.com/OJ9VwS",
-    "https://www.zhihu.com/question/41564143/answer/91873558",
-    "https://www.acfun.cn/v/ac46437117",
-    "https://tieba.baidu.com/p/7589647008",
-    "https://v.kuaishou.com/Jt7JzI",
-    "https://bbs.hupu.com/627169461.html",
-    "https://www.miyoushe.com/ys/article/52048071",
-    "https://y.music.163.com/m/song?id=2024727995",
-    "https://x.com/elonmusk/status/1815180888279155069",
-})
+_FALLBACK_URLS: list[str] = list(
+    {
+        "https://www.bilibili.com/video/BV1y23K6sEV2",
+        "https://v.douyin.com/-kBGJx05iXQ/",
+        "https://weibo.com/1642591402/OBvlKhejP",
+        "http://xhslink.com/OJ9VwS",
+        "https://www.zhihu.com/question/41564143/answer/91873558",
+        "https://www.acfun.cn/v/ac46437117",
+        "https://tieba.baidu.com/p/7589647008",
+        "https://v.kuaishou.com/Jt7JzI",
+        "https://bbs.hupu.com/627169461.html",
+        "https://www.miyoushe.com/ys/article/52048071",
+        "https://y.music.163.com/m/song?id=2024727995",
+        "https://x.com/elonmusk/status/1815180888279155069",
+    }
+)
 
 import json as _json
 
@@ -59,15 +67,20 @@ import json as _json
 def _load_test_urls() -> list[str]:
     try:
         from main import BridgeConfig
+
         source = BridgeConfig._source or {}
         urls = source.get("test_urls", [])
         if isinstance(urls, str):
-            try: urls = _json.loads(urls)
-            except Exception: urls = []
+            try:
+                urls = _json.loads(urls)
+            except Exception:
+                urls = []
         if urls and isinstance(urls, list):
             return [u for u in urls if isinstance(u, str) and u.strip()]
-    except Exception: pass
+    except Exception:
+        pass
     return list(_FALLBACK_URLS)
+
 
 TEST_URLS: list[str] = list(_FALLBACK_URLS)
 
@@ -122,7 +135,9 @@ def test_url_detection(platform: str, url: str, result: TestResult):
 # ═══════════════════════════════════════════════════════════════
 # Phase 2: 在线解析 (需要网络)
 # ═══════════════════════════════════════════════════════════════
-async def test_online_parse(platform: str, url: str, display_name: str, result: TestResult, timeout: int = 60):  # noqa: PT028
+async def test_online_parse(
+    platform: str, url: str, display_name: str, result: TestResult, timeout: int = 60
+):  # noqa: PT028
     """在线解析 URL, 验证返回结果结构完整性."""
     for cls in BaseParser.get_all_subclass():
         p = getattr(cls, "platform", None)
@@ -195,9 +210,12 @@ def _validate_structure(r: ParseResult, result: TestResult):
     if r.stats:
         s = r.stats
         parts = []
-        if s.view_count: parts.append(f"views={s.view_count}")
-        if s.like_count: parts.append(f"likes={s.like_count}")
-        if s.comment_count: parts.append(f"comments={s.comment_count}")
+        if s.view_count:
+            parts.append(f"views={s.view_count}")
+        if s.like_count:
+            parts.append(f"likes={s.like_count}")
+        if s.comment_count:
+            parts.append(f"comments={s.comment_count}")
         if parts:
             result.ok(f"stats: {', '.join(parts)}")
     else:
@@ -220,6 +238,7 @@ def _validate_structure(r: ParseResult, result: TestResult):
 def test_coverage(result: TestResult):
     """验证 TEST_URLS 覆盖了所有平台."""
     from nonebot_plugin_parser_lite.constants import PlatformEnum
+
     all_platforms = {p.name.lower() for p in PlatformEnum}
     tested = {k.lower() for k in _FALLBACK_URLS}
     covered = all_platforms & tested
@@ -245,18 +264,22 @@ async def main():
         _self_path.read_text("utf-8")
     except UnicodeDecodeError:
         import sys
+
         print("FATAL: test_parsers.py is not valid UTF-8", file=sys.stderr)  # noqa: T201
         return 1
 
     urls = _load_test_urls()
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--online", action="store_true", help="Run online parse tests (requires network)")
+    ap.add_argument(
+        "--online",
+        action="store_true",
+        help="Run online parse tests (requires network)",
+    )
     ap.add_argument("--timeout", type=int, default=60, help="Parse timeout seconds")
     args = ap.parse_args()
 
     overall = TestResult()
-
 
     # Phase 1: URL Detection (always)
     for url in urls:
@@ -267,9 +290,13 @@ async def main():
                 kw, mwp = cls.search_url(url)
                 if kw:
                     matched = True
-                    overall.ok(f"{cls.__name__} ({getattr(p, 'display_name', p.name) if p else '?'}) matched")
+                    overall.ok(
+                        f"{cls.__name__} ({getattr(p, 'display_name', p.name) if p else '?'}) matched"
+                    )
             except Exception as e:
-                overall.fail(f"{cls.__name__}.search_url: {type(e).__name__}: {str(e)[:80]}")
+                overall.fail(
+                    f"{cls.__name__}.search_url: {type(e).__name__}: {str(e)[:80]}"
+                )
         if not matched:
             overall.fail(f"No parser matched: {url[:60]}")
     # 测试结果说明
@@ -282,11 +309,15 @@ async def main():
             for cls in BaseParser.get_all_subclass():
                 try:
                     kw, mwp = cls.search_url(url)
-                    if not kw: continue
-                except Exception: continue
+                    if not kw:
+                        continue
+                except Exception:
+                    continue
                 try:
                     parser = cls()
-                    r = await asyncio.wait_for(parser.parse(kw, mwp), timeout=args.timeout)
+                    r = await asyncio.wait_for(
+                        parser.parse(kw, mwp), timeout=args.timeout
+                    )
                     await parser.aclose()
                     _validate_structure(r, overall)
                 except asyncio.TimeoutError:
@@ -297,6 +328,7 @@ async def main():
 
     # Phase 3: Coverage
     from nonebot_plugin_parser_lite.constants import PlatformEnum
+
     all_platforms = {p.name.lower() for p in PlatformEnum}
     tested = set()
     for url in urls:
@@ -306,7 +338,8 @@ async def main():
                 if kw and getattr(cls, "platform", None):
                     tested.add(cls.platform.name.lower())
                     break
-            except Exception: pass
+            except Exception:
+                pass
     overall.ok(f"Coverage: {len(tested)}/{len(all_platforms)} platforms")
     for m in sorted(all_platforms - tested):
         overall.skip(f"  Untested: {m}")

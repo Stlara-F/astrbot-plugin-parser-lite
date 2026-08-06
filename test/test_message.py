@@ -2,6 +2,7 @@
 Message handling & card rendering tests.
 Covers: C3, C11, C18, C21, C29, C32, C33, C34
 """
+
 import inspect
 
 import main as _m
@@ -32,7 +33,11 @@ else:
 # ═══════════════════════════════════════════════════════════════
 card_src = inspect.getsource(_m.ParserLitePlugin._send_card)
 if "_CARD_CACHE" in card_src and "fromBytes" in card_src:
-    cached_block = card_src.split("cache_key")[-1].split("return")[0] if "cache_key" in card_src else ""
+    cached_block = (
+        card_src.split("cache_key")[-1].split("return")[0]
+        if "cache_key" in card_src
+        else ""
+    )
     if "send_any" not in cached_block:
         ok("card cache hit sends fromBytes directly")
     else:

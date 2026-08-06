@@ -21,7 +21,11 @@ def _collect_from_imports(path: Path) -> list[tuple[str, str, str]]:
     results = []
     tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("bridge"):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.startswith("bridge")
+        ):
             for alias in node.names:
                 if alias.name != "*":
                     results.append((str(path), node.module, alias.name))
@@ -30,8 +34,11 @@ def _collect_from_imports(path: Path) -> list[tuple[str, str, str]]:
 
 def test_bridge_imports_exist():
     """main.py 与 bridge/*.py 中 from bridge.* import 的符号均存在."""
-    files = [p for p in _ROOT.glob("**/*.py") if p.is_file()
-             and "/bridge/tests/" not in str(p).replace("\\", "/")]
+    files = [
+        p
+        for p in _ROOT.glob("**/*.py")
+        if p.is_file() and "/bridge/tests/" not in str(p).replace("\\", "/")
+    ]
     missing = []
     for f in files:
         for _f, module, name in _collect_from_imports(f):
@@ -42,19 +49,33 @@ def test_bridge_imports_exist():
                 continue
             src = mod_file.read_text(encoding="utf-8")
             tree = ast.parse(src, str(mod_file))
-            defined = {n.name for n in ast.walk(tree)
-                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
-            defined |= {t.id for n in ast.walk(tree)
-                        if isinstance(n, ast.Assign)
-                        for t in n.targets if isinstance(t, ast.Name)}
-            defined |= {n.target.id for n in ast.walk(tree)
-                        if isinstance(n, ast.AnnAssign)
-                        and isinstance(n.target, ast.Name)}
+            defined = {
+                n.name
+                for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            }
+            defined |= {
+                t.id
+                for n in ast.walk(tree)
+                if isinstance(n, ast.Assign)
+                for t in n.targets
+                if isinstance(t, ast.Name)
+            }
+            defined |= {
+                n.target.id
+                for n in ast.walk(tree)
+                if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name)
+            }
             # re-export 模块 (core): from bridge.X import Y [as Z] 视为已定义 (薄转发层)
-            defined |= {a.asname or a.name for n in ast.walk(tree)
-                        if isinstance(n, ast.ImportFrom) and n.module
-                        and n.module.startswith("bridge")
-                        for a in n.names if a.name != "*"}
+            defined |= {
+                a.asname or a.name
+                for n in ast.walk(tree)
+                if isinstance(n, ast.ImportFrom)
+                and n.module
+                and n.module.startswith("bridge")
+                for a in n.names
+                if a.name != "*"
+            }
             if name not in defined:
                 missing.append(f"{_f}: {module}.{name} 不存在")
     assert not missing, "\n".join(missing)
@@ -64,5 +85,9 @@ def test_removed_symbols_not_imported():
     """已删除的符号 (合并死代码) 不应再被 import."""
     main_py = _ROOT / "main.py"
     text = main_py.read_text(encoding="utf-8")
-    for removed in ("_extract_config_value", "_resolve_raw_addr", "_schema_proxy_cache"):
+    for removed in (
+        "_extract_config_value",
+        "_resolve_raw_addr",
+        "_schema_proxy_cache",
+    ):
         assert removed not in text, f"已删除符号 {removed} 仍被引用"

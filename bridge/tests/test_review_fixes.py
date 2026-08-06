@@ -64,8 +64,9 @@ def test_state_store_concurrent_updates(tmp_path):
     store = JsonStateStore(tmp_path / "st3.json", flush_every=100, flush_interval=60)
     threads = []
     for i in range(20):
-        t = threading.Thread(target=lambda i=i: store.update(
-            lambda d, i=i: d.__setitem__(f"k{i}", i)))
+        t = threading.Thread(
+            target=lambda i=i: store.update(lambda d, i=i: d.__setitem__(f"k{i}", i))
+        )
         threads.append(t)
         t.start()
     for t in threads:
@@ -82,7 +83,9 @@ def test_lazy_manager_locked(monkeypatch: MonkeyPatch):
     assert LazyManager._get_lock() is not None
     assert LazyManager.cleanup() == 0
 
+
 # ── 审计报告第二轮修复测试 ────────────────────────────────────────────────
+
 
 def test_doctor_class_model_fields():
     """P0-2: doctor 不得实例访问 model_fields (pydantic 2.11+ deprecation)."""
@@ -92,7 +95,7 @@ def test_doctor_class_model_fields():
 
 
 def test_bool_annotation_helper():
-    """P1-7: bool 判定兼容 Optional[bool] / bool | None."""
+    """P1-7: bool 判定兼容 bool | None / bool | None."""
     from bridge.inject import is_bool_field
 
     class _F:

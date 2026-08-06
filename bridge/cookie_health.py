@@ -72,16 +72,14 @@ class CookieHealth:
         self._store.flush()
 
     async def check_once(self, cookies: dict[str, str]) -> None:
-        """检查所有已配置平台 cookie, 状态变化时通知."""
+        """检查所有已配置平台 cookie, 状态变化时通知 (校验器注册表分发, 0 硬编码)."""
         for platform, ck in cookies.items():
             if not ck or not ck.strip():
                 continue
-            if platform == "bilibili":
-                ok, info = await check_bili_cookie(ck)
-            elif platform == "zhihu":
-                ok, info = await check_zhihu_cookie(ck)
-            else:
-                continue
+            checker = _COOKIE_CHECKERS.get(platform)
+            if checker is None:
+                continue  # 未注册校验器的平台跳过 (能力声明缺失不报错)
+            ok, info = await checker(ck)
             prev = self._last_status.get(platform, {}).get("ok")
             changed = prev is None or prev != ok
 
@@ -91,13 +89,17 @@ class CookieHealth:
             self._store.update(_set)
             if not ok and changed and self._notify:
                 try:
-                    await self._notify(f"[ParserLite] {platform} cookie 失效: {info}, 请重新扫码登录")
+                    await self._notify(
+                        f"[ParserLite] {platform} cookie 失效: {info}, 请重新扫码登录"
+                    )
                 except Exception as e:
                     logger.warning(f"[ParserLite] cookie 通知失败: {e}")
             elif ok and changed:
                 logger.info(f"[ParserLite] {platform} cookie 有效: {info}")
 
-    async def run(self, interval_sec: float, cookies: dict[str, str], notify: _NotifyFn) -> None:
+    async def run(
+        self, interval_sec: float, cookies: dict[str, str], notify: _NotifyFn
+    ) -> None:
         self._notify = notify
         while True:
             try:
@@ -113,7 +115,9 @@ class CookieHealth:
                 continue
             return  # _stopped 置位 → 退出
 
-    def start(self, interval_sec: float, cookies: dict[str, str], notify: _NotifyFn) -> None:
+    def start(
+        self, interval_sec: float, cookies: dict[str, str], notify: _NotifyFn
+    ) -> None:
         self._stopped = asyncio.Event()
         self._task = asyncio.create_task(self.run(interval_sec, cookies, notify))
 
@@ -126,6 +130,19 @@ class CookieHealth:
             except asyncio.CancelledError:
                 pass
             self._task = None
+
+
+# 平台 cookie 校验器注册表 (A4: 平台特定校验集中声明, 新增平台 register 即可;
+# 键 = 上游 plite_<key>_ck 字段中段, 与 cookies 字典动态生成一致)
+_COOKIE_CHECKERS: dict[str, Callable[[str], Awaitable[tuple[bool, str]]]] = {
+    "bili": check_bili_cookie,
+    "zhihu": check_zhihu_cookie,
+}
+
+
+def register_checker(platform: str, fn) -> None:
+    """注册平台 cookie 校验器 (扩展点, 0 硬编码: 平台名集中于此)."""
+    _COOKIE_CHECKERS[platform.strip().lower()] = fn
 
 
 def make_cookie_health(base_dir: str | Path) -> CookieHealth:

@@ -62,7 +62,11 @@ async def main() -> int:
         if args.raw:
             print("\n-- 原始字段 --")
             try:
-                print(json.dumps(result.model_dump(), ensure_ascii=False, indent=2, default=str)[:4000])
+                print(
+                    json.dumps(
+                        result.model_dump(), ensure_ascii=False, indent=2, default=str
+                    )[:4000]
+                )
             except Exception as e:
                 print(f"(model_dump 失败: {e})")
 
@@ -78,6 +82,7 @@ async def main() -> int:
         if not args.no_cards:
             try:
                 from nonebot_plugin_parser_lite.render import RENDERER
+
                 data = await RENDERER.resolve_parse_result(result)
                 print(f"\n-- 渲染数据 -- keys={sorted(data.keys())}")
             except Exception as e:
@@ -85,6 +90,7 @@ async def main() -> int:
         return 0
     except Exception as e:
         import traceback
+
         print(f"\n✗ 解析失败: {type(e).__name__}: {e}")
         traceback.print_exc()
         return 1

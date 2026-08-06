@@ -21,11 +21,19 @@ from nonebot_plugin_parser_lite.parsers.weibo.article_comment import (
 
 def test_weibo_article_comment_html_to_text():
     """微博文章评论: HTML text → 纯文本 content (无标签残留)."""
-    html = ('<a href="https://weibo.com/u/123" rel="nofollow">@测试用户</a>：'
-            '<br>今天天气<span class="url-icon"><img src="x"></span>不错')
+    html = (
+        '<a href="https://weibo.com/u/123" rel="nofollow">@测试用户</a>：'
+        '<br>今天天气<span class="url-icon"><img src="x"></span>不错'
+    )
     c = ArticleComment(
-        created_at_unix=0, text=html,
-        user_info={"id": 1, "screen_name": "u", "description": "", "profile_image_url": ""},
+        created_at_unix=0,
+        text=html,
+        user_info={
+            "id": 1,
+            "screen_name": "u",
+            "description": "",
+            "profile_image_url": "",
+        },
     )
     items = c.content
     texts = [x for x in items if isinstance(x, str)]
@@ -42,8 +50,14 @@ def test_weibo_placeholder_preserved():
     """贴纸占位符 [xx] 保留供替换 (不被 HTML 解析吃掉)."""
     html = "正文[浪]哈哈"
     c = ArticleComment(
-        created_at_unix=0, text=html,
-        user_info={"id": 1, "screen_name": "u", "description": "", "profile_image_url": ""},
+        created_at_unix=0,
+        text=html,
+        user_info={
+            "id": 1,
+            "screen_name": "u",
+            "description": "",
+            "profile_image_url": "",
+        },
     )
     items = c.content
     stickers = [x for x in items if type(x).__name__ == "StickerContent"]

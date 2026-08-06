@@ -23,7 +23,12 @@ from bridge.paths import get_base_dir, state_dir  # noqa: E402
 
 def test_inject_report_structure():
     """inject_report 含成功/失败/注入项/版本字段."""
-    assert set(inject.inject_report) >= {"last_ok", "last_error", "injected", "schema_version"}
+    assert set(inject.inject_report) >= {
+        "last_ok",
+        "last_error",
+        "injected",
+        "schema_version",
+    }
     assert inject.inject_report["schema_version"] == inject.SCHEMA_VERSION
 
 
@@ -87,4 +92,7 @@ def test_disabled_groups_no_file_dependency():
     """disabled_groups 路径不依赖 __file__ (统一状态目录)."""
     core_src = (_ROOT / "bridge" / "core.py").read_text(encoding="utf-8")
     assert "_DISABLED_GROUPS_FILE" in core_src
-    assert "os.path.dirname(os.path.abspath(__file__))" not in core_src.split("_load_disabled_groups")[0].split("def _get_logger")[-1]
+    assert (
+        "os.path.dirname(os.path.abspath(__file__))"
+        not in core_src.split("_load_disabled_groups")[0].split("def _get_logger")[-1]
+    )

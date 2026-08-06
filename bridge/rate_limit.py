@@ -41,7 +41,9 @@ class RateLimiter:
         self._store.update(_record)
         return len(self._hits.get(key, []))
 
-    def allow(self, *, url: str, user_id: str = "", cfg: dict | None = None) -> tuple[bool, str]:
+    def allow(
+        self, *, url: str, user_id: str = "", cfg: dict | None = None
+    ) -> tuple[bool, str]:
         """检查是否允许解析.
 
         :return: (allowed, reason) — allowed=False 时 reason 为拒绝原因
@@ -73,12 +75,28 @@ def clean_url(url: str) -> str:
         if not parts.netloc:
             return url
         tracking = {
-            "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-            "share_token", "share_source", "share_medium", "share_plat", "share_session_id",
-            "spm_id_from", "from_source", "from", "source", "timestamp", "ts",
+            "utm_source",
+            "utm_medium",
+            "utm_campaign",
+            "utm_term",
+            "utm_content",
+            "share_token",
+            "share_source",
+            "share_medium",
+            "share_plat",
+            "share_session_id",
+            "spm_id_from",
+            "from_source",
+            "from",
+            "source",
+            "timestamp",
+            "ts",
         }
-        kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
-                if k.lower() not in tracking]
+        kept = [
+            (k, v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k.lower() not in tracking
+        ]
         cleaned = urlunsplit(
             (parts.scheme, parts.netloc, parts.path, urlencode(kept), parts.fragment)
         )

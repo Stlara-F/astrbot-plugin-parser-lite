@@ -34,13 +34,25 @@ def parse_miniapp_card(data: dict) -> dict | None:
     detail = (meta.get("detail_1") or {}) or (meta.get("news") or {})
     title = _pick_first(detail, [("title",), ("desc",), ("name",)])
     desc = _pick_first(detail, [("desc",), ("summary",)])
-    url = _pick_first(detail, [
-        ("qqdocurl",), ("jumpUrl",), ("url",), ("preview_url",),
-    ])
+    url = _pick_first(
+        detail,
+        [
+            ("qqdocurl",),
+            ("jumpUrl",),
+            ("url",),
+            ("preview_url",),
+        ],
+    )
     source = _pick_first(detail, [("source",), ("tag",), ("app",)])
     if not title and not url:
         return None
-    return {"kind": "小程序", "title": title, "desc": desc, "source": source, "url": url}
+    return {
+        "kind": "小程序",
+        "title": title,
+        "desc": desc,
+        "source": source,
+        "url": url,
+    }
 
 
 def parse_link_share_card(data: dict) -> dict | None:
@@ -53,7 +65,13 @@ def parse_link_share_card(data: dict) -> dict | None:
     source = _pick_first(news, [("source",), ("tag",)])
     if not title and not url:
         return None
-    return {"kind": "链接分享", "title": title, "desc": desc, "source": source, "url": url}
+    return {
+        "kind": "链接分享",
+        "title": title,
+        "desc": desc,
+        "source": source,
+        "url": url,
+    }
 
 
 def parse_music_card(data: dict) -> dict | None:
@@ -83,7 +101,9 @@ def parse_card(data: Any) -> dict | None:
     # 动态识别卡片类型
     if "miniapp" in app:
         return parse_miniapp_card(data)
-    if "music" in app or ("view" in prompt and "music" in str(data.get("view", "")).lower()):
+    if "music" in app or (
+        "view" in prompt and "music" in str(data.get("view", "")).lower()
+    ):
         return parse_music_card(data)
     if "structmsg" in app or "news" in str(data.get("view", "")).lower():
         return parse_link_share_card(data)

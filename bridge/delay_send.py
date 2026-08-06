@@ -46,7 +46,9 @@ class DelaySender:
         }
         return True
 
-    def on_emoji_like(self, msg_id: str, emoji_id: str, want_emoji_ids: list[str]) -> bool:
+    def on_emoji_like(
+        self, msg_id: str, emoji_id: str, want_emoji_ids: list[str]
+    ) -> bool:
         """处理表情回应: 匹配期望表情 → 触发发送.
 
         :return: True 表示已触发

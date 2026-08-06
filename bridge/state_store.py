@@ -17,8 +17,12 @@ import time
 
 
 class JsonStateStore:
-    def __init__(self, path: str | Path | None = None,
-                 flush_every: int = 10, flush_interval: float = 5.0):
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        flush_every: int = 10,
+        flush_interval: float = 5.0,
+    ):
         self._path = Path(path) if path else None
         self._lock = threading.Lock()
         self._data: dict = {}
@@ -65,8 +69,10 @@ class JsonStateStore:
             fn(self._data)
             self._mutations += 1
             now = time.time()
-            if (self._mutations >= self._flush_every
-                    or now - self._last_flush >= self._flush_interval):
+            if (
+                self._mutations >= self._flush_every
+                or now - self._last_flush >= self._flush_interval
+            ):
                 self._flush_locked()
 
     def flush(self) -> None:

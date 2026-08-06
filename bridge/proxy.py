@@ -37,7 +37,7 @@ def resolve_proxy_url(raw: str) -> str:
             _proto = _kw.strip()
             if _proto == "socks":
                 _proto = "socks5"
-            return f"{_proto}://{raw[len(_kw):].strip()}"
+            return f"{_proto}://{raw[len(_kw) :].strip()}"
     return raw
 
 
@@ -71,7 +71,8 @@ def read_proxy_config() -> str:
 
     px = read_cfg(global_source(), "plite_http_proxy", "") or ""
     logging.getLogger("nonebot_plugin_parser_lite").info(
-        f"[ParserLite] proxy config: proxy={_mask_proxy(px)}")
+        f"[ParserLite] proxy config: proxy={_mask_proxy(px)}"
+    )
     return px
 
 
@@ -116,6 +117,7 @@ def apply_downloader_proxy(proxy_url: str):
         from curl_cffi import AsyncSession as CurlSession
         from httpx import AsyncClient as HttpxClient
         from httpx import Timeout
+
         # 调度旧客户端关闭 (同次解析中可能轮询多个协议, 旧客户端需释放)
         for _old_attr in ("_httpx", "_curl"):
             _old = getattr(client, _old_attr, None)
@@ -129,23 +131,36 @@ def apply_downloader_proxy(proxy_url: str):
                     except (TypeError, RuntimeError):
                         pass
         if not proxy_url:
-            client._httpx = HttpxClient(verify=False, follow_redirects=True,
-                                        timeout=Timeout(timeout=15))
-            client._curl = CurlSession(impersonate="chrome146", timeout=240,
-                                       verify=False, allow_redirects=True)
+            client._httpx = HttpxClient(
+                verify=False, follow_redirects=True, timeout=Timeout(timeout=15)
+            )
+            client._curl = CurlSession(
+                impersonate="chrome146", timeout=240, verify=False, allow_redirects=True
+            )
         else:
             _p = proxy_url if "://" in proxy_url else f"http://{proxy_url}"
-            client._httpx = HttpxClient(proxy=_p, verify=False,
-                                        follow_redirects=True, timeout=Timeout(timeout=15))
-            client._curl = CurlSession(proxies={"http": _p, "https": _p},
-                                       impersonate="chrome146",
-                                       timeout=240, verify=False, allow_redirects=True)
+            client._httpx = HttpxClient(
+                proxy=_p,
+                verify=False,
+                follow_redirects=True,
+                timeout=Timeout(timeout=15),
+            )
+            client._curl = CurlSession(
+                proxies={"http": _p, "https": _p},
+                impersonate="chrome146",
+                timeout=240,
+                verify=False,
+                allow_redirects=True,
+            )
     import logging
+
     logging.getLogger("nonebot_plugin_parser_lite").info(
-        f"[ParserLite] downloader proxy: {_mask_proxy(proxy_url) or 'disabled'}")
+        f"[ParserLite] downloader proxy: {_mask_proxy(proxy_url) or 'disabled'}"
+    )
 
 
 # ── 平台级决策 (统一勾选列表: platforms.items.{enabled,proxied,cookies}) ──
+
 
 def _platforms_block() -> dict:
     """读取 platforms 配置块 (新格式 object / 旧格式 template_list 迁移).
@@ -161,8 +176,12 @@ def _platforms_block() -> dict:
             return pfm
         if isinstance(pfm, list):  # 旧 27 模板格式 → 模拟块
             return {"items": {}, "_legacy_list": pfm}
-    except Exception:
-        pass
+    except Exception as _cfg_e:
+        import logging
+
+        logging.getLogger("nonebot_plugin_parser_lite").debug(
+            f"[ParserLite] 配置读取回退: {_cfg_e}"
+        )
     return {}
 
 
@@ -185,7 +204,10 @@ def platform_cfg(platform: str) -> dict:
             if isinstance(_proxied, list) and _proxied:
                 _ret["proxy"] = platform.lower() in _value_set(_proxied)
             for _ck in _items.get("cookies", []) or []:
-                if isinstance(_ck, dict) and str(_ck.get("platform", "")).lower() == platform.lower():
+                if (
+                    isinstance(_ck, dict)
+                    and str(_ck.get("platform", "")).lower() == platform.lower()
+                ):
                     _ret["cookies"] = str(_ck.get("cookie", "") or "")
                     break
             return _ret
@@ -193,12 +215,19 @@ def platform_cfg(platform: str) -> dict:
         _legacy = _blk.get("_legacy_list")
         if isinstance(_legacy, list):
             for item in _legacy:
-                if isinstance(item, dict) and str(item.get("platform", "")).lower() == platform.lower():
+                if (
+                    isinstance(item, dict)
+                    and str(item.get("platform", "")).lower() == platform.lower()
+                ):
                     return item
         elif isinstance(_blk, dict):
             return _blk.get(platform, {}) or {}
-    except Exception:
-        pass
+    except Exception as _cfg_e:
+        import logging
+
+        logging.getLogger("nonebot_plugin_parser_lite").debug(
+            f"[ParserLite] 配置读取回退: {_cfg_e}"
+        )
     return {}
 
 
@@ -238,7 +267,11 @@ def cookies_entries() -> list[dict]:
     try:
         _items = _platforms_block().get("items", {})
         _ck = _items.get("cookies", [])
-        return [e for e in (_ck or []) if isinstance(e, dict) and e.get("platform") and e.get("cookie")]
+        return [
+            e
+            for e in (_ck or [])
+            if isinstance(e, dict) and e.get("platform") and e.get("cookie")
+        ]
     except Exception:
         return []
 
@@ -255,15 +288,24 @@ def sync_cookies_to_upstream() -> None:
         _sync = False
         for entry in cookies_entries():
             _fname = f"plite_{str(entry['platform']).lower()}_ck"
-            if _fname in _cfg.model_fields and getattr(_cfg, _fname, None) != entry["cookie"]:
+            if (
+                _fname in _cfg.model_fields
+                and getattr(_cfg, _fname, None) != entry["cookie"]
+            ):
                 setattr(_cfg, _fname, entry["cookie"])
                 _sync = True
         if _sync:
             import logging
+
             logging.getLogger("nonebot_plugin_parser_lite").info(
-                "[ParserLite] cookies synced to upstream config")
-    except Exception:
-        pass
+                "[ParserLite] cookies synced to upstream config"
+            )
+    except Exception as _cfg_e:
+        import logging
+
+        logging.getLogger("nonebot_plugin_parser_lite").debug(
+            f"[ParserLite] 配置读取回退: {_cfg_e}"
+        )
 
 
 def load_parsers_config() -> dict:
@@ -274,8 +316,12 @@ def load_parsers_config() -> dict:
             inner = p.get("items", p) if isinstance(p.get("items"), dict) else p
             if isinstance(inner, dict):
                 return inner
-    except Exception:
-        pass
+    except Exception as _cfg_e:
+        import logging
+
+        logging.getLogger("nonebot_plugin_parser_lite").debug(
+            f"[ParserLite] 配置读取回退: {_cfg_e}"
+        )
     return {}
 
 
@@ -321,17 +367,28 @@ def get_cookies_for(platform: str) -> dict:
         raw = load_parsers_config().get("cookies", "{}")
         if isinstance(raw, list):
             for entry in raw:
-                if isinstance(entry, dict) and str(entry.get("platform", "")).lower() == platform.lower():
+                if (
+                    isinstance(entry, dict)
+                    and str(entry.get("platform", "")).lower() == platform.lower()
+                ):
                     ck = str(entry.get("cookie", "") or "").strip()
                     if ck:
                         return {"Cookie": ck}
             return {}
-        cookies = _json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, dict) else {})
+        cookies = (
+            _json.loads(raw)
+            if isinstance(raw, str)
+            else (raw if isinstance(raw, dict) else {})
+        )
         ck = cookies.get(platform, "").strip()
         if ck:
             return {"Cookie": ck}
-    except Exception:
-        pass
+    except Exception as _cfg_e:
+        import logging
+
+        logging.getLogger("nonebot_plugin_parser_lite").debug(
+            f"[ParserLite] 配置读取回退: {_cfg_e}"
+        )
     return {}
 
 

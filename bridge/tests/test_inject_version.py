@@ -27,6 +27,7 @@ def test_flag_version_semantics(tmp_path):
     schema.write_text('{"features": {"type": "list", "options": ["A"], "default": []}}')
     # 模拟注入 (无上游时部分步骤会失败, 验证版本判断分支先触发)
     import os
+
     os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
     os.environ.setdefault("PARSER_LITE_BASE_DIR", str(tmp_path / "data"))
     try:
@@ -58,6 +59,7 @@ def test_flag_version_changed_triggers_reinject(tmp_path):
     try:
         # 版本不匹配 → 不会走到 _rebuild 分支 (跳过), 而是继续注入
         import os
+
         os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
         os.environ.setdefault("PARSER_LITE_BASE_DIR", str(tmp_path / "data"))
         try:

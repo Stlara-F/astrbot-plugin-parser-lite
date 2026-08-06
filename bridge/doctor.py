@@ -37,7 +37,9 @@ class CheckResult:
         }
 
 
-async def _run_check(name: str, fn: Callable[[], Awaitable[tuple[bool, str, bool]]]) -> CheckResult:
+async def _run_check(
+    name: str, fn: Callable[[], Awaitable[tuple[bool, str, bool]]]
+) -> CheckResult:
     t0 = time.time()
     try:
         ok, detail, warn = await fn()
@@ -106,7 +108,9 @@ def _detect_missing_libs_hint() -> str:
         return ""
 
 
-async def check_network(probe_url: str = "https://www.bilibili.com") -> tuple[bool, str, bool]:
+async def check_network(
+    probe_url: str = "https://www.bilibili.com",
+) -> tuple[bool, str, bool]:
     """网络可达性 (探测地址可配置, 默认国内可达站点)."""
     import httpx
 
@@ -155,9 +159,11 @@ async def check_coverage() -> tuple[bool, str, bool]:
     def _norm(name: str) -> str:
         return name.lower().replace("5eplay", "fiveeplay")
 
-    parser_set = {_norm(getattr(cls, "platform", None).name)
-                  for cls in BaseParser.get_all_subclass()
-                  if getattr(cls, "platform", None)}
+    parser_set = {
+        _norm(getattr(cls, "platform", None).name)
+        for cls in BaseParser.get_all_subclass()
+        if getattr(cls, "platform", None)
+    }
     missing = enum_set - parser_set
     # 缺失平台是信息而非致命错误 (部分平台可能由聚合 parser 覆盖)
     ok = not missing
@@ -180,8 +186,10 @@ async def check_render() -> tuple[bool, str, bool]:
     """渲染管线 (render import + safe_src patch)."""
     try:
         from bridge.render_patch import apply_render_patch
+
         applied = apply_render_patch()
         from nonebot_plugin_parser_lite.render import RENDERER
+
         return True, f"templates={RENDERER.templates_dir}, patch={applied}", False
     except Exception as e:
         return False, str(e), False
@@ -190,14 +198,17 @@ async def check_render() -> tuple[bool, str, bool]:
 async def check_schema() -> tuple[bool, str, bool]:
     """注入 schema 完整 (commit gate 复用)."""
     try:
-
         src = global_source()
         if not src:
             return False, "未初始化 (首次运行注入)", True  # 警告非致命
         required = ["plite_http_proxy", "send_strategy", "plite_dedup_ttl"]
         missing = [k for k in required if k not in src]
         ok = not missing
-        return ok, f"{len(src)} config keys" + (f", missing: {missing}" if missing else ""), not ok
+        return (
+            ok,
+            f"{len(src)} config keys" + (f", missing: {missing}" if missing else ""),
+            not ok,
+        )
     except Exception as e:
         return False, str(e), False
 
@@ -249,8 +260,10 @@ def render_text(results: list[CheckResult], summary: dict) -> str:
         if r.error:
             lines.append(f"       error: {r.error}")
     lines.append("")
-    lines.append(f"── 摘要: {summary['ok']}/{summary['total']} OK, "
-                 f"{summary['warn']} warn, {summary['failed']} fail ──")
+    lines.append(
+        f"── 摘要: {summary['ok']}/{summary['total']} OK, "
+        f"{summary['warn']} warn, {summary['failed']} fail ──"
+    )
     if summary["failed_items"]:
         lines.append(f"失败项: {', '.join(summary['failed_items'])}")
     return "\n".join(lines)
@@ -268,7 +281,9 @@ def to_json(results: list[CheckResult], summary: dict | None = None) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def save_snapshot(results: list[CheckResult], summary: dict, target: str | None = None) -> str | None:
+def save_snapshot(
+    results: list[CheckResult], summary: dict, target: str | None = None
+) -> str | None:
     """错误快照落盘 (失败详情显式持久化, 便于事后排查).
 
     :param target: 输出路径 (默认: 插件 data_dir/doctor_snapshot.json)

@@ -18,7 +18,9 @@ _logger = logging.getLogger("parser-lite.bridge")
 T = TypeVar("T")
 
 
-def safe(logger=None, label: str = "") -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T | None]]]:
+def safe(
+    logger=None, label: str = ""
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T | None]]]:
     """异步装饰器: 捕获异常, 记录 traceback 摘要, 返回 None 不抛出."""
 
     def deco(fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T | None]]:
@@ -30,7 +32,9 @@ def safe(logger=None, label: str = "") -> Callable[[Callable[..., Awaitable[T]]]
                 raise
             except Exception as exc:
                 _lg = logger or _logger
-                _lg.warning(f"[ParserLite] {label or fn.__name__} 失败: {type(exc).__name__}: {exc}")
+                _lg.warning(
+                    f"[ParserLite] {label or fn.__name__} 失败: {type(exc).__name__}: {exc}"
+                )
                 return None
 
         return wrapper
@@ -61,7 +65,9 @@ async def send_with_fallback(
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            _lg.warning(f"[ParserLite] {label} 第 {i + 1} 级失败: {type(exc).__name__}: {exc}")
+            _lg.warning(
+                f"[ParserLite] {label} 第 {i + 1} 级失败: {type(exc).__name__}: {exc}"
+            )
     return False
 
 

@@ -2,6 +2,7 @@
 Code integrity & filesystem tests.
 Covers: C12, C13, C14, C16, C17, C28
 """
+
 import inspect
 import subprocess as _sp
 
@@ -13,7 +14,9 @@ from test._base import _ROOT, bad, finish, ok, sk
 # ═══════════════════════════════════════════════════════════════
 _py_files = []
 try:
-    _r = _sp.run(["git", "ls-files", "*.py"], capture_output=True, text=True, cwd=str(_ROOT))
+    _r = _sp.run(
+        ["git", "ls-files", "*.py"], capture_output=True, text=True, cwd=str(_ROOT)
+    )
     if _r.returncode == 0:
         _py_files = [f for f in _r.stdout.strip().split("\n") if f]
 except Exception:
@@ -64,7 +67,9 @@ else:
 _tracked_runtime = []
 for _patt in ["data/", "cache/", "config/", "FEATURES.md"]:
     try:
-        _r = _sp.run(["git", "ls-files", _patt], capture_output=True, text=True, cwd=str(_ROOT))
+        _r = _sp.run(
+            ["git", "ls-files", _patt], capture_output=True, text=True, cwd=str(_ROOT)
+        )
         if _r.returncode == 0 and _r.stdout.strip():
             _tracked_runtime.extend(_r.stdout.strip().split("\n"))
     except Exception:
@@ -114,6 +119,7 @@ else:
 # ═══════════════════════════════════════════════════════════════
 try:
     from test.test_parsers import _FALLBACK_URLS as _tufb17
+
     if _tufb17 and len(_tufb17) > 5:
         ok(f"test.test_parsers importable: {len(_tufb17)} fallback URLs")
     else:

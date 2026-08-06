@@ -24,9 +24,19 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
 BRIDGE = _ROOT / "bridge"
 
 # 允许的生命周期/构造方法名 (各状态类标准模式, 非功能重复)
-_ALLOWED_DUPS = {"__init__", "_load", "save", "start", "stop", "run",
-                 "cleanup", "arm", "concede", "disarm",
-                 "load_cfg"}  # 各模块自包含配置段 (依赖注入模式, 职责各自唯一)
+_ALLOWED_DUPS = {
+    "__init__",
+    "_load",
+    "save",
+    "start",
+    "stop",
+    "run",
+    "cleanup",
+    "arm",
+    "concede",
+    "disarm",
+    "load_cfg",
+}  # 各模块自包含配置段 (依赖注入模式, 职责各自唯一)
 
 
 def _all_defs() -> dict[str, list[str]]:

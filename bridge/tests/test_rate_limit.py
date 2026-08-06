@@ -49,7 +49,12 @@ def test_disabled_always_allowed():
 
 def test_user_limit():
     rl = _limiter()
-    cfg = {"enabled": True, "max_per_window": 99, "max_per_user_window": 2, "window_seconds": 60}
+    cfg = {
+        "enabled": True,
+        "max_per_window": 99,
+        "max_per_user_window": 2,
+        "window_seconds": 60,
+    }
     assert rl.allow(url="https://a.com/1", user_id="u1", cfg=cfg)[0]
     assert rl.allow(url="https://a.com/2", user_id="u1", cfg=cfg)[0]
     ok, why = rl.allow(url="https://a.com/3", user_id="u1", cfg=cfg)

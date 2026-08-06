@@ -26,7 +26,8 @@ def _has_fixtures() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    not _has_fixtures(), reason="fixtures 未录制 (先运行: PARSER_LITE_RECORD_DIR=test/fixtures python run_local.py <url>)"
+    not _has_fixtures(),
+    reason="fixtures 未录制 (先运行: PARSER_LITE_RECORD_DIR=test/fixtures python run_local.py <url>)",
 )
 
 
@@ -45,15 +46,22 @@ def _run_parse(url: str):
     BridgeConfig._source = {}
     BridgeConfig._instance = None
     BridgeConfig._hash = ""
+    # 回放生效: RECORD_DIR 指向 fixture 目录 (否则走真实网络, 不稳定)
+    os.environ.setdefault("PARSER_LITE_RECORD_DIR", str(_FIXTURE_DIR))
     patch_httpx_send(replay=True)
     os.environ.setdefault("PARSER_LITE_STANDALONE", "1")
     os.environ.setdefault("PARSER_LITE_BASE_DIR", str(_ROOT / ".parser-lite-test"))
 
     p = ParserLite()
-    try:
-        return asyncio.run(p.parse_url(url))
-    finally:
-        asyncio.run(p.close())
+
+    async def _run():
+        try:
+            return await p.parse_url(url)
+        finally:
+            # close 在同一 loop 内 (避免跨 loop 关闭 client → Event loop is closed)
+            await p.close()
+
+    return asyncio.run(_run())
 
 
 def test_offline_bilibili_parse():
@@ -62,6 +70,7 @@ def test_offline_bilibili_parse():
     assert fx_files, "fixtures 为空"
     import json
     import re
+
     # 从任一 fixture 的 url 字段提取 bvid → 构造分享链接
     bvid = None
     for f in fx_files:
@@ -71,7 +80,9 @@ def test_offline_bilibili_parse():
             bvid = m.group(0)
             break
     if bvid is None:
-        pytest.skip("fixtures 无 bvid, 先录制: PARSER_LITE_RECORD_DIR=test/fixtures python run_local.py <b站视频链接>")
+        pytest.skip(
+            "fixtures 无 bvid, 先录制: PARSER_LITE_RECORD_DIR=test/fixtures python run_local.py <b站视频链接>"
+        )
 
     url = f"https://www.bilibili.com/video/{bvid}"
     result = _run_parse(url)

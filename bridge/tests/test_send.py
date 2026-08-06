@@ -118,10 +118,16 @@ def _fake_components(monkeypatch, tmp_path):
     _mc.reset_cache()
     _iso = _mc.MediaMd5Cache(tmp_path / "md5.json", max_entries=50)
     monkeypatch.setattr(_mc, "get_cache", lambda *a, **k: _iso)
-    monkeypatch.setattr(send, "_get_components", lambda: {
-        "File": _mk_cmp_cls("File"), "Image": _mk_cmp_cls("Image"),
-        "Record": _mk_cmp_cls("Record"), "Video": _mk_cmp_cls("Video"),
-    })
+    monkeypatch.setattr(
+        send,
+        "_get_components",
+        lambda: {
+            "File": _mk_cmp_cls("File"),
+            "Image": _mk_cmp_cls("Image"),
+            "Record": _mk_cmp_cls("Record"),
+            "Video": _mk_cmp_cls("Video"),
+        },
+    )
     yield
     _mc.reset_cache()
     BridgeConfig._source = {}
@@ -144,8 +150,11 @@ def test_send_card_fallback_text(monkeypatch: MonkeyPatch):
         ev = FakeEvent()
         import asyncio
 
-        ok = asyncio.run(send.send_card(
-            ev, type("R", (), {"url": "https://x"}), lambda r: "回退文本"))
+        ok = asyncio.run(
+            send.send_card(
+                ev, type("R", (), {"url": "https://x"}), lambda r: "回退文本"
+            )
+        )
         assert ok
         assert len(ev.sent) == 1
         assert ev.sent[0][0].text == "回退文本"
@@ -166,8 +175,9 @@ def test_send_media_file_missing():
     import asyncio
     from pathlib import Path
 
-    ok = asyncio.run(send.send_media_file(
-        FakeEvent(), Path("nonexistent/x.jpg"), "image"))
+    ok = asyncio.run(
+        send.send_media_file(FakeEvent(), Path("nonexistent/x.jpg"), "image")
+    )
     assert not ok
 
 
@@ -185,7 +195,10 @@ def test_video_file_threshold_dispatch(monkeypatch: MonkeyPatch, tmp_path):
     # 生成 5MB 假视频 (超过测试阈值 1MB)
     fake_video = tmp_path / "big.mp4"
     fake_video.write_bytes(b"\x00" * (5 * 1024 * 1024))
-    BridgeConfig._source = {"plite_video_file_threshold_mb": 1, "plite_use_base64": False}
+    BridgeConfig._source = {
+        "plite_video_file_threshold_mb": 1,
+        "plite_use_base64": False,
+    }
     ev = FakeEvent()
     ok = asyncio.run(send.send_media_file(ev, fake_video, "video"))
     assert ok
@@ -204,7 +217,9 @@ def test_video_cover_chain(monkeypatch: MonkeyPatch, tmp_path):
     cover.write_bytes(b"\xff\xd8" + b"\x00" * 1024)
     BridgeConfig._source = {"plite_video_file_threshold_mb": 100}
     ev = FakeEvent()
-    ok = asyncio.run(send.send_media_file(ev, small_video, "video", cover_path=str(cover)))
+    ok = asyncio.run(
+        send.send_media_file(ev, small_video, "video", cover_path=str(cover))
+    )
     assert ok
     assert len(ev.sent) == 1
     types = [s.type.value for s in ev.sent[0]]

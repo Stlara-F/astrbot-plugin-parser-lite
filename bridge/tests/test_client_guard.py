@@ -107,10 +107,16 @@ def test_heybox_comment_html_to_text():
     class FakeUser:
         pass
 
-    c = CommentItem(is_cy=0, create_at=0,
-                    text='<a href="https://xiaoheihe.cn/user/1">@老哥</a>：<br>说的对',
-                    ip_location="", child_num=0, up=0,
-                    user=FakeUser(), imgs=[])
+    c = CommentItem(
+        is_cy=0,
+        create_at=0,
+        text='<a href="https://xiaoheihe.cn/user/1">@老哥</a>：<br>说的对',
+        ip_location="",
+        child_num=0,
+        up=0,
+        user=FakeUser(),
+        imgs=[],
+    )
     items = c.content
     texts = [x for x in items if isinstance(x, str)]
     joined = "".join(texts)

@@ -98,8 +98,10 @@ class UpPusher:
             )
             data = resp.json()
             cards = data.get("data") or {}
-            return {str(uid): bool((cards.get(uid) or {}).get("live_status") == 1)
-                    for uid in uids}
+            return {
+                str(uid): bool((cards.get(uid) or {}).get("live_status") == 1)
+                for uid in uids
+            }
         except Exception as e:
             logger.warning(f"[ParserLite] 直播状态获取失败: {e}")
             return {}
@@ -134,9 +136,9 @@ class UpPusher:
                     except Exception as e:
                         logger.warning(f"[ParserLite] 动态推送失败: {e}")
             elif not seen and items:
-                self._seen_dynamics[uid] = [did for did, _ in
-                                            [self._dynamic_info(i) for i in items]
-                                            if did]
+                self._seen_dynamics[uid] = [
+                    did for did, _ in [self._dynamic_info(i) for i in items] if did
+                ]
                 self._persist()
 
         # 直播状态
@@ -146,7 +148,9 @@ class UpPusher:
             if is_living and not prev:
                 groups = self._subs.get(uid, [])
                 try:
-                    await self._send(f"[B站直播] UP{uid} 开播了!\nhttps://live.bilibili.com", groups)
+                    await self._send(
+                        f"[B站直播] UP{uid} 开播了!\nhttps://live.bilibili.com", groups
+                    )
                 except Exception as e:
                     logger.warning(f"[ParserLite] 直播推送失败: {e}")
             self._live_status[uid] = is_living
@@ -198,6 +202,11 @@ def load_cfg(source: dict | None = None) -> tuple[list[dict], int]:
                 subs.append(entry)
     elif isinstance(raw, dict):
         for uid, groups in raw.items():
-            subs.append({"uid": str(uid), "groups": ",".join(str(g) for g in groups),
-                         "enabled": True})
+            subs.append(
+                {
+                    "uid": str(uid),
+                    "groups": ",".join(str(g) for g in groups),
+                    "enabled": True,
+                }
+            )
     return subs, interval

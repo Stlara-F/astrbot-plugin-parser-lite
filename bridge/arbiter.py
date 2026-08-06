@@ -35,7 +35,9 @@ def _emoji_id(emoji: str) -> str:
         return emoji
 
 
-def arm(msg_id: str, *, emoji: str | None = None, window_sec: float | None = None) -> bool:
+def arm(
+    msg_id: str, *, emoji: str | None = None, window_sec: float | None = None
+) -> bool:
     """解析前武装竞争: 记录 msg_id, 返回是否应继续 (False=已放弃)."""
     now = time.time()
     # 清理过期

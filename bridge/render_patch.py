@@ -54,8 +54,13 @@ def lyric_to_text(lyric) -> str:
             if isinstance(item, dict):
                 c = item.get("c")
                 if isinstance(c, list):
-                    lines.append("".join(x.get("tx", "") for x in c
-                                          if isinstance(x, dict) and x.get("tx")))
+                    lines.append(
+                        "".join(
+                            x.get("tx", "")
+                            for x in c
+                            if isinstance(x, dict) and x.get("tx")
+                        )
+                    )
                 elif isinstance(c, str):
                     lines.append(c)
             elif isinstance(item, str):
@@ -114,6 +119,7 @@ def apply_render_patch() -> bool:
     """
     try:
         import nonebot_plugin_parser_lite.render as _render
+
         if getattr(_render.safe_src, "_pl_default_method", False):
             return True  # 已 patch
 

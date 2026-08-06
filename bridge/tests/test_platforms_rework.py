@@ -43,7 +43,17 @@ def _set_cfg(data: dict):
 
 def test_new_checklist_format_enabled():
     """新格式: platforms.items.enabled 勾选 → 启用判定."""
-    _set_cfg({"platforms": {"items": {"enabled": ["bilibili", "zhihu"], "proxied": [], "cookies": []}}})
+    _set_cfg(
+        {
+            "platforms": {
+                "items": {
+                    "enabled": ["bilibili", "zhihu"],
+                    "proxied": [],
+                    "cookies": [],
+                }
+            }
+        }
+    )
     assert enabled_platforms() == {"bilibili", "zhihu"}
     assert _is_parser_enabled("bilibili") is True
     assert _is_parser_enabled("weibo") is False
@@ -51,7 +61,9 @@ def test_new_checklist_format_enabled():
 
 def test_new_checklist_format_enabled_dict_values():
     """勾选列表支持 {"value": "x"} 形式 (AstrBot options)."""
-    _set_cfg({"platforms": {"items": {"enabled": [{"value": "bilibili"}], "proxied": []}}})
+    _set_cfg(
+        {"platforms": {"items": {"enabled": [{"value": "bilibili"}], "proxied": []}}}
+    )
     assert _is_parser_enabled("bilibili") is True
     assert _is_parser_enabled("weibo") is False
 
@@ -65,10 +77,18 @@ def test_new_checklist_format_proxied():
 
 def test_new_checklist_cookies_entries():
     """新格式: platforms.items.cookies 动态条目 → get_cookies_for."""
-    _set_cfg({"platforms": {"items": {"cookies": [
-        {"platform": "bilibili", "cookie": "SESSDATA=abc"},
-        {"platform": "zhihu", "cookie": "z_c0=xyz"},
-    ]}}})
+    _set_cfg(
+        {
+            "platforms": {
+                "items": {
+                    "cookies": [
+                        {"platform": "bilibili", "cookie": "SESSDATA=abc"},
+                        {"platform": "zhihu", "cookie": "z_c0=xyz"},
+                    ]
+                }
+            }
+        }
+    )
     assert get_cookies_for("bilibili") == {"Cookie": "SESSDATA=abc"}
     assert get_cookies_for("zhihu") == {"Cookie": "z_c0=xyz"}
     assert get_cookies_for("douyin") == {}
@@ -77,8 +97,15 @@ def test_new_checklist_cookies_entries():
 
 def test_astrbot_flattened_platforms():
     """AstrBot 生成配置把 object 展平: platforms.enabled 直接顶层 (无 items)."""
-    _set_cfg({"platforms": {"enabled": ["bilibili", "zhihu"], "proxied": ["bilibili"],
-                            "cookies": [{"platform": "bilibili", "cookie": "SESSDATA=f"}]}})
+    _set_cfg(
+        {
+            "platforms": {
+                "enabled": ["bilibili", "zhihu"],
+                "proxied": ["bilibili"],
+                "cookies": [{"platform": "bilibili", "cookie": "SESSDATA=f"}],
+            }
+        }
+    )
     assert _platforms_block()["items"]["enabled"] == ["bilibili", "zhihu"]
     assert _is_parser_enabled("bilibili") is True
     assert _is_parser_enabled("weibo") is False
@@ -88,10 +115,19 @@ def test_astrbot_flattened_platforms():
 
 def test_legacy_27_template_migration():
     """旧 27 平台模板格式 → 迁移兼容读取."""
-    _set_cfg({"platforms": [
-        {"platform": "bilibili", "enable": True, "proxy": True, "cookies": "ck1"},
-        {"platform": "zhihu", "enable": False},
-    ]})
+    _set_cfg(
+        {
+            "platforms": [
+                {
+                    "platform": "bilibili",
+                    "enable": True,
+                    "proxy": True,
+                    "cookies": "ck1",
+                },
+                {"platform": "zhihu", "enable": False},
+            ]
+        }
+    )
     assert _is_parser_enabled("bilibili") is True
     assert _is_parser_enabled("zhihu") is False
     assert use_proxy_for("bilibili") is True
@@ -156,7 +192,15 @@ def test_onebot11_segments_structure():
 
 def test_sync_cookies_to_upstream_missing_upstream():
     """无上游时 sync_cookies_to_upstream 静默跳过 (不抛异常)."""
-    _set_cfg({"platforms": {"items": {"cookies": [
-        {"platform": "bilibili", "cookie": "SESSDATA=sync"},
-    ]}}})
+    _set_cfg(
+        {
+            "platforms": {
+                "items": {
+                    "cookies": [
+                        {"platform": "bilibili", "cookie": "SESSDATA=sync"},
+                    ]
+                }
+            }
+        }
+    )
     sync_cookies_to_upstream()  # 无 astrbot/无上游 → 静默

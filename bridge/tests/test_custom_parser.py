@@ -48,8 +48,7 @@ def test_custom_parser_parse():
     import httpx
 
     # 用 MockTransport 回放, 无全局 monkeypatch
-    transport = httpx.MockTransport(
-        lambda req: httpx.Response(200, text=html))
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, text=html))
 
     orig_client = httpx.AsyncClient
 

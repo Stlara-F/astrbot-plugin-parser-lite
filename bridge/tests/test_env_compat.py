@@ -45,7 +45,8 @@ def test_no_top_level_astrbot_import():
                 )
                 if top_level and any(n.startswith("astrbot") for n in names):
                     raise AssertionError(
-                        f"{f.name}: 顶层 import astrbot (须延迟到函数内): {names}")
+                        f"{f.name}: 顶层 import astrbot (须延迟到函数内): {names}"
+                    )
 
 
 def _parents(tree, node):
@@ -89,10 +90,13 @@ def test_bridge_importable_without_astrbot():
         "except ModuleNotFoundError as e:\n"
         "    print('FAIL', m, str(e))\n"
     )
-    r = subprocess.run([sys.executable, "-c", _code], capture_output=True,
-                       text=True, timeout=60)
+    r = subprocess.run(
+        [sys.executable, "-c", _code], capture_output=True, text=True, timeout=60
+    )
     assert r.returncode == 0, f"子进程退出码非 0: {r.stderr[-300:]}"
-    assert r.stdout.strip() == "OK", f"子进程纯净导入失败: {r.stdout[-300:]}{r.stderr[-300:]}"
+    assert r.stdout.strip() == "OK", (
+        f"子进程纯净导入失败: {r.stdout[-300:]}{r.stderr[-300:]}"
+    )
 
 
 def test_upstream_not_import_bridge():

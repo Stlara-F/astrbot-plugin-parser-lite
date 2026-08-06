@@ -47,8 +47,11 @@ def sh(*args: str, check: bool = True) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="origin/bridge-standalone",
-                    help="旧 bridge 提交引用 (默认 origin/bridge-standalone)")
+    ap.add_argument(
+        "--ref",
+        default="origin/bridge-standalone",
+        help="旧 bridge 提交引用 (默认 origin/bridge-standalone)",
+    )
     ap.add_argument("--push", action="store_true", help="推送 origin")
     args = ap.parse_args()
 
@@ -76,8 +79,12 @@ def main() -> int:
 
     sh("git", "add", "-A")
     if sh("git", "status", "--porcelain"):
-        sh("git", "commit", "-m",
-           f"bridge: rebase onto upstream standalone ({upstream_sha[:12]})")
+        sh(
+            "git",
+            "commit",
+            "-m",
+            f"bridge: rebase onto upstream standalone ({upstream_sha[:12]})",
+        )
         print(f"已重建 bridge-standalone @ {upstream_sha[:12]}")
     else:
         print("无变更")

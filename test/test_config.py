@@ -2,6 +2,7 @@
 Config bridge & schema injection tests.
 Covers: C5, C6, C15, C22, C25, C36
 """
+
 import inspect
 import json
 
@@ -15,7 +16,10 @@ from test._base import _ROOT, bad, finish, ok
 BridgeConfig._hash = ""
 BridgeConfig._source = None
 BridgeConfig.configure(plite_max_size=99)
-if BridgeConfig._source is not None and BridgeConfig._source.get("plite_max_size") == 99:
+if (
+    BridgeConfig._source is not None
+    and BridgeConfig._source.get("plite_max_size") == 99
+):
     ok("_source set via kwargs (AstrBot path)")
 else:
     bad(f"_source = {BridgeConfig._source}")
@@ -70,9 +74,13 @@ if _schema_path.exists():
             if not _extra:
                 ok("_conf_schema.json is skeleton")
             elif _injected_marker.exists():
-                ok(f"_conf_schema.json: {len(_extra)} injected keys (confirmed by .injected)")
+                ok(
+                    f"_conf_schema.json: {len(_extra)} injected keys (confirmed by .injected)"
+                )
             else:
-                bad(f"_conf_schema.json: {len(_extra)} extra keys but .injected MISSING")
+                bad(
+                    f"_conf_schema.json: {len(_extra)} extra keys but .injected MISSING"
+                )
 else:
     bad("_conf_schema.json missing")
 

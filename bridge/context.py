@@ -76,8 +76,9 @@ def up_creator():
 
 # ── 字段标签 (features 双向映射用) ───────────────────────────────────────────
 
+
 def _is_bool_annotation(ann) -> bool:
-    """bool 注解判定 (兼容 Optional[bool] / bool | None)."""
+    """bool 注解判定 (兼容 bool | None / bool | None)."""
     if ann is bool:
         return True
     if hasattr(ann, "__args__"):
@@ -106,6 +107,7 @@ def label_en(k: str) -> str:
 
 # ── BridgeConfig 单例 ────────────────────────────────────────────────────────
 
+
 class BridgeConfig:
     _instance: Any = None
     _source: dict | None = None
@@ -128,20 +130,32 @@ class BridgeConfig:
             if cls._source is None:
                 cls._source = {}
             cls._source.update({k: v for k, v in kwargs.items() if k != "__hash__"})
-        # features 标签 → plite_* bool 反向映射 (兼容中英文旧值 + Optional[bool])
+        # features 标签 → plite_* bool 反向映射 (兼容中英文旧值 + bool | None)
         features_list = data.get("features", [])
         if isinstance(features_list, list):
             for k, f in _UpConfig.model_fields.items():
                 if _is_bool_annotation(f.annotation) and k.startswith("plite_"):
-                    data[k] = (label(k) in features_list) or (label_en(k) in features_list)
+                    data[k] = (label(k) in features_list) or (
+                        label_en(k) in features_list
+                    )
         valid = {k: v for k, v in data.items() if k in _UpConfig.model_fields}
         # parser_extra 冲突覆盖: 注入到 valid 中 (优先于顶级 plite_ 同名字段)
         cls._inject_parser_extra(valid, data)
         if not valid:
             return
-        s = json.dumps({k: (v.name if hasattr(v, "name") else
-                            [e.name for e in v] if isinstance(v, list) and v and hasattr(v[0], "name") else v)
-                          for k, v in valid.items()}, sort_keys=True)
+        s = json.dumps(
+            {
+                k: (
+                    v.name
+                    if hasattr(v, "name")
+                    else [e.name for e in v]
+                    if isinstance(v, list) and v and hasattr(v[0], "name")
+                    else v
+                )
+                for k, v in valid.items()
+            },
+            sort_keys=True,
+        )
         h = hashlib.md5(s.encode()).hexdigest()
         if h == cls._hash:
             return
@@ -149,12 +163,18 @@ class BridgeConfig:
         # 使用官方 configure(): 原地 setattr 更新共享 pconfig 实例,
         # 保持各模块 import 的 pconfig 引用一致性 (不再替换模块属性)
         from nonebot_plugin_parser_lite.config import configure as _up_configure
+
         try:
             _cfg = _up_configure(_UpConfig(**valid))
         except Exception:
             _cfg = _UpConfig(**valid)
             cfg_mod = _UpConfig.__module__
-            for key in (cfg_mod, f"nonebot_plugin_parser_lite.{cfg_mod}" if "." not in cfg_mod else cfg_mod):
+            for key in (
+                cfg_mod,
+                f"nonebot_plugin_parser_lite.{cfg_mod}"
+                if "." not in cfg_mod
+                else cfg_mod,
+            ):
                 mod = sys.modules.get(key)
                 if mod is not None:
                     mod.pconfig = _cfg
@@ -169,14 +189,18 @@ class BridgeConfig:
             from astrbot.api import logger as _alog
         except Exception:
             import logging
+
             _alog = logging.getLogger("parser-lite.bridge.context")
-        _alog.debug(f"[ParserLite] configure: {len(valid)} fields, dirty={h != cls._hash}")
+        _alog.debug(
+            f"[ParserLite] configure: {len(valid)} fields, dirty={h != cls._hash}"
+        )
 
     @classmethod
     def _inject_parser_extra(cls, valid: dict, data: dict):
         """将 parser_extra 嵌套表的值解析后写入 valid (覆盖同名字段冲突)"""
         try:
             from bridge.inject import get_parser_extra_mapping  # 解耦: 注入层提供映射
+
             mapping = get_parser_extra_mapping()
         except Exception:
             mapping = {}
@@ -195,7 +219,9 @@ class BridgeConfig:
                 elif is_list and val.strip().startswith("["):
                     val = json.loads(val)
             if isinstance(val, list) and is_list:
-                valid[pconfig_field] = [enum_cls[v] for v in val if v in enum_cls.__members__]
+                valid[pconfig_field] = [
+                    enum_cls[v] for v in val if v in enum_cls.__members__
+                ]
 
     @classmethod
     def get_config(cls):

@@ -45,12 +45,15 @@ def main() -> int:
 
     # 1. 无重复
     if len(paths) != len(set(paths)):
-        errors.append(f"FAIL: _BRIDGE_FIELDS 重复路径: "
-                      f"{[p for p in paths if paths.count(p) > 1]}")
+        errors.append(
+            f"FAIL: _BRIDGE_FIELDS 重复路径: {[p for p in paths if paths.count(p) > 1]}"
+        )
 
     # 2. 修改频率排序: 高频 (代理/发送策略) 在前 (platforms 为动态注入, 不在此列表)
     if paths and paths[0] != "plite_http_proxy":
-        errors.append(f"FAIL: 首个配置应为 plite_http_proxy (最高修改频率), 实际 {paths[0]}")
+        errors.append(
+            f"FAIL: 首个配置应为 plite_http_proxy (最高修改频率), 实际 {paths[0]}"
+        )
     if paths and paths[1] != "send_strategy":
         errors.append(f"FAIL: 第二个配置应为 send_strategy, 实际 {paths[1]}")
     # 已废弃的 parsers.items 不应再注入 (统一 platforms)
@@ -64,8 +67,12 @@ def main() -> int:
         errors.append("FAIL: 低频配置 (push/arbiter 等) 应在高频之后")
 
     # 3. 必含新配置项
-    for key in ("plite_dedup_ttl", "plite_cache_interval",
-                "plite_image_compress_mb", "plite_forward_max_nodes"):
+    for key in (
+        "plite_dedup_ttl",
+        "plite_cache_interval",
+        "plite_image_compress_mb",
+        "plite_forward_max_nodes",
+    ):
         if key not in paths:
             errors.append(f"FAIL: 缺少配置项 {key}")
 
@@ -78,15 +85,21 @@ def main() -> int:
         top_bridge = [p for p in paths if "." not in p]
         present = [p for p in top_bridge if p in schema_keys]
         if present != top_bridge:
-            errors.append("FAIL: schema 顶层缺失 bridge 字段 "
-                          f"(缺: {set(top_bridge) - set(present)})")
+            errors.append(
+                "FAIL: schema 顶层缺失 bridge 字段 "
+                f"(缺: {set(top_bridge) - set(present)})"
+            )
         # 相对顺序: 顶层首个 bridge 字段应为 plite_http_proxy (最高修改频率的顶层字段)
         if present and present[0] != "plite_http_proxy":
-            errors.append(f"FAIL: schema 顶层首个应为 plite_http_proxy, 实际 {present[0]}")
+            errors.append(
+                f"FAIL: schema 顶层首个应为 plite_http_proxy, 实际 {present[0]}"
+            )
         # 嵌套: 已废弃 parsers.items 不应存在 (统一 platforms)
         parsers_items = list((schema.get("parsers", {}).get("items") or {}).keys())
         if parsers_items:
-            errors.append(f"FAIL: 已废弃 parsers.items 不应注入: {parsers_items} (统一 platforms)")
+            errors.append(
+                f"FAIL: 已废弃 parsers.items 不应注入: {parsers_items} (统一 platforms)"
+            )
         # platforms (动态注入) 必须存在且含统一字段 (新结构 object/items 或旧模板)
         pfm = schema.get("platforms", {})
         if not pfm:
@@ -109,7 +122,9 @@ def main() -> int:
         # 5. AstrBot 兼容性: object 类型必须含 items (否则 _parse_schema KeyError)
         for k, v in schema.items():
             if isinstance(v, dict) and v.get("type") == "object" and "items" not in v:
-                errors.append(f"FAIL: object 类型配置 {k} 缺 items (AstrBot 解析会 KeyError)")
+                errors.append(
+                    f"FAIL: object 类型配置 {k} 缺 items (AstrBot 解析会 KeyError)"
+                )
 
     if errors:
         print("\n".join(errors))

@@ -23,12 +23,17 @@ def main() -> int:
         print(f"[SKIP] 未找到 {cfg_path} (插件未加载?)")
 
     # 2. 注入 schema
-    schema_path = base / "data" / "plugins" / "astrbot_plugin_parser_lite" / "_conf_schema.json"
+    schema_path = (
+        base / "data" / "plugins" / "astrbot_plugin_parser_lite" / "_conf_schema.json"
+    )
     if schema_path.exists():
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         print(f"[OK] schema 注入: {len(schema)} 字段")
-        bad = [k for k, v in schema.items()
-               if isinstance(v, dict) and v.get("type") == "object" and "items" not in v]
+        bad = [
+            k
+            for k, v in schema.items()
+            if isinstance(v, dict) and v.get("type") == "object" and "items" not in v
+        ]
         print(f"     object 缺 items: {bad if bad else '无'}")
     else:
         print(f"[SKIP] 未找到 {schema_path}")
@@ -46,7 +51,9 @@ def main() -> int:
     async def go():
         results = await run_checks()
         s = summarize(results)
-        print(f"[doctor] {s['ok']}/{s['total']} OK, {s['warn']} warn, {s['failed']} fail")
+        print(
+            f"[doctor] {s['ok']}/{s['total']} OK, {s['warn']} warn, {s['failed']} fail"
+        )
         for r in results:
             icon = "OK" if r.ok else ("WARN" if r.warn else "FAIL")
             print(f"  [{icon}] {r.name}: {r.detail[:60]}")

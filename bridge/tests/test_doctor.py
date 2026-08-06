@@ -195,9 +195,12 @@ def test_check_chromium_reports_missing_libs(monkeypatch):
     async def fake_started():
         raise RuntimeError("error while loading shared libraries: libnspr4.so")
 
-    monkeypatch.setattr(d, "_detect_missing_libs_hint", lambda: "libnspr4.so\nlibnss3.so")
+    monkeypatch.setattr(
+        d, "_detect_missing_libs_hint", lambda: "libnspr4.so\nlibnss3.so"
+    )
     try:
         from nonebot_plugin_parser_lite.utils.browser import BrowserManager
+
         monkeypatch.setattr(BrowserManager, "ensure_started", fake_started)
     except ImportError:
         pass  # 环境缺上游包时仅验证 hint 逻辑

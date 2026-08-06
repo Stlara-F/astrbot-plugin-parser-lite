@@ -1,6 +1,7 @@
 """
 Shared test infrastructure: path setup, result tracking, exit handling.
 """
+
 import os
 from pathlib import Path
 import sys
@@ -32,4 +33,5 @@ def sk(msg: str):
 
 def finish():
     import sys
+
     sys.exit(0 if results["FAIL"] == 0 else 1)

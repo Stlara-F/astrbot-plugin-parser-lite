@@ -43,7 +43,7 @@ def is_md5_ref(file_value: str) -> bool:
     """判断 file 字段是否为 md5 引用 (file:// + 32hex)."""
     if not isinstance(file_value, str) or not file_value.startswith("file://"):
         return False
-    _rest = file_value[len("file://"):].split(".")[0]
+    _rest = file_value[len("file://") :].split(".")[0]
     return len(_rest) == 32 and all(c in "0123456789abcdef" for c in _rest)
 
 
@@ -77,7 +77,9 @@ class MediaMd5Cache:
         def _set(d: dict):
             d[_k] = {"type": media_type, "size": int(size), "ts": time.time()}
             if len(d) > self._max:
-                for _old in sorted(d, key=lambda k2: d[k2].get("ts", 0))[:len(d) - self._max]:
+                for _old in sorted(d, key=lambda k2: d[k2].get("ts", 0))[
+                    : len(d) - self._max
+                ]:
                     d.pop(_old, None)
 
         self._store.update(_set)
@@ -99,13 +101,15 @@ def get_cache(max_entries: int = 200) -> MediaMd5Cache:
     if _CACHE is None:
         if _CACHE_GUARD is None:
             import threading
+
             _CACHE_GUARD = threading.Lock()
         with _CACHE_GUARD:
             if _CACHE is None:
                 from bridge.paths import state_dir
 
-                _CACHE = MediaMd5Cache(state_dir() / "media_md5.json",
-                                       max_entries=max_entries)
+                _CACHE = MediaMd5Cache(
+                    state_dir() / "media_md5.json", max_entries=max_entries
+                )
     return _CACHE
 
 

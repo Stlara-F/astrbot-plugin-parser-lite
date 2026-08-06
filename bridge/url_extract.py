@@ -50,11 +50,22 @@ def extract_card_json_url(data) -> str | None:
                 if obj.startswith("http"):
                     named_urls.append(obj)
             elif URL_RE.match(obj):
-                if not any(x in obj.lower() for x in ("icon", "logo", "avatar", "thumbnail", "imageview", ".png", ".jpg", ".ico")):
+                if not any(
+                    x in obj.lower()
+                    for x in (
+                        "icon",
+                        "logo",
+                        "avatar",
+                        "thumbnail",
+                        "imageview",
+                        ".png",
+                        ".jpg",
+                        ".ico",
+                    )
+                ):
                     raw_urls.append(obj)
 
-    return (named_urls[0] if named_urls else
-            raw_urls[0] if raw_urls else None)
+    return named_urls[0] if named_urls else raw_urls[0] if raw_urls else None
 
 
 def extract_json_urls(raw: str | dict, urls: list[str]) -> None:
@@ -66,8 +77,19 @@ def extract_json_urls(raw: str | dict, urls: list[str]) -> None:
     if not isinstance(payload, dict):
         return
     queue = [payload]
-    keys = ("url", "jumpUrl", "qqdocurl", "share_url", "jump_url", "link", "action_url",
-            "source_url", "redirect_url", "preview_url", "article_url")
+    keys = (
+        "url",
+        "jumpUrl",
+        "qqdocurl",
+        "share_url",
+        "jump_url",
+        "link",
+        "action_url",
+        "source_url",
+        "redirect_url",
+        "preview_url",
+        "article_url",
+    )
     seen_objs = set()
     while queue:
         obj = queue.pop(0)
@@ -89,10 +111,14 @@ def extract_json_urls(raw: str | dict, urls: list[str]) -> None:
 def extract_xml_urls(raw: str, urls: list[str]) -> None:
     """从 XML 卡片中提取 URL"""
     for tag in ("url", "qqdocurl", "jumpUrl", "share_url", "link"):
-        for m in re.finditer(rf"""<{tag}>\s*(https?://[^<\s]+)\s*</{tag}>""", raw, re.IGNORECASE):
+        for m in re.finditer(
+            rf"""<{tag}>\s*(https?://[^<\s]+)\s*</{tag}>""", raw, re.IGNORECASE
+        ):
             urls.append(m.group(1).strip())
     for attr in ("url", "qqdocurl", "jumpUrl", "share_url"):
-        for m in re.finditer(rf"""{attr}\s*=\s*['"](https?://[^\s'"<>]+)['"]""", raw, re.IGNORECASE):
+        for m in re.finditer(
+            rf"""{attr}\s*=\s*['"](https?://[^\s'"<>]+)['"]""", raw, re.IGNORECASE
+        ):
             urls.append(m.group(1).strip())
 
 
@@ -146,7 +172,11 @@ def extract_urls(event, comp_cls) -> list[str]:
     if not chain:
         msg_obj = getattr(event, "message_obj", None)
         if msg_obj:
-            chain = getattr(msg_obj, "message", None) or getattr(msg_obj, "message_chain", None) or []
+            chain = (
+                getattr(msg_obj, "message", None)
+                or getattr(msg_obj, "message_chain", None)
+                or []
+            )
     if not isinstance(chain, list):
         chain = []
 
@@ -168,10 +198,18 @@ def extract_urls(event, comp_cls) -> list[str]:
                 seg_data = getattr(seg, "data", None)
 
             if seg_type == "text" or "text" in seg_type:
-                t = seg_data.get("text", "") if isinstance(seg_data, dict) else str(seg_data or "")
+                t = (
+                    seg_data.get("text", "")
+                    if isinstance(seg_data, dict)
+                    else str(seg_data or "")
+                )
                 collect_urls(t, urls)
             elif "json" in seg_type or "miniapp" in seg_type:
-                d = seg_data.get("data", "") if isinstance(seg_data, dict) else str(seg_data or "")
+                d = (
+                    seg_data.get("data", "")
+                    if isinstance(seg_data, dict)
+                    else str(seg_data or "")
+                )
                 if isinstance(d, dict):
                     d = json.dumps(d, ensure_ascii=False)
                 if isinstance(d, str) and d:
@@ -180,7 +218,11 @@ def extract_urls(event, comp_cls) -> list[str]:
                         urls.append(url)
                     collect_urls(d, urls)
             elif "xml" in seg_type:
-                d = seg_data.get("data", "") if isinstance(seg_data, dict) else str(seg_data or "")
+                d = (
+                    seg_data.get("data", "")
+                    if isinstance(seg_data, dict)
+                    else str(seg_data or "")
+                )
                 if isinstance(d, dict):
                     d = json.dumps(d, ensure_ascii=False)
                 extract_xml_urls(d, urls)
@@ -188,7 +230,14 @@ def extract_urls(event, comp_cls) -> list[str]:
                 if isinstance(seg_data, dict):
                     rt = seg_data.get("text", "") or seg_data.get("message", "") or ""
                     if isinstance(rt, list):
-                        rt = " ".join((s.get("data", {}).get("text", "") if isinstance(s, dict) else str(s)) for s in rt)
+                        rt = " ".join(
+                            (
+                                s.get("data", {}).get("text", "")
+                                if isinstance(s, dict)
+                                else str(s)
+                            )
+                            for s in rt
+                        )
                     collect_urls(str(rt), urls)
             elif "markdown" in seg_type:
                 d = seg_data.get("data", "") or seg_data.get("content", "")

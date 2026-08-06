@@ -26,8 +26,14 @@ def _get_components():
     if _COMPONENTS_CACHE is None:
         from astrbot.api.message_components import File, Image, Record, Video
 
-        _COMPONENTS_CACHE = {"File": File, "Image": Image, "Record": Record, "Video": Video}
+        _COMPONENTS_CACHE = {
+            "File": File,
+            "Image": Image,
+            "Record": Record,
+            "Video": Video,
+        }
     return _COMPONENTS_CACHE
+
 
 @dataclass
 class SendReport:
@@ -46,8 +52,12 @@ class SendReport:
 
     def snapshot(self) -> dict:
         """模块级诊断快照 (并发下仅反映最近一次完成的任务)."""
-        return {"ok": self.ok, "segments": self.segments,
-                "errors": self.errors, "stage": self.stage}
+        return {
+            "ok": self.ok,
+            "segments": self.segments,
+            "errors": self.errors,
+            "stage": self.stage,
+        }
 
 
 def _onebot11_segments(segments) -> list[dict]:
@@ -74,8 +84,11 @@ def _log_onebot11(logger, stage: str, segments) -> None:
     """记录 OneBot11 发送 JSON 结构 (发送失败可倒查)."""
     try:
         import json
+
         segs = _onebot11_segments(segments)
-        logger.info(f"[ParserLite] onebot11 send [{stage}]: {json.dumps(segs, ensure_ascii=False)}")
+        logger.info(
+            f"[ParserLite] onebot11 send [{stage}]: {json.dumps(segs, ensure_ascii=False)}"
+        )
     except Exception:
         pass
 
@@ -88,8 +101,11 @@ def get_sendable_types() -> list[str]:
     for cls in getattr(ContentItem, "__args__", []) or []:
         name = getattr(cls, "__name__", "")
         if name in ("ImageContent", "VideoContent", "AudioContent"):
-            mapping[name] = {"ImageContent": "image", "VideoContent": "video",
-                             "AudioContent": "audio"}[name]
+            mapping[name] = {
+                "ImageContent": "image",
+                "VideoContent": "video",
+                "AudioContent": "audio",
+            }[name]
     return list(dict.fromkeys(["card", *mapping.values()]))
 
 
@@ -99,6 +115,7 @@ def should_send(media_type: str) -> bool:
         s = read_cfg(global_source(), "send_strategy", get_sendable_types())
         if isinstance(s, str):
             import json
+
             try:
                 s = json.loads(s)
             except Exception:
@@ -116,6 +133,7 @@ async def send_card(event, result, format_full: Callable, logger=None) -> SendRe
     _report = SendReport(stage="card")
     if logger is None:
         import logging
+
         logger = logging.getLogger("parser-lite.bridge.send")
 
     # 确保渲染补丁已应用 (safe_src 默认 method + pl_esc/pl_str 注册, 幂等)
@@ -165,7 +183,9 @@ async def send_card(event, result, format_full: Callable, logger=None) -> SendRe
             return _report
         except Exception as _e2:
             _reason2 = f"{type(_e2).__name__}: {_e2}"
-            logger.error(f"[ParserLite] 回退文本发送也失败 (OneBot API 可能不可用): {_reason2}")
+            logger.error(
+                f"[ParserLite] 回退文本发送也失败 (OneBot API 可能不可用): {_reason2}"
+            )
             _report.stage = "card-fallback"
             _report.errors.append(f"send: {_reason2}")
             return _report
@@ -184,9 +204,15 @@ def _plain(text: str):
     return Plain(text)
 
 
-async def send_media_file(event, path, media_type: str, source_url: str = "",
-                          converters: dict | None = None, logger=None,
-                          cover_path: str = "") -> SendReport:
+async def send_media_file(
+    event,
+    path,
+    media_type: str,
+    source_url: str = "",
+    converters: dict | None = None,
+    logger=None,
+    cover_path: str = "",
+) -> SendReport:
     """媒体发送入口 — fail-fast 预算 (P2-8): 每级 15s, 总 60s.
 
     内部 event.send 包装为受限调用: 单级卡死不耗尽全部时间预算.
@@ -205,15 +231,22 @@ async def send_media_file(event, path, media_type: str, source_url: str = "",
 
     event.send = _bounded_send
     try:
-        return await _send_media_impl(event, path, media_type, source_url,
-                                      converters, logger, cover_path)
+        return await _send_media_impl(
+            event, path, media_type, source_url, converters, logger, cover_path
+        )
     finally:
         event.send = _orig_send
 
 
-async def _send_media_impl(event, path, media_type: str, source_url: str = "",
-                           converters: dict | None = None, logger=None,
-                           cover_path: str = "") -> SendReport:
+async def _send_media_impl(
+    event,
+    path,
+    media_type: str,
+    source_url: str = "",
+    converters: dict | None = None,
+    logger=None,
+    cover_path: str = "",
+) -> SendReport:
     """媒体发送骨架 (md5 秒传 → 正常路径多级 failback).
 
     :param converters: 扩展回调 {"image": async fn(path)->bytes, "video": async fn(path)->Path,
@@ -233,6 +266,7 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
 
     if logger is None:
         import logging
+
         logger = logging.getLogger("parser-lite.bridge.send")
 
     p = Path(path)
@@ -250,8 +284,12 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
         return _report
     converters = converters or {}
     _Cmps = _get_components()
-    File, Image, Record, Video = _Cmps["File"], _Cmps["Image"], _Cmps["Record"], _Cmps["Video"]
-
+    File, Image, Record, Video = (
+        _Cmps["File"],
+        _Cmps["Image"],
+        _Cmps["Record"],
+        _Cmps["Video"],
+    )
 
     def _try_send(stage: str, segs, exc: Exception | None = None):
         _log_onebot11(logger, stage, segs)
@@ -278,7 +316,6 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
     except Exception:
         _use_b64 = False
 
-
     _m5 = None
     _md5_failed = None
     _fsz = 0
@@ -296,6 +333,7 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
             except Exception:
                 pass
         return _report
+
     # md5 秒传: 有缓存指纹 → file://md5 引用 (QQ 服务器资源秒回应, 参考
     # SnowLuma fast-upload; 失败 → 回退正常路径, 多级 failback)
     try:
@@ -373,7 +411,9 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
             return _report
         # 大文件阈值: 超限 → Comp.File 文件发送 (OneBot11 base64 大视频必失败)
         try:
-            _th_mb = int(read_cfg(global_source(), "plite_video_file_threshold_mb", 100) or 100)
+            _th_mb = int(
+                read_cfg(global_source(), "plite_video_file_threshold_mb", 100) or 100
+            )
         except Exception:
             _th_mb = 100
         if _fsz > _th_mb * 1024 * 1024:

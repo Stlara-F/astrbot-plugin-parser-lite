@@ -23,9 +23,11 @@ def _get_logger():
     """惰性获取日志器 — 无 astrbot 环境 (CI/离线测试) 时回退标准 logging."""
     try:
         from astrbot.api import logger as _l
+
         return _l
     except Exception:
         import logging
+
         return logging.getLogger("parser-lite.bridge.core")
 
 
@@ -104,10 +106,13 @@ def _is_parser_enabled(platform: str) -> bool:
         if "enable" in _pc:
             return bool(_pc["enable"])
         from bridge.resolve import BridgeConfig
+
         cfg = BridgeConfig.get_config()
         _disabled = [
             p.name.lower() if hasattr(p, "name") else str(p).lower()
-            for p in (cfg.disabled_platforms if hasattr(cfg, "disabled_platforms") else [])
+            for p in (
+                cfg.disabled_platforms if hasattr(cfg, "disabled_platforms") else []
+            )
         ]
         # 显式语义: 未配置任何禁用 → 全部启用 (设计默认)
         return platform not in _disabled
@@ -135,7 +140,8 @@ def _disabled_groups_store():
         from bridge.state_store import JsonStateStore
 
         _DISABLED_GROUPS_STORE = JsonStateStore(
-            _disabled_groups_path(), flush_every=1, flush_interval=0.5)
+            _disabled_groups_path(), flush_every=1, flush_interval=0.5
+        )
     return _DISABLED_GROUPS_STORE
 
 
@@ -149,6 +155,7 @@ def _load_disabled_groups() -> set[str]:
         _f = _disabled_groups_path()
         if _f.exists():
             import json
+
             _legacy = json.loads(_f.read_text(encoding="utf-8"))
             if isinstance(_legacy, list):
                 _store.update(lambda d: d.update({str(g): 1 for g in _legacy}))
@@ -177,15 +184,24 @@ def _detect_missing_libs() -> str:
     import ctypes
     import ctypes.util
 
-    libs = {"libnspr4.so": "nspr4", "libnss3.so": "nss3", "libgbm.so.1": "gbm",
-            "libasound.so.2": "asound", "libxkbcommon.so.0": "xkbcommon"}
-    missing = [s for s, n in libs.items()
-               if not (ctypes.util.find_library(n) and _try_load(ctypes.util.find_library(n)))]
+    libs = {
+        "libnspr4.so": "nspr4",
+        "libnss3.so": "nss3",
+        "libgbm.so.1": "gbm",
+        "libasound.so.2": "asound",
+        "libxkbcommon.so.0": "xkbcommon",
+    }
+    missing = [
+        s
+        for s, n in libs.items()
+        if not (ctypes.util.find_library(n) and _try_load(ctypes.util.find_library(n)))
+    ]
     return "\n".join(missing)
 
 
 def _try_load(path):
     import ctypes
+
     try:
         ctypes.cdll.LoadLibrary(path)
         return True
@@ -206,12 +222,14 @@ class LazyManager:
     def _get_lock(cls):
         if cls._lock is None:
             import threading
+
             cls._lock = threading.Lock()
         return cls._lock
 
     @classmethod
     def add(cls, key: str, result, url: str, timeout_sec: float) -> None:
         import asyncio
+
         if cls.Session is None:
             from dataclasses import dataclass
 
@@ -221,12 +239,14 @@ class LazyManager:
                 url: str
                 task: object
                 deadline: float
+
             cls.Session = _Session
         cls.remove(key)
         task = asyncio.create_task(cls._timeout_handler(key, timeout_sec))
         with cls._get_lock():
-            cls._sessions[key] = cls.Session(result=result, url=url, task=task,
-                                             deadline=time.time() + timeout_sec)
+            cls._sessions[key] = cls.Session(
+                result=result, url=url, task=task, deadline=time.time() + timeout_sec
+            )
 
     @classmethod
     def get(cls, key: str):

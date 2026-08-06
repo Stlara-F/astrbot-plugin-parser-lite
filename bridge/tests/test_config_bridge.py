@@ -68,9 +68,14 @@ def test_bridge_fields_structure():
     assert paths, "未解析到配置路径"
 
     # 必含新键
-    for key in ("plite_dedup_ttl", "plite_cache_interval",
-                "plite_image_compress_mb", "plite_forward_max_nodes",
-                "plite_http_proxy", "send_strategy"):
+    for key in (
+        "plite_dedup_ttl",
+        "plite_cache_interval",
+        "plite_image_compress_mb",
+        "plite_forward_max_nodes",
+        "plite_http_proxy",
+        "send_strategy",
+    ):
         assert key in paths, f"缺少配置项 {key}"
 
     # 无重复
@@ -88,8 +93,8 @@ def test_bridge_fields_no_deprecated():
     assert '"path": "parsers.items.cookies"' not in src
     assert '"path": "parsers.items.proxied"' not in src
     # platforms 统一勾选列表 (enabled/proxied) + cookies 动态模板 (纯字符串 options)
-    assert 'setdefault("proxied", {"type": "list"' in src
-    assert 'setdefault("enabled", {"type": "list"' in src
+    assert "_proxied = _pf_items.setdefault(" in src
+    assert "_enabled = _pf_items.setdefault(" in src
     assert '"type": "template_list"' in src
     assert "平台 Cookie" in src
     # options 必须纯字符串 (AstrBot 勾选列表按字符串渲染, 对象 → [object Object])
@@ -111,24 +116,23 @@ def test_object_fields_have_items():
     # 按条目切分
     entries = []
     depth = 0
-    i = block.find("{")
-    while i != -1:
-        j = i
+    pos = block.find("{")
+    while pos != -1:
+        cursor = pos
         depth = 0
-        while j < len(block):
-            c = block[j]
-            if c == "{":
+        while cursor < len(block):
+            ch = block[cursor]
+            if ch == "{":
                 depth += 1
-            elif c == "}":
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    entries.append(block[i:j + 1])
+                    entries.append(block[pos : cursor + 1])
                     break
-            j += 1
-        i = block.find("{", j + 1)
+            cursor += 1
+        pos = block.find("{", cursor + 1)
 
     objects = [e for e in entries if '"type": "object"' in e]
     assert objects, "应有 object 类型配置"
     for e in objects:
-        assert '"items"' in e or '"items_type"' in e, \
-            f"object 配置缺 items: {e[:80]}"
+        assert '"items"' in e or '"items_type"' in e, f"object 配置缺 items: {e[:80]}"

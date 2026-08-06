@@ -18,6 +18,7 @@ from pathlib import Path
 
 def _fixture_dir() -> Path | None:
     import os
+
     d = os.environ.get("PARSER_LITE_RECORD_DIR", "")
     return Path(d) if d else None
 
@@ -39,7 +40,9 @@ def _load_fixture(method: str, url: str):
         return None
 
 
-def _save_fixture(method: str, url: str, status: int, headers: dict, body: bytes) -> None:
+def _save_fixture(
+    method: str, url: str, status: int, headers: dict, body: bytes
+) -> None:
     d = _fixture_dir()
     if not d:
         return
@@ -48,8 +51,11 @@ def _save_fixture(method: str, url: str, status: int, headers: dict, body: bytes
         "method": method,
         "url": url,
         "status": status,
-        "headers": {k: v for k, v in headers.items() if k.lower() in
-                    ("content-type", "content-length", "set-cookie", "location")},
+        "headers": {
+            k: v
+            for k, v in headers.items()
+            if k.lower() in ("content-type", "content-length", "set-cookie", "location")
+        },
         "body_b64": __import__("base64").b64encode(body).decode(),
     }
     p = d / f"{_key(method, url)}.json"
@@ -62,6 +68,7 @@ def build_mock_transport():
     仅用于离线测试 — 通过 PARSER_LITE_REPLAY=1 启用.
     """
     import os
+
     if os.environ.get("PARSER_LITE_REPLAY") != "1":
         return None
     import httpx
@@ -71,6 +78,7 @@ def build_mock_transport():
         if fx is None:
             return httpx.Response(404, request=request, json={"error": "no fixture"})
         import base64
+
         body = base64.b64decode(fx["body_b64"])
         return httpx.Response(
             fx["status"],
@@ -104,15 +112,24 @@ def patch_httpx_send(replay: bool):
             fx = _load_fixture(request.method, str(request.url))
             if fx is not None:
                 import base64
+
                 return httpx.Response(
-                    fx["status"], headers=fx.get("headers", {}),
-                    content=base64.b64decode(fx["body_b64"]), request=request)
+                    fx["status"],
+                    headers=fx.get("headers", {}),
+                    content=base64.b64decode(fx["body_b64"]),
+                    request=request,
+                )
         resp = await original(self, request, *args, **kwargs)
         if d is not None:
             try:
                 await resp.aread()
-                _save_fixture(request.method, str(request.url),
-                              resp.status_code, resp.headers, resp.content)
+                _save_fixture(
+                    request.method,
+                    str(request.url),
+                    resp.status_code,
+                    resp.headers,
+                    resp.content,
+                )
             except Exception:
                 pass
         return resp
@@ -125,6 +142,7 @@ def patch_httpx_send(replay: bool):
 def install_httpx_hook() -> None:
     """按环境变量安装录制/回放钩子 (幂等, 无配置则不动作)."""
     import os
+
     d = os.environ.get("PARSER_LITE_RECORD_DIR", "")
     replay = os.environ.get("PARSER_LITE_REPLAY") == "1"
     if d or replay:

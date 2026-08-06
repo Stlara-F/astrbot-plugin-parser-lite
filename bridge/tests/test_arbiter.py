@@ -65,7 +65,9 @@ def test_parse_notice_valid():
 def test_parse_notice_invalid():
     assert parse_notice({"post_type": "message"}) is None
     assert parse_notice(None) is None
-    assert parse_notice({"post_type": "notice", "notice_type": "group_increase"}) is None
+    assert (
+        parse_notice({"post_type": "notice", "notice_type": "group_increase"}) is None
+    )
 
 
 class _FakeEvent:
