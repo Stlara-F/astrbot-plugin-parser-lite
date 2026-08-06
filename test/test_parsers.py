@@ -7,7 +7,7 @@
   py -3 test/test_parsers.py --online     # 全量: URL检测 + 在线解析 + 结构验证
   py -3 test/test_parsers.py --parser bilibili  # 单平台测试
 
-未来添加新解析器: 在 TEST_URLS 中新加一条即可.
+未来添加新解析器: 在 OFFLINE_URLS 中新加一条即可.
 """
 
 import argparse
@@ -42,7 +42,7 @@ from nonebot_plugin_parser_lite.parsers.base import BaseParser
 
 # ═══════════════════════════════════════════════════════════════
 # 测试用例: 格式 {平台名: [(真实URL, 期望显示名)]}
-# 可通过 AstrBot WebUI "test_urls" 表动态维护, 此处为离线回退数据
+# 离线回退 URL 数据 (在线模式: --online 时由 _FALLBACK_URLS 驱动)
 # ═══════════════════════════════════════════════════════════════
 _FALLBACK_URLS: list[str] = list(
     {
@@ -61,28 +61,13 @@ _FALLBACK_URLS: list[str] = list(
     }
 )
 
-import json as _json
 
-
-def _load_test_urls() -> list[str]:
-    try:
-        from main import BridgeConfig
-
-        source = BridgeConfig._source or {}
-        urls = source.get("test_urls", [])
-        if isinstance(urls, str):
-            try:
-                urls = _json.loads(urls)
-            except Exception:
-                urls = []
-        if urls and isinstance(urls, list):
-            return [u for u in urls if isinstance(u, str) and u.strip()]
-    except Exception:
-        pass
+def _load_offline_urls() -> list[str]:
+    """测试 URL 列表 (test_urls 配置字段 r9b 已删 → 静态回退)."""
     return list(_FALLBACK_URLS)
 
 
-TEST_URLS: list[str] = list(_FALLBACK_URLS)
+OFFLINE_URLS: list[str] = list(_FALLBACK_URLS)
 
 
 @dataclass
@@ -236,7 +221,7 @@ def _validate_structure(r: ParseResult, result: TestResult):
 # Phase 3: 平台覆盖率
 # ═══════════════════════════════════════════════════════════════
 def test_coverage(result: TestResult):
-    """验证 TEST_URLS 覆盖了所有平台."""
+    """验证 OFFLINE_URLS 覆盖了所有平台."""
     from nonebot_plugin_parser_lite.constants import PlatformEnum
 
     all_platforms = {p.name.lower() for p in PlatformEnum}
@@ -268,7 +253,7 @@ async def main():
         print("FATAL: test_parsers.py is not valid UTF-8", file=sys.stderr)  # noqa: T201
         return 1
 
-    urls = _load_test_urls()
+    urls = _load_offline_urls()
 
     ap = argparse.ArgumentParser()
     ap.add_argument(

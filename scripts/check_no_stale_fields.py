@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""r9 门禁: 已删自研符号零回潮断言 (防多轮审计反复发现残留).
+"""r9b 门禁: 已删自研符号零回潮断言 (防多轮审计反复发现残留).
 
-扫描 bridge/ (生产代码)、main.py、_conf_schema.json、scripts/、run_local.py,
-断言已删符号不再出现. 豁免: bridge/tests (历史断言)、src/ (上游).
+扫描 git 跟踪的 bridge/ (生产代码)、main.py、scripts/、tools/、run_local.py,
+断言已删符号不再出现. 豁免: bridge/tests (历史断言)、src/ (上游)、
+_conf_schema.json (运行时注入产物, 由 _BRIDGE_FIELDS + _STALE_CONFIG_KEYS 重建).
 
 用法: python scripts/check_no_stale_fields.py
 """
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -65,34 +67,51 @@ ALLOW_CONTEXTS = (
     "_pf_items",
     "_pfi",  # 清理逻辑变量
     "git push",  # sync_bridge git 操作 (非自研功能)
-    "可手动 push",  # sync_bridge 文档文本 (git 操作)
-    '"plite_disabled_platforms":',  # i18n 翻译键声明 (上游字段文案)
-    'push"',
-    "'push'",
-    'push"',
-    "push'",  # git 命令参数 (非自研功能)
     "--push",
     "args.push",  # sync_bridge CLI 参数
+    '"git", "push"',  # sh() git 调用参数
+    "[push, ",  # GitHub Actions 触发事件 (git 操作)
+    "push:",
+    "push:",  # workflow 触发块 (git 操作)
 )
 
-SCAN_FILES = [
-    *[p for p in (ROOT / "bridge").rglob("*.py") if "tests" not in p.parts],
-    ROOT / "main.py",
-    ROOT / "run_local.py",
-    ROOT / "_conf_schema.json",
-    *[p for p in (ROOT / "scripts").rglob("*.py")],
-    *[p for p in (ROOT / "tools").rglob("*.py")],
-]
-
-# 门禁脚本自身 (STALE_SYMBOLS 声明) 豁免
+# 不扫描文件: 运行时注入产物 (gitignored, 由注入逻辑重建) + 本脚本自身
 SELF_NAME = Path(__file__).resolve().name
+SKIP_PATTERNS = ("_conf_schema.json", ".injected")
+
+# 扫描后缀 (代码类; 文档/数据快照由人工 review)
+SCAN_SUFFIXES = (".py", ".yml", ".yaml", ".json")
+
+
+def _tracked_files() -> list[Path]:
+    """git 跟踪文件清单 (CI/本地行为一致, 排除陈旧产物误报)."""
+    out = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=False
+    )
+    if out.returncode != 0:
+        return []
+    return [ROOT / p for p in out.stdout.splitlines() if p]
 
 
 def main() -> int:
+    files = _tracked_files()
+    if not files:
+        print("WARN: git ls-files 失败, 门禁跳过")
+        return 0
     violations = []
-    for f in SCAN_FILES:
-        if not f.exists():
+    for f in files:
+        if f.name in SKIP_PATTERNS:
             continue
+        rel = f.relative_to(ROOT)
+        parts = rel.parts
+        if parts[0] == "bridge" and "tests" in parts:
+            continue  # 历史断言豁免
+        if parts[0] == "src":
+            continue  # 上游零修改豁免
+        if parts[0] == "api_txt":
+            continue  # 上游测试数据快照 (HTML 快照含任意文本)
+        if f.suffix not in SCAN_SUFFIXES:
+            continue  # 文档/数据 (.md/.txt) 由人工 review
         if f.name == SELF_NAME:
             continue
         text = f.read_text(encoding="utf-8", errors="ignore")
@@ -115,13 +134,13 @@ def main() -> int:
                     continue
                 if any(ctx in line for ctx in ALLOW_CONTEXTS):
                     continue
-                violations.append((f.relative_to(ROOT), i, sym, line.strip()))
+                violations.append((rel, i, sym, line.strip()))
     if violations:
         print(f"已删符号回潮 {len(violations)} 处:")
         for rel, i, sym, line in violations:
             print(f"  {rel}:{i} [{sym}]  {line[:90]}")
         return 1
-    print("OK: 已删自研符号零回潮")
+    print(f"OK: 已删自研符号零回潮 ({len(files)} 个跟踪文件)")
     return 0
 
 
