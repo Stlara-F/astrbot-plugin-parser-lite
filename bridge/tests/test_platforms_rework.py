@@ -26,9 +26,7 @@ from bridge.proxy import (  # noqa: E402
     cookies_entries,
     enabled_platforms,
     get_cookies_for,
-    platform_cfg,
     sync_cookies_to_upstream,
-    use_proxy_for,
 )
 from bridge.send import _onebot11_segments  # noqa: E402
 
@@ -48,7 +46,6 @@ def test_new_checklist_format_enabled():
             "platforms": {
                 "items": {
                     "enabled": ["bilibili", "zhihu"],
-                    "proxied": [],
                     "cookies": [],
                 }
             }
@@ -61,18 +58,9 @@ def test_new_checklist_format_enabled():
 
 def test_new_checklist_format_enabled_dict_values():
     """勾选列表支持 {"value": "x"} 形式 (AstrBot options)."""
-    _set_cfg(
-        {"platforms": {"items": {"enabled": [{"value": "bilibili"}], "proxied": []}}}
-    )
+    _set_cfg({"platforms": {"items": {"enabled": [{"value": "bilibili"}]}}})
     assert _is_parser_enabled("bilibili") is True
     assert _is_parser_enabled("weibo") is False
-
-
-def test_new_checklist_format_proxied():
-    """新格式: platforms.items.proxied 勾选 → 代理判定 (默认直连)."""
-    _set_cfg({"platforms": {"items": {"proxied": ["bilibili"]}}})
-    assert use_proxy_for("bilibili") is True
-    assert use_proxy_for("zhihu") is False
 
 
 def test_new_checklist_cookies_entries():
@@ -101,7 +89,6 @@ def test_astrbot_flattened_platforms():
         {
             "platforms": {
                 "enabled": ["bilibili", "zhihu"],
-                "proxied": ["bilibili"],
                 "cookies": [{"platform": "bilibili", "cookie": "SESSDATA=f"}],
             }
         }
@@ -109,7 +96,6 @@ def test_astrbot_flattened_platforms():
     assert _platforms_block()["items"]["enabled"] == ["bilibili", "zhihu"]
     assert _is_parser_enabled("bilibili") is True
     assert _is_parser_enabled("weibo") is False
-    assert use_proxy_for("bilibili") is True
     assert get_cookies_for("bilibili") == {"Cookie": "SESSDATA=f"}
 
 
@@ -130,10 +116,7 @@ def test_legacy_27_template_migration():
     )
     assert _is_parser_enabled("bilibili") is True
     assert _is_parser_enabled("zhihu") is False
-    assert use_proxy_for("bilibili") is True
-    assert use_proxy_for("zhihu") is False
     assert get_cookies_for("bilibili") == {"Cookie": "ck1"}
-    assert platform_cfg("bilibili")["proxy"] is True
 
 
 def test_cookie_dynamic_source_scan():

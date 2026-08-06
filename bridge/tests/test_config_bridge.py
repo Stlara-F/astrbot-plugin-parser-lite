@@ -73,7 +73,6 @@ def test_bridge_fields_structure():
         "plite_cache_interval",
         "plite_image_compress_mb",
         "plite_forward_max_nodes",
-        "plite_http_proxy",
         "send_strategy",
     ):
         assert key in paths, f"缺少配置项 {key}"
@@ -82,8 +81,8 @@ def test_bridge_fields_structure():
     assert len(paths) == len(set(paths)), "存在重复配置路径"
 
     # 修改频率排序: 高频 (代理/发送策略) 在前 (platforms 动态注入不在此列表)
-    assert paths[0] == "plite_http_proxy"
-    assert paths[1] == "send_strategy"
+    assert paths[0] == "send_strategy"
+    assert paths[1] == "plite_direct_link"
     assert paths[-1] in ("arbiter", "cookie_health")
 
 
@@ -93,7 +92,8 @@ def test_bridge_fields_no_deprecated():
     assert '"path": "parsers.items.cookies"' not in src
     assert '"path": "parsers.items.proxied"' not in src
     # platforms 统一勾选列表 (enabled/proxied) + cookies 动态模板 (纯字符串 options)
-    assert "_proxied = _pf_items.setdefault(" in src
+    # T2: proxied 已移除
+    assert "_proxied = _pf_items.setdefault(" not in src
     assert "_enabled = _pf_items.setdefault(" in src
     assert '"type": "template_list"' in src
     assert "平台 Cookie" in src

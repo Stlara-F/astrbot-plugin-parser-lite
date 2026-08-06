@@ -42,7 +42,6 @@ TRANSLATIONS: dict[str, str] = {
     "plite_duration_maximum": "视频音频最大时长秒",
     "plite_append_url": "结果附加原始URL",
     "plite_append_qrcode": "结果附加原始URL二维码",
-    "plite_disabled_platforms": "禁用的解析平台",
     "plite_blacklist_users": "黑名单用户",
     "plite_bili_video_codes": "B站视频编码",
     "plite_bili_video_quality": "B站视频清晰度",

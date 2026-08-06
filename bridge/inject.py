@@ -117,13 +117,6 @@ def _build_field_entry(fname: str, finfo, slider_hints: dict) -> dict | None:
 # ── 桥接扩展字段声明 (非硬编码平台: 仅桥接功能开关) ──────────────────────────
 _BRIDGE_FIELDS: list[dict] = [
     {
-        "path": "plite_http_proxy",
-        "type": "string",
-        "desc": tr("plite_http_proxy"),
-        "default": "",
-        "hint": "全局HTTP/HTTPS代理地址。例: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。留空则不使用代理。平台级走代理需在 platforms 勾选 proxied",
-    },
-    {
         "path": "send_strategy",
         "type": "list",
         "desc": tr("send_strategy"),
@@ -337,7 +330,6 @@ def inject_dynamic_options_static(schema_path: Path, flag_path: Path) -> list[st
 
 def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
     """注入主体 (被 inject_dynamic_options_static 包裹以提供失败反馈)."""
-    from nonebot_plugin_parser_lite.constants import PlatformEnum
 
     _UpConfig = up_config()
     BaseParser = up_base_parser()
@@ -413,13 +405,9 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         _enabled["default"] = list(_plats)
         _changed_platform = True
 
-    # proxied: 走代理的平台勾选 (替代旧 27 模板 proxy 开关)
-    _proxied = _pf_items.setdefault(
-        "proxied",
-        {"type": "list", "description": "走代理的平台", "options": [], "default": []},
-    )
-    if _proxied.get("options") != _plats:
-        _proxied["options"] = _plats
+    # T2: proxied (规则代理) 已移除 — 无 IP:端口填写入口, 代理体系收敛为直连
+    if "proxied" in _pf_items:
+        _pf_items.pop("proxied", None)
         _changed_platform = True
 
     # 动态源: 源码支持 cookie 的平台 (Config 中 plite_<platform>_ck 字段)
@@ -576,28 +564,11 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
             updated = True
             injected.append(bf["path"])
 
-    # 4) plite_disabled_platforms
-    platforms = sorted({p.name for p in PlatformEnum})
-    if _inject_new and schema.get("plite_disabled_platforms", {}).get("options") in (
-        ["__INJECT__"],
-        None,
-    ):
-        schema["plite_disabled_platforms"] = {
-            "type": "list",
-            "description": tr("plite_disabled_platforms"),
-            "options": platforms,
-            "default": [],
-        }
+    # 4) plite_disabled_platforms (T1: 移除 — 与 platforms.items.enabled 收敛,
+    #    旧 schema/配置残留键清理, 防 AstrBot 陈旧残留显示)
+    if "plite_disabled_platforms" in schema:
+        schema.pop("plite_disabled_platforms", None)
         updated = True
-        injected.append("plite_disabled_platforms")
-    elif isinstance(schema.get("plite_disabled_platforms"), dict):
-        if schema["plite_disabled_platforms"].get("description") != tr(
-            "plite_disabled_platforms"
-        ):
-            schema["plite_disabled_platforms"]["description"] = tr(
-                "plite_disabled_platforms"
-            )
-            updated = True
 
     # 5) parser_extra: 枚举字段 (description 恒翻译)
     _PARSER_EXTRA_MAP.clear()
@@ -681,7 +652,6 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         ]
         _known_order = [
             *[k for k in _up_keys if k in schema],
-            "plite_disabled_platforms",
             "parser_extra",
             "custom_parsers",
             "test_urls",

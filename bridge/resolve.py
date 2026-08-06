@@ -13,13 +13,7 @@ from typing import Any
 
 from bridge.cfg import global_source
 from bridge.context import BridgeConfig, up_base_parser, up_downloader
-from bridge.proxy import (
-    PROXY_PROTOCOLS,
-    apply_downloader_proxy,
-    build_feature_table,
-    read_proxy_config,
-    target_uses_proxy,
-)
+from bridge.proxy import apply_downloader_proxy, build_feature_table
 
 PARSE_TIMEOUT = 60.0  # 单次解析总超时(秒) — 防慢代理/死链拖死
 
@@ -45,7 +39,7 @@ class ParserLite:
         return None
 
     async def parse_url(self, url: str) -> Any:
-        """解析 URL → 上游 ParseResult (薄封装: 超时/代理语义/httpx 守卫)."""
+        """解析 URL → 上游 ParseResult (薄封装: 超时/httpx 守卫, 直连)."""
         BridgeConfig.configure()
         # 平台 cookie 同步: platforms.cookies 条目 → 上游 plite_*_ck (动态源, 幂等)
         try:
@@ -54,7 +48,6 @@ class ParserLite:
             sync_cookies_to_upstream()
         except Exception:
             pass
-        proxy_url = read_proxy_config()
         target = self._route_url(url)
         ordered = list(up_base_parser().get_all_subclass())
         if target:
@@ -62,10 +55,7 @@ class ParserLite:
                 c for c in ordered if c.__name__ != target
             ]
         self._ensure_parser_httpx(ordered)
-        # 默认直连; 代理为附加配置: 仅 platforms[].proxy 勾选的平台走代理
-        if proxy_url and target_uses_proxy(ordered, target):
-            return await self._parse_via_proxy(ordered, url, proxy_url)
-        # 直连 (默认)
+        # T2: 直连 (代理体系已收敛); apply_downloader_proxy("") 承担客户端重建
         apply_downloader_proxy("")
         try:
             return await asyncio.wait_for(
@@ -75,37 +65,6 @@ class ParserLite:
             raise TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}") from _e
         except Exception:
             return await self._try_custom_parsers(url)
-
-    async def _parse_via_proxy(self, ordered: list, url: str, proxy_url: str):
-        """代理轮询 (协议逐试) + 全失败回退直连."""
-
-        _try_protocols = PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
-        _last_err = None
-        for _proto in _try_protocols:
-            _px = _proto + proxy_url if "://" not in proxy_url else proxy_url
-            apply_downloader_proxy(_px)
-            try:
-                return await asyncio.wait_for(
-                    self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT
-                )
-            except asyncio.TimeoutError:
-                _last_err = TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}")
-                _logger.warning(f"[ParserLite] proxy {_px} 超时, 切换协议")
-                continue
-            except Exception as _e:
-                _last_err = _e
-                _logger.debug(f"[ParserLite] proxy {_px} failed: {_e}")
-                continue
-        _logger.warning(f"[ParserLite] 代理全部失败, 回退直连: {url[:60]}")
-        apply_downloader_proxy("")
-        try:
-            return await asyncio.wait_for(
-                self._try_all_parsers(ordered, url), timeout=PARSE_TIMEOUT
-            )
-        except asyncio.TimeoutError as _e:
-            raise TimeoutError(f"解析超时 ({PARSE_TIMEOUT:.0f}s): {url[:60]}") from _e
-        except Exception as _e2:
-            raise _last_err if _last_err is not None else _e2  # type: ignore[misc]
 
     async def _try_all_parsers(self, ordered: list, url: str) -> Any:
         """遍历解析器, 调用上游原始 search_url/parse (保留原始调用)."""

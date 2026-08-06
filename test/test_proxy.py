@@ -26,13 +26,13 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════════
-# C19: _is_parser_enabled 使用 disabled_platforms (非 parsers.disabled)
+# C19: _is_parser_enabled 不再引用 disabled_platforms (T1: 与 enabled 列表收敛)
 # ═══════════════════════════════════════════════════════════════
 ie_src = inspect.getsource(_m._is_parser_enabled)
-if "disabled_platforms" in ie_src:
-    ok("_is_parser_enabled uses disabled_platforms (upstream config)")
+if "disabled_platforms" not in ie_src:
+    ok("_is_parser_enabled 不再引用 disabled_platforms (收敛于 enabled 列表)")
 else:
-    bad("_is_parser_enabled does NOT reference disabled_platforms")
+    bad("_is_parser_enabled 仍引用 disabled_platforms (T1 未收敛)")
 
 
 # ═══════════════════════════════════════════════════════════════

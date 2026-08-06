@@ -74,16 +74,12 @@ _CONF_SCHEMA_PATH = Path(__file__).parent / "_conf_schema.json"
 
 # ── 兼容 re-export (从 bridge.core) — 保持外部 API / 测试稳定 ──
 from bridge.core import (  # noqa: F401
-    _PROXY_PROTOCOLS,
     _apply_downloader_proxy,
     _get_cookies_for,
     _is_parser_enabled,
     _label,
     _load_parsers_config,
-    _read_proxy_config,
-    _resolve_proxy_url,
     _try_load,
-    _use_proxy_for,
 )
 
 # ── Monkey-patch ────────────────────────────────────────────────────────────────
@@ -156,7 +152,6 @@ from nonebot_plugin_parser_lite.data import (
     StickerContent,
     VideoContent,
 )
-from nonebot_plugin_parser_lite.parsers.base import BaseParser
 from nonebot_plugin_parser_lite.utils.cache import CacheManager
 from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
 
@@ -1507,18 +1502,8 @@ class ParserLitePlugin(Star):
     async def parse_url(self, event: AstrMessageEvent, url: str) -> str:
         if self._blacklisted(event):
             return "黑名单用户"
-        cfg = get_config()
-        disabled = cfg.disabled_platforms
-        for d in disabled:
-            if isinstance(d, str):
-                d_name = d.lower()
-            else:
-                d_name = d.name.lower() if hasattr(d, "name") else str(d).lower()
-            if d_name:
-                for cls in BaseParser.get_all_subclass():
-                    p = getattr(cls, "platform", None)
-                    if p and p.name.lower() == d_name:
-                        return f"{p.display_name} 已禁用"
+        # T1: disabled_platforms 已移除 (与 platforms.items.enabled 收敛,
+        # 启用判定由 _is_parser_enabled 统一处理)
         result = await self._parse_and_format(url)
         return result or "无法解析该链接"
 

@@ -12,19 +12,8 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge.proxy import _mask_proxy  # noqa: E402
 from bridge.rate_limit import RateLimiter  # noqa: E402
 from bridge.state_store import JsonStateStore  # noqa: E402
-
-
-def test_mask_proxy_hides_credentials():
-    """代理日志脱敏: user:pass@ 凭证不出现."""
-    masked = _mask_proxy("socks5://user:pass@1.2.3.4:1080")
-    assert "user" not in masked
-    assert "pass" not in masked
-    assert masked == "socks5://1.2.3.4:1080"
-    assert _mask_proxy("") == "<not set>"
-    assert _mask_proxy("http://127.0.0.1:7890") == "http://127.0.0.1:7890"
 
 
 def test_rate_limit_max_entries(tmp_path):

@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # 修改频率分组 (用于断言排序: 高→低)
 # 重新设计后: 平台统一配置 platforms (enable/proxy/cookies) 最高频
-HIGH = {"platforms", "plite_http_proxy", "send_strategy"}
+HIGH = {"platforms", "send_strategy"}
 LOW = {"push", "delay_send", "arbiter", "cookie_health"}
 
 
@@ -50,12 +50,13 @@ def main() -> int:
         )
 
     # 2. 修改频率排序: 高频 (代理/发送策略) 在前 (platforms 为动态注入, 不在此列表)
-    if paths and paths[0] != "plite_http_proxy":
+    # T2: plite_http_proxy 已移除, 首个应为 send_strategy (最高修改频率的顶层字段)
+    if paths and paths[0] != "send_strategy":
         errors.append(
-            f"FAIL: 首个配置应为 plite_http_proxy (最高修改频率), 实际 {paths[0]}"
+            f"FAIL: 首个配置应为 send_strategy (最高修改频率), 实际 {paths[0]}"
         )
-    if paths and paths[1] != "send_strategy":
-        errors.append(f"FAIL: 第二个配置应为 send_strategy, 实际 {paths[1]}")
+    if paths and paths[1] != "plite_direct_link":
+        errors.append(f"FAIL: 第二个配置应为 plite_direct_link, 实际 {paths[1]}")
     # 已废弃的 parsers.items 不应再注入 (统一 platforms)
     for deprecated in ("parsers.items.cookies", "parsers.items.proxied"):
         if deprecated in paths:
@@ -89,11 +90,9 @@ def main() -> int:
                 "FAIL: schema 顶层缺失 bridge 字段 "
                 f"(缺: {set(top_bridge) - set(present)})"
             )
-        # 相对顺序: 顶层首个 bridge 字段应为 plite_http_proxy (最高修改频率的顶层字段)
-        if present and present[0] != "plite_http_proxy":
-            errors.append(
-                f"FAIL: schema 顶层首个应为 plite_http_proxy, 实际 {present[0]}"
-            )
+        # 相对顺序: 顶层首个 bridge 字段应为 send_strategy (最高修改频率的顶层字段)
+        if present and present[0] != "send_strategy":
+            errors.append(f"FAIL: schema 顶层首个应为 send_strategy, 实际 {present[0]}")
         # 嵌套: 已废弃 parsers.items 不应存在 (统一 platforms)
         parsers_items = list((schema.get("parsers", {}).get("items") or {}).keys())
         if parsers_items:
@@ -105,9 +104,9 @@ def main() -> int:
         if not pfm:
             errors.append("FAIL: 缺少 platforms 配置 (统一平台配置)")
         elif isinstance(pfm, dict) and ("items" in pfm or pfm.get("type") == "object"):
-            # 新结构: platforms.items.{enabled, proxied, cookies}
+            # 新结构: platforms.items.{enabled, cookies}
             items = pfm.get("items") or {}
-            for field in ("enabled", "proxied", "cookies"):
+            for field in ("enabled", "cookies"):
                 if field not in items:
                     errors.append(f"FAIL: platforms.items 缺少字段 {field}")
         else:

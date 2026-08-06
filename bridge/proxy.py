@@ -1,8 +1,7 @@
-"""代理桥接: DOWNLOADER 客户端代理注入 (扩展层, 与上游解耦).
+"""DOWNLOADER 客户端桥接 (扩展层, 与上游解耦).
 
-- monkey-patch DOWNLOADER.client 的 httpx/curl_cffi 实例 (库不读环境变量)
-- 平台级走代理: platforms[].proxy 勾选 (默认直连)
-- 代理失败回退直连 (附加配置不阻断解析)
+T2: 代理体系已收敛为直连 — 全局代理/规则代理配置移除,
+apply_downloader_proxy 仅承担插件重载后 DOWNLOADER 客户端重建职责.
 """
 
 from __future__ import annotations
@@ -11,11 +10,8 @@ import asyncio
 import logging
 import threading
 
-from bridge.cfg import bridge_cfg, global_source
+from bridge.cfg import global_source
 from bridge.context import up_downloader
-
-# 代理协议轮询列表 (curl_cffi 全支持, httpx 需 httpx[socks])
-PROXY_PROTOCOLS = ("http://", "https://", "socks5://", "socks5h://")
 
 _logger = logging.getLogger("nonebot_plugin_parser_lite")
 
@@ -25,61 +21,7 @@ def _log_cfg_fallback(exc: Exception) -> None:
     _logger.debug(f"[ParserLite] 配置读取回退: {exc}")
 
 
-_last_proxy: str | None = None
-
 _PROXY_LOCK = threading.Lock()
-
-
-def resolve_proxy_url(raw: str) -> str:
-    """从用户输入解析代理 URL.
-
-    支持完整协议 / 关键词 (socks5 等) / 裸地址 (ip:port 原样返回).
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        return ""
-    if "://" in raw:
-        return raw
-    _lower = raw.lower()
-    for _kw in ("socks5h ", "socks5 ", "socks4a ", "socks4 ", "socks "):
-        if _lower.startswith(_kw):
-            _proto = _kw.strip()
-            if _proto == "socks":
-                _proto = "socks5"
-            return f"{_proto}://{raw[len(_kw) :].strip()}"
-    return raw
-
-
-def _mask_proxy(raw: str) -> str:
-    """脱敏代理 URL: 仅保留 scheme + host[:port], 隐藏凭证 (user:pass@).
-
-    形如 socks5://user:pass@1.2.3.4:1080 → socks5://1.2.3.4:1080
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        return "<not set>"
-    try:
-        from urllib.parse import urlsplit
-
-        p = urlsplit(raw if "://" in raw else f"http://{raw}")
-        netloc = p.netloc
-        if "@" in netloc:
-            netloc = netloc.rsplit("@", 1)[1]  # 去凭证
-        host = netloc or p.path
-        return f"{p.scheme}://{host}" if p.scheme else host
-    except Exception:
-        return "***"
-
-
-def read_proxy_config() -> str:
-    """读取全局代理配置 (单一来源: read_cfg).
-
-    日志脱敏: 凭证 (user:pass@) 不落日志 (隐私).
-    """
-
-    px = bridge_cfg("plite_http_proxy", "") or ""
-    _logger.info(f"[ParserLite] proxy config: proxy={_mask_proxy(px)}")
-    return px
 
 
 def client_closed(client) -> bool:
@@ -102,29 +44,26 @@ async def _safe_close(_c):
         pass  # curl_cffi 未初始化会话关闭会抛 TypeError — 忽略 (B18: 收窄捕获)
 
 
-def apply_downloader_proxy(proxy_url: str):
-    """将代理注入 DOWNLOADER 的 httpx/curl_cffi 客户端.
+def apply_downloader_proxy(proxy_url: str = ""):
+    """重建 DOWNLOADER 客户端 (直连, T2: 代理配置已移除).
 
     并发安全: threading.Lock 互斥重建 (避免 client 抖动/重复替换).
-    早期返回: proxy 未变且 httpx 客户端存活 (None 视为未初始化 → 需重建).
-    日志脱敏: 凭证不落日志.
+    早期返回: 客户端存活 (None 视为未初始化 → 需重建).
+    :param proxy_url: 兼容旧签名, 恒忽略 (代理体系已收敛直连)
     """
-    global _last_proxy
-    proxy_url = resolve_proxy_url(proxy_url)
     with _PROXY_LOCK:
         client = up_downloader().client
         _httpx = getattr(client, "_httpx", None)
         _curl = getattr(client, "_curl", None)
         _httpx_alive = _httpx is not None and not getattr(_httpx, "is_closed", False)
         _curl_alive = _curl is not None and not getattr(_curl, "is_closed", False)
-        if proxy_url == (_last_proxy or "") and _httpx_alive and _curl_alive:
+        if _httpx_alive and _curl_alive:
             return
-        _last_proxy = proxy_url
         from curl_cffi import AsyncSession as CurlSession
         from httpx import AsyncClient as HttpxClient
         from httpx import Timeout
 
-        # 调度旧客户端关闭 (同次解析中可能轮询多个协议, 旧客户端需释放)
+        # 调度旧客户端关闭 (插件重载后残留客户端需释放)
         for _old_attr in ("_httpx", "_curl"):
             _old = getattr(client, _old_attr, None)
             if _old is not None:
@@ -136,35 +75,17 @@ def apply_downloader_proxy(proxy_url: str):
                         _old.close()
                     except (TypeError, RuntimeError):
                         pass
-        if not proxy_url:
-            client._httpx = HttpxClient(
-                verify=False, follow_redirects=True, timeout=Timeout(timeout=15)
-            )
-            client._curl = CurlSession(
-                impersonate="chrome146", timeout=240, verify=False, allow_redirects=True
-            )
-        else:
-            _p = proxy_url if "://" in proxy_url else f"http://{proxy_url}"
-            client._httpx = HttpxClient(
-                proxy=_p,
-                verify=False,
-                follow_redirects=True,
-                timeout=Timeout(timeout=15),
-            )
-            client._curl = CurlSession(
-                proxies={"http": _p, "https": _p},
-                impersonate="chrome146",
-                timeout=240,
-                verify=False,
-                allow_redirects=True,
-            )
+        client._httpx = HttpxClient(
+            verify=False, follow_redirects=True, timeout=Timeout(timeout=15)
+        )
+        client._curl = CurlSession(
+            impersonate="chrome146", timeout=240, verify=False, allow_redirects=True
+        )
 
-    _logger.info(
-        f"[ParserLite] downloader proxy: {_mask_proxy(proxy_url) or 'disabled'}"
-    )
+    _logger.info("[ParserLite] downloader client rebuilt (direct)")
 
 
-# ── 平台级决策 (统一勾选列表: platforms.items.{enabled,proxied,cookies}) ──
+# ── 平台级决策 (统一勾选列表: platforms.items.{enabled,cookies}) ──
 
 # 平台块惰性缓存: {源哈希: 归一化块}; configure() 更新 _source 后哈希变化自动失效
 _PLATFORMS_CACHE: dict[str, dict] = {}
@@ -204,10 +125,9 @@ def _platforms_block() -> dict:
 
 
 def platform_cfg(platform: str) -> dict:
-    """平台配置 (旧 27 模板迁移兼容: enable/proxy/cookies).
+    """平台配置 (旧 27 模板迁移兼容: enable/cookies; T2: proxy 键已剥离).
 
-    新格式 (items.enabled/proxied/cookies) 由 enabled_platforms/
-    proxied_platforms/cookies_entries 统一读取.
+    新格式 (items.enabled/cookies) 由 enabled_platforms/cookies_entries 统一读取.
     """
     try:
         _blk = _platforms_block()
@@ -218,9 +138,7 @@ def platform_cfg(platform: str) -> dict:
             _enabled = _items.get("enabled", [])
             if isinstance(_enabled, list) and _enabled:
                 _ret["enable"] = platform.lower() in _value_set(_enabled)
-            _proxied = _items.get("proxied", [])
-            if isinstance(_proxied, list) and _proxied:
-                _ret["proxy"] = platform.lower() in _value_set(_proxied)
+            # T2: proxied (规则代理) 已移除
             for _ck in _items.get("cookies", []) or []:
                 if (
                     isinstance(_ck, dict)
@@ -229,7 +147,7 @@ def platform_cfg(platform: str) -> dict:
                     _ret["cookies"] = str(_ck.get("cookie", "") or "")
                     break
             return _ret
-        # 旧格式: template_list / dict
+        # 旧格式: template_list / dict (proxy/use_proxy 键剥离)
         _legacy = _blk.get("_legacy_list")
         if isinstance(_legacy, list):
             for item in _legacy:
@@ -237,9 +155,18 @@ def platform_cfg(platform: str) -> dict:
                     isinstance(item, dict)
                     and str(item.get("platform", "")).lower() == platform.lower()
                 ):
-                    return item
+                    return {
+                        k: v for k, v in item.items() if k not in ("proxy", "use_proxy")
+                    }
         elif isinstance(_blk, dict):
-            return _blk.get(platform, {}) or {}
+            _legacy_dict = _blk.get(platform, {}) or {}
+            if isinstance(_legacy_dict, dict):
+                return {
+                    k: v
+                    for k, v in _legacy_dict.items()
+                    if k not in ("proxy", "use_proxy")
+                }
+            return {}
     except Exception as _cfg_e:
         _log_cfg_fallback(_cfg_e)
     return {}
@@ -264,16 +191,6 @@ def enabled_platforms() -> set[str] | None:
         return _value_set(_en) if isinstance(_en, list) and _en else None
     except Exception:
         return None
-
-
-def proxied_platforms() -> set[str]:
-    """新格式勾选走代理的平台集合 (默认空)."""
-    try:
-        _items = _platforms_block().get("items", {})
-        _px = _items.get("proxied", [])
-        return _value_set(_px) if isinstance(_px, list) else set()
-    except Exception:
-        return set()
 
 
 def cookies_entries() -> list[dict]:
@@ -352,27 +269,6 @@ def load_parsers_config() -> dict:
     return {}
 
 
-def use_proxy_for(platform: str) -> bool:
-    """平台是否走代理: platforms.items.proxied 勾选 (默认直连).
-
-    旧格式兼容: 27 模板 platforms[].proxy / parsers.items.proxied (废弃).
-    """
-    try:
-        _proxied = proxied_platforms()
-        if _proxied:
-            return platform.lower() in _proxied
-        _pc = platform_cfg(platform)
-        if "proxy" in _pc:
-            return bool(_pc["proxy"])
-        if "use_proxy" in _pc:
-            return bool(_pc["use_proxy"])
-        # 迁移期兼容: parsers.items.proxied (废弃)
-        proxied = load_parsers_config().get("proxied", [])
-        return platform.lower() in [str(p).lower() for p in proxied]
-    except Exception:
-        return False
-
-
 def get_cookies_for(platform: str) -> dict:
     """平台 Cookie: platforms.items.cookies 条目 (新格式, 自动同步上游).
 
@@ -413,24 +309,6 @@ def get_cookies_for(platform: str) -> dict:
     except Exception as _cfg_e:
         _log_cfg_fallback(_cfg_e)
     return {}
-
-
-def target_uses_proxy(ordered: list, target: str | None) -> bool:
-    """目标平台是否勾选代理 (platforms[].proxy). 默认直连."""
-    try:
-        if target:
-            for cls in ordered:
-                if cls.__name__ == target:
-                    pn = getattr(getattr(cls, "platform", None), "name", "") or ""
-                    return use_proxy_for(str(pn).lower())
-            return False
-        for cls in ordered:
-            pn = getattr(getattr(cls, "platform", None), "name", "") or ""
-            if pn and use_proxy_for(str(pn).lower()):
-                return True
-        return False
-    except Exception:
-        return False
 
 
 def build_feature_table() -> dict:

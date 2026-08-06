@@ -63,8 +63,6 @@ def test_key_functions_single_owner():
     """关键叶子功能有且唯一实现."""
     owner_map = {
         "read_cfg": "cfg.py",
-        "resolve_proxy_url": "proxy.py",
-        "read_proxy_config": "proxy.py",
         "apply_downloader_proxy": "proxy.py",
         "strip_html_to_text": "render_patch.py",
         "clean_result_html": "render_patch.py",
@@ -75,13 +73,13 @@ def test_key_functions_single_owner():
         "extract_urls": "url_extract.py",
         "make_debouncer": "debounce.py",
         "make_limiter": "rate_limit.py",
-        "make_delay_sender": "delay_send.py",
-        "make_cookie_health": "cookie_health.py",
         "make_pusher": "push.py",
         "BridgeConfig": "context.py",
         "ParserLite": "resolve.py",
         "CustomParser": "custom_parser.py",
         "inject_dynamic_options_static": "inject.py",
+        "apply_downloader_proxy": "proxy.py",
+        "sync_cookies_to_upstream": "proxy.py",
     }
     for fn, owner in owner_map.items():
         files = []

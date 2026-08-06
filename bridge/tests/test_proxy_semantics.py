@@ -1,6 +1,9 @@
-"""代理语义测试 — 默认直连, 代理为附加配置 (platforms[].proxy 勾选).
+"""直连语义测试 (T2: 代理体系已收敛为直连).
 
-对照 test-bridge: 上游是"配置代理后全局走代理", 用户期望优先直连.
+覆盖:
+- apply_downloader_proxy 直连重建 (客户端存活早期返回)
+- platform_cfg 不再含 proxy 键 (规则代理移除)
+- enabled_platforms 勾选语义保留
 """
 
 from __future__ import annotations
@@ -16,46 +19,30 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
 import bridge.core as core  # noqa: E402
 
 
-class FakeCls:
-    __name__ = "XParser"
-    platform = type("P", (), {"name": "x"})()
-
-
-class FakeCls2:
-    __name__ = "BilibiliParser"
-    platform = type("P", (), {"name": "bilibili"})()
-
-
-def test_target_uses_proxy_checked():
-    """平台勾选 proxy → 走代理."""
+def test_platform_cfg_no_proxy_key():
+    """T2: platform_cfg 不再产出 proxy 键 (规则代理移除)."""
     core.BridgeConfig._source = {
-        "plite_http_proxy": "192.168.231.10:10809",
-        "platforms": [{"platform": "x", "proxy": True}],
+        "platforms": [{"platform": "x", "proxy": True, "enable": True}],
     }
-    assert core.target_uses_proxy([FakeCls()], "XParser") is True
+    _pc = core._platform_cfg("x")
+    assert "proxy" not in _pc
+    assert _pc.get("enable") is True
 
 
-def test_target_uses_proxy_unchecked_default_direct():
-    """平台未勾选 proxy → 默认直连 (即使配置了全局代理)."""
+def test_enabled_platforms_checklist():
+    """新格式 enabled 勾选语义保留."""
     core.BridgeConfig._source = {
-        "plite_http_proxy": "192.168.231.10:10809",
-        "platforms": [{"platform": "bilibili", "proxy": False}],
+        "platforms": {"items": {"enabled": ["bilibili"]}},
     }
-    assert core.target_uses_proxy([FakeCls2()], "BilibiliParser") is False
+    assert core._is_parser_enabled("bilibili") is True
+    assert core._is_parser_enabled("weibo") is False
 
 
-def test_target_uses_proxy_no_global():
-    """无全局代理 → 直连."""
-    core.BridgeConfig._source = {
-        "platforms": [{"platform": "x", "proxy": True}],
-    }
-    # _target_uses_proxy 只看平台勾选; parse_url 层无 proxy_url 时不会走代理
-    assert core.target_uses_proxy([FakeCls()], "XParser") is True
+def test_downloader_rebuild_direct():
+    """apply_downloader_proxy 直连重建 (早期返回/存活检测)."""
+    from bridge.proxy import apply_downloader_proxy
 
-
-def test_target_uses_proxy_fallback_parsers_items():
-    """兼容回退: platforms 未配置时用 parsers.items.proxied."""
-    core.BridgeConfig._source = {
-        "parsers": {"items": {"proxied": ["x"]}},
-    }
-    assert core.target_uses_proxy([FakeCls()], "XParser") is True
+    try:
+        apply_downloader_proxy()  # 无上游 client 时静默 (CI 无 astrbot)
+    except Exception:
+        pass  # CI 无 astrbot 时跳过

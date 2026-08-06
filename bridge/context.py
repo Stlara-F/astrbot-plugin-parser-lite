@@ -91,7 +91,7 @@ class BridgeConfig:
     @classmethod
     def configure(cls, _config: dict | None = None, **kwargs):
         # R4: 统一从 proxy 导入 (不绕路 resolve)
-        from bridge.proxy import apply_downloader_proxy, read_proxy_config
+        from bridge.proxy import apply_downloader_proxy
 
         _UpConfig = up_config()
         data = {**(_config or getattr(cls, "_source", {}) or {}), **kwargs}
@@ -159,7 +159,8 @@ class BridgeConfig:
         dl.MAX_RETRIES = _cfg.max_retries
         if hasattr(dl, "max_size_mb"):
             dl.max_size_mb = _cfg.max_size
-        apply_downloader_proxy(read_proxy_config())
+        # T2: 代理体系已收敛直连; 重建 DOWNLOADER 客户端 (插件重载后残留清理)
+        apply_downloader_proxy("")
         try:
             from astrbot.api import logger as _alog
         except Exception:

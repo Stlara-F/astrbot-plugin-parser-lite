@@ -45,14 +45,10 @@ from bridge.context import (
 
 # ── re-export: 代理/平台决策/特征表 ─────────────────────────────────────────
 from bridge.proxy import (  # noqa: F401,E402
-    PROXY_PROTOCOLS as _PROXY_PROTOCOLS,
-)
-from bridge.proxy import (
     apply_downloader_proxy as _apply_downloader_proxy,
 )
 from bridge.proxy import (
     build_feature_table,
-    target_uses_proxy,
 )
 from bridge.proxy import (
     client_closed as _client_closed,
@@ -65,15 +61,6 @@ from bridge.proxy import (
 )
 from bridge.proxy import (
     platform_cfg as _platform_cfg,
-)
-from bridge.proxy import (
-    read_proxy_config as _read_proxy_config,
-)
-from bridge.proxy import (
-    resolve_proxy_url as _resolve_proxy_url,
-)
-from bridge.proxy import (
-    use_proxy_for as _use_proxy_for,
 )
 
 # ── re-export: 解析编排 ─────────────────────────────────────────────────────
@@ -92,9 +79,10 @@ def _build_feature_table():
 
 
 def _is_parser_enabled(platform: str) -> bool:
-    """平台启用判定 (复用 proxy 单一实现, 无配置 → 全部启用).
+    """平台启用判定 (T1: 与 enabled 列表收敛, 无配置 → 全部启用).
 
-    优先级: platforms.items.enabled 勾选 → 旧模板 enable → 上游 disabled_platforms.
+    优先级: platforms.items.enabled 勾选 → 旧模板 enable → True.
+    (plite_disabled_platforms 已移除, 与 enabled 语义重合)
     """
     try:
         from bridge.proxy import enabled_platforms
@@ -105,15 +93,8 @@ def _is_parser_enabled(platform: str) -> bool:
         _pc = _platform_cfg(platform)
         if "enable" in _pc:
             return bool(_pc["enable"])
-        cfg = BridgeConfig.get_config()  # 顶部已 import (R3: 不绕路 resolve)
-        _disabled = [
-            p.name.lower() if hasattr(p, "name") else str(p).lower()
-            for p in (
-                cfg.disabled_platforms if hasattr(cfg, "disabled_platforms") else []
-            )
-        ]
-        # 显式语义: 未配置任何禁用 → 全部启用 (设计默认)
-        return platform not in _disabled
+        # 显式语义: 未配置勾选 → 全部启用 (设计默认)
+        return True
     except Exception:
         return True
 

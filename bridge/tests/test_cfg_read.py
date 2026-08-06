@@ -55,14 +55,6 @@ def test_load_parsers_config_flat():
     assert cfg.get("proxied") == ["bilibili"]
 
 
-def test_use_proxy_for_nested():
-    core.BridgeConfig._source = {
-        "parsers": {"items": {"proxied": ["bilibili"]}},
-    }
-    assert core._use_proxy_for("bilibili") is True
-    assert core._use_proxy_for("zhihu") is False
-
-
 def test_get_cookies_template_list():
     """cookies 为可增删列表 [{platform, cookie}]."""
     core.BridgeConfig._source = {
@@ -100,7 +92,6 @@ def test_platform_cfg_template_list():
             {"platform": "zhihu", "enable": False},
         ],
     }
-    assert core._platform_cfg("bilibili")["use_proxy"] is True
     assert core._platform_cfg("zhihu")["enable"] is False
     assert core._platform_cfg("douyin") == {}
 
@@ -120,18 +111,6 @@ def test_platform_enable_priority():
     }
     # _is_parser_enabled 读取 platforms.enable
     assert core._is_parser_enabled("bilibili") is False
-
-
-def test_platform_proxy_priority_over_parsers_items():
-    """platforms.proxy 优先于 parsers.items.proxied (单一事实来源)."""
-    core.BridgeConfig._source = {
-        "platforms": [{"platform": "bilibili", "proxy": True}],
-        "parsers": {"items": {"proxied": ["bilibili", "zhihu"]}},
-    }
-    assert core._use_proxy_for("bilibili") is True
-    # zhihu 未在 platforms 配置 → 兼容回退 parsers.items.proxied
-    assert core._use_proxy_for("zhihu") is True
-    assert core._use_proxy_for("douyin") is False
 
 
 def test_platform_cookies_priority_over_parsers_items():
