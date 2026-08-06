@@ -14,6 +14,6 @@ _conf_schema.json
 # Doctor snapshot (runtime)
 test/_doctor_snapshot.json
 
-# 运行时状态缓存 (media_md5/debounce/rate_limit 等)
+# 运行时状态缓存
 parser_lite/
 media_md5.json

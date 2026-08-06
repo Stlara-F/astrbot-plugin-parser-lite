@@ -2,8 +2,8 @@
 
 设计原则: 每个叶子功能有且唯一 (单点事实来源):
 - read_cfg             → cfg.py (唯一配置读取入口)
-- _resolve_proxy_url   → core.py (唯一代理解析)
-- strip_html_to_text   → render_patch.py (唯一 HTML→文本)
+- 解析委托            → resolve.py (唯一上游 Parser 调用)
+- clean_result_html    → render_patch.py (唯一渲染结果归一)
 - format_full/brief    → format.py (唯一文本格式化)
 - url 提取            → url_extract.py (唯一)
 - 状态持久化 _load/save → 各状态类内 (模式统一, 无跨模块重复)

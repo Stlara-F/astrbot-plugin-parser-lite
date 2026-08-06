@@ -26,7 +26,6 @@ TRANSLATIONS: dict[str, str] = {
     "plite_need_upload_video": "上传视频文件",
     "plite_use_base64": "Base64编码发送",
     "plite_max_size": "资源最大大小MB",
-    "plite_disabled_platforms": "禁用平台列表 (与 enabled 勾选互斥)",
     "plite_duration_maximum": "视频音频最大时长秒",
     "plite_append_url": "结果附加原始URL",
     "plite_append_qrcode": "结果附加原始URL二维码",

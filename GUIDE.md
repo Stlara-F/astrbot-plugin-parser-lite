@@ -15,17 +15,9 @@ pip install -r requirements.txt
 
 重启后在 AstrBot WebUI → 插件配置中找到 `链接分享自动解析插件`。
 
-### 代理
+### 网络
 
-`plite_http_proxy` 支持裸 `ip:port` 输入：
-
-| 输入 | 结果 |
-|------|------|
-| `192.168.1.1:10809` | 自动轮询 `http/https/socks5/socks5h`，首次连通即用 |
-| `socks5 192.168.1.1:10809` | `socks5://192.168.1.1:10809` |
-| `http://192.168.1.1:10809` | 原样 |
-
-Docker 容器访问宿主机代理：`host.docker.internal:10809`（Windows/Mac）或 `172.17.0.1:10809`（Linux）。
+解析请求默认直连 (r8 起代理体系已收敛, 不再支持全局代理配置).
 
 ### Cookie
 
@@ -80,11 +72,10 @@ py -3 test/run_all.py --online
 
 ## 排查
 
-### 代理不生效
-1. 确认 WebUI 中已填写 `plite_http_proxy`
-2. 进容器验证：`curl -x http://ip:port https://www.google.com`
-3. 看日志 `[ParserLite] proxy config:` 行，确认 `pyx=` 有值且 `sources=` 来源正确
-4. 如果配置在旧插件实例中，检查 `enabled_plugins_name` 确认当前运行的实例名
+### 网络异常排查
+1. 确认解析源可访问 (`curl https://www.bilibili.com` 等)
+2. 查看日志定位超时/失败的解析阶段
+3. 若使用旧版插件实例, 检查 `enabled_plugins_name` 确认当前运行的实例名
 
 ### 卡片渲染失败 / 模板缺失
 1. 确认 `render/templates/default.html.jinja` 已部署

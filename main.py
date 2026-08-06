@@ -158,8 +158,6 @@ inject_dynamic_options_static(
 
 
 # ── 格式化 ────────────────────────────────────────────────────────────────────
-# ── 格式化 (已移至 bridge.format) ──
-# ── 懒下载管理器 ──────────────────────────────────────────────────────────────
 class ParserLitePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -1079,7 +1077,7 @@ class ParserLitePlugin(Star):
             )
 
     async def cmd_bm(self, event: AstrMessageEvent):
-        """下载 B站音频: 从当前消息 / 懒下载会话 / 回复消息 三路提取 BV 号"""
+        """下载 B站音频: 从当前消息 / 回复消息 两路提取 BV 号"""
         text = event.get_message_str()
         bvid = None
 
@@ -1088,7 +1086,7 @@ class ParserLitePlugin(Star):
         if m:
             bvid = m.group(0)
 
-        # 2) r8: 懒下载会话已移除 (LazyManager 删除)
+        # 2) 从回复消息提取 BV 号
 
         # 3) 从被回复的消息中提取 BV (上游 BvReplyMergeExtension 等价实现)
         if not bvid:
@@ -1109,7 +1107,7 @@ class ParserLitePlugin(Star):
                             break
 
         if not bvid:
-            yield event.plain_result("未找到BV号 (当前消息/懒下载会话/回复消息均无)")
+            yield event.plain_result("未找到BV号 (当前消息/回复消息均无)")
             return
 
         from nonebot_plugin_parser_lite.parsers.bilibili import BilibiliParser

@@ -2,7 +2,7 @@
 
 架构 (参考 PR #1 薄桥接):
 - context.py   : 上游引用聚合 + BridgeConfig 单例
-- proxy.py     : 代理注入 + 平台决策 + 特征表
+- proxy.py     : 代理注入 + 平台决策
 - resolve.py   : ParserLite 薄解析编排
 - inject.py    : 0 硬编码动态注入决策树
 - core.py      : 兼容 re-export + disabled_groups 持久化 + 环境检测
@@ -40,7 +40,7 @@ from bridge.context import (
     label as _label,
 )
 
-# ── re-export: 代理/平台决策/特征表 ─────────────────────────────────────────
+# ── re-export: 代理/平台决策 ────────────────────────────────────────────────
 from bridge.proxy import (  # noqa: F401,E402
     apply_downloader_proxy as _apply_downloader_proxy,
 )

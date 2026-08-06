@@ -87,7 +87,7 @@ await parser.aclose()
 ```python
 from nonebot_plugin_parser_lite import configure
 
-configure(plite_max_comments=10, plite_disabled_platforms=["x"])
+configure(plite_max_comments=10, plite_max_retries=3)
 ```
 
 缓存根目录默认是当前目录的 `.parser-lite`，可通过 `PARSER_LITE_BASE_DIR` 修改。
