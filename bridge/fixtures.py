@@ -120,7 +120,7 @@ def patch_httpx_send(replay: bool):
                     request=request,
                 )
         resp = await original(self, request, *args, **kwargs)
-        if d is not None:
+        if d is not None and not replay:  # replay 模式不录制 (防意外生成 fixture)
             try:
                 await resp.aread()
                 _save_fixture(
