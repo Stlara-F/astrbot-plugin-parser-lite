@@ -78,7 +78,6 @@ def test_key_functions_single_owner():
         "ParserLite": "resolve.py",
         "CustomParser": "custom_parser.py",
         "inject_dynamic_options_static": "inject.py",
-        "apply_downloader_proxy": "proxy.py",
         "sync_cookies_to_upstream": "proxy.py",
     }
     for fn, owner in owner_map.items():

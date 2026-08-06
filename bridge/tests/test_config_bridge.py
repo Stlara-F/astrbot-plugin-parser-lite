@@ -80,10 +80,10 @@ def test_bridge_fields_structure():
     # 无重复
     assert len(paths) == len(set(paths)), "存在重复配置路径"
 
-    # 修改频率排序: 高频 (代理/发送策略) 在前 (platforms 动态注入不在此列表)
+    # 修改频率排序: 高频 (发送策略) 在前 (platforms 动态注入不在此列表)
     assert paths[0] == "send_strategy"
     assert paths[1] == "plite_direct_link"
-    assert paths[-1] in ("arbiter", "cookie_health")
+    assert paths[-1] in ("push_interval", "push")  # T3: arbiter/cookie_health 已移除
 
 
 def test_bridge_fields_no_deprecated():
@@ -133,6 +133,6 @@ def test_object_fields_have_items():
         pos = block.find("{", cursor + 1)
 
     objects = [e for e in entries if '"type": "object"' in e]
-    assert objects, "应有 object 类型配置"
+    # T3: delay_send/arbiter/cookie_health 移除后可能无 object 类型; 有则必须含 items
     for e in objects:
         assert '"items"' in e or '"items_type"' in e, f"object 配置缺 items: {e[:80]}"

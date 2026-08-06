@@ -8,6 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
@@ -31,36 +33,15 @@ def test_module_cfg_json_string():
     assert cfg.module_cfg({"push": "not-json"}, "push", []) == []
 
 
-def test_delay_send_cfg_injected():
-    """delay_send: 注入配置源独立运行 (无全局依赖)."""
-    from bridge.delay_send import load_cfg
+def test_removed_modules_cfg():
+    """T3: delay_send/arbiter/cookie_health 已移除 (配置段不再存在)."""
+    import importlib
+    import sys
 
-    c = load_cfg({"delay_send": {"enabled": True, "threshold_mb": 50}})
-    assert c["enabled"] is True
-    assert c["threshold_mb"] == 50
-    assert c["timeout_sec"] == 300.0
-    c2 = load_cfg({})
-    assert c2["enabled"] is False
-
-
-def test_arbiter_cfg_injected():
-    """arbiter: 注入配置源独立运行."""
-    from bridge.arbiter import load_cfg
-
-    c = load_cfg({"arbiter": {"enabled": True, "emoji": "❤", "window_sec": 2.0}})
-    assert c["enabled"] is True
-    assert c["emoji"] == "❤"
-    assert c["window_sec"] == 2.0
-    assert load_cfg({})["enabled"] is False
-
-
-def test_cookie_health_cfg_injected():
-    """cookie_health: 注入配置源独立运行."""
-    from bridge.cookie_health import load_cfg
-
-    c = load_cfg({"cookie_health": {"enabled": True, "interval_sec": 7200}})
-    assert c["enabled"] is True
-    assert c["interval_sec"] == 7200
+    for mod in ("bridge.delay_send", "bridge.arbiter", "bridge.cookie_health"):
+        sys.modules.pop(mod, None)
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(mod)
 
 
 def test_push_cfg_injected():

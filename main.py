@@ -60,7 +60,6 @@ from astrbot.api.star import Context, Star
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
 from bridge.cfg import bridge_cfg
 from bridge.core import (
-    BridgeConfig,
     LazyManager,
     ParserLite,
     _detect_missing_libs,
@@ -178,7 +177,6 @@ class ParserLitePlugin(Star):
         self._recently_lock = __import__("threading").Lock()
         self._limiter = None  # 延迟到 initialize 创建 (需要 base_dir)
         self._debouncer = None  # 链接级防抖 (E5)
-        self._delay_sender = None  # 延迟发送 (F7)
 
     async def initialize(self) -> None:
         try:
@@ -263,45 +261,7 @@ class ParserLitePlugin(Star):
             except Exception as _e:
                 astrbot_logger.warning(f"[ParserLite] 推送初始化跳过: {_e}")
                 self._pusher = None
-            # F4: Cookie 健康检查 (配置驱动, 默认关闭)
-            self._cookie_health = None
-            try:
-                from bridge.cookie_health import load_cfg as _ch_cfg
-                from bridge.cookie_health import make_cookie_health
-                from bridge.paths import state_dir as _state_dir
-
-                _ck_cfg = _ch_cfg()
-                self._cookie_health = make_cookie_health(_state_dir())
-                _ck_interval = float(_ck_cfg.get("interval_sec", 3600) or 3600)
-                # A4/A5: cookies 字典从上游 plite_*_ck 字段动态生成 (平台名 = 字段名中段)
-                _cookies = {}
-                for _fname in list(BridgeConfig._source or {}):
-                    if _fname.startswith("plite_") and _fname.endswith("_ck"):
-                        _cookies[_fname[len("plite_") : -len("_ck")]] = (
-                            bridge_cfg(_fname, "") or ""
-                        )
-
-                async def _ck_notify(msg: str):
-                    # P2-5: 移除无效的 GroupMessage:0 发送 (不存在群 ID, 异常被吞致通知静默失效);
-                    # 通知以 warning 日志呈现 (配置 notify 群功能留待后续)
-                    astrbot_logger.warning(msg)
-
-                if _ck_cfg.get("enabled", False):
-                    self._cookie_health.start(_ck_interval, _cookies, _ck_notify)
-                    astrbot_logger.info(
-                        f"[ParserLite] Cookie 健康检查已启动: {_ck_interval}s"
-                    )
-            except Exception as _e:
-                astrbot_logger.warning(f"[ParserLite] Cookie 检查初始化跳过: {_e}")
-                self._cookie_health = None
-            # F7: 延迟发送器 (表情触发, 配置驱动)
-            self._delay_sender = None
-            try:
-                from bridge.delay_send import make_delay_sender
-
-                self._delay_sender = make_delay_sender()
-            except Exception:
-                self._delay_sender = None
+            # T3: cookie_health / delay_send 已移除 (依赖 OneBot11 notice, AstrBot 无法触发)
             astrbot_logger.info("[ParserLite] ✓ initialize 完成")
         except Exception:
             astrbot_logger.error(
@@ -328,12 +288,7 @@ class ParserLitePlugin(Star):
                 await self._pusher.stop()
             except Exception:
                 pass
-        # F4: 停止 cookie 健康检查
-        if self._cookie_health is not None:
-            try:
-                await self._cookie_health.stop()
-            except Exception:
-                pass
+        # T3: cookie_health 已移除 (停止逻辑随模块删除)
         # 新版 standalone 运行时: 关闭 scheduler + BrowserManager + DOWNLOADER
         try:
             from nonebot_plugin_parser_lite.pipeline import shutdown_runtime
@@ -636,56 +591,7 @@ class ParserLitePlugin(Star):
             )
         except Exception:
             pass
-        # delay_send 兜底: 大视频三路失败 → 表情触发延迟发送 (扩展逻辑保留 main)
-        if media_type == "video" and p.exists():
-            from bridge.delay_send import load_cfg as _dl_cfg_fn
-
-            _dl_cfg = _dl_cfg_fn()
-            if _dl_cfg.get("enabled", False) and self._delay_sender is not None:
-                _threshold = int(_dl_cfg.get("threshold_mb", 20) or 20) * 1024 * 1024
-                _msg_id = getattr(
-                    getattr(event, "message_obj", None), "raw_message", None
-                )
-                _msg_id = (
-                    (_msg_id or {}).get("message_id")
-                    if isinstance(_msg_id, dict)
-                    else None
-                )
-                _sz = p.stat().st_size if p.exists() else 0
-                if _msg_id and _sz > _threshold:
-                    # P3-2: key 统一 (msg_id 归一化 + 文件名空/空格安全)
-                    _dl_key = f"{str(_msg_id).strip()}:{Path(p.name or 'media').name or 'media'}"
-                    self._delay_sender.arm(
-                        str(_msg_id),
-                        _dl_key,
-                        timeout_sec=float(_dl_cfg.get("timeout_sec", 300) or 300),
-                    )
-
-                    async def _do_delay_send(_key):
-                        try:
-                            await self._send_any(
-                                event,
-                                p,
-                                "video",
-                                source_url=source_url,
-                                duration=duration,
-                            )
-                        except Exception:
-                            pass
-
-                    self._delay_sender.set_trigger(_do_delay_send)
-                    try:
-                        await event.send(
-                            event.chain_result(
-                                [
-                                    Comp.Plain(
-                                        f"视频较大 ({_sz // 1024 // 1024}MB), 回应 👍 后发送"
-                                    )
-                                ]
-                            )
-                        )
-                    except Exception as _e:
-                        astrbot_logger.debug(f"[ParserLite] 延迟提示发送失败: {_e}")
+        # T3: delay_send 兜底已移除 (依赖 OneBot11 notice, AstrBot 无法触发)
 
     async def _compress_image(self, p: Path) -> bytes:
         """压缩超大图片 (JPEG quality 80%, 最大 20MB)"""
@@ -812,15 +718,7 @@ class ParserLitePlugin(Star):
         await self._handle_card_message(event)
 
     async def on_message(self, event: AstrMessageEvent):
-        # E6: notice 事件 (表情回应) 分流到仲裁器
-        try:
-            from bridge.arbiter import is_notice_event
-
-            if is_notice_event(event):
-                await self.on_notice(event)
-                return
-        except Exception:
-            pass
+        # T3: notice 分流 (arbiter) 已移除
         # F2: QQ 卡片 → LLM 结构化文本注入 (配置驱动, 默认开)
         try:
             from bridge.card_semantic import find_json_cards, inject_card_summary
@@ -1064,38 +962,6 @@ class ParserLitePlugin(Star):
                 label="合并转发",
             )
 
-    async def on_notice(self, event: AstrMessageEvent):
-        """E6: 多 Bot 表情仲裁 + F7: 延迟发送触发 — 处理 group_msg_emoji_like notice.
-
-        AstrBot 将 OneBot notice 事件转为 AstrMessageEvent (raw_message 保留原始 dict).
-        """
-        try:
-            from bridge.arbiter import check_notice, parse_notice
-
-            raw = getattr(event, "raw_message", None)
-            if isinstance(raw, dict):
-                parsed = parse_notice(raw)
-                if parsed:
-                    msg_id, emoji_id = parsed
-                    # F7: 延迟发送触发 (先于仲裁, 互不冲突)
-                    if self._delay_sender is not None:
-                        from bridge.delay_send import load_cfg as _dl_cfg_fn
-
-                        _dl_cfg = _dl_cfg_fn()
-                        _want = [str(x) for x in (_dl_cfg.get("emoji_ids", []) or [])]
-                        if self._delay_sender.on_emoji_like(msg_id, emoji_id, _want):
-                            astrbot_logger.info(
-                                f"[ParserLite] 延迟发送触发: msg={msg_id}"
-                            )
-                            return
-                    # E6: 仲裁
-                    if check_notice(msg_id, emoji_id):
-                        astrbot_logger.debug(
-                            f"[ParserLite] 仲裁: 其他 bot 已竞争 {msg_id}, 放弃"
-                        )
-        except Exception:
-            pass
-
     async def _handle_card_message(self, event: AstrMessageEvent):
         # 二选一门: 用原始 message_id 去重 (跨 handler 实例, TTL=60s)
         msg_id = None
@@ -1120,21 +986,6 @@ class ParserLitePlugin(Star):
                 self._recently_processed = {
                     k: v for k, v in self._recently_processed.items() if v > cutoff
                 }
-        # E6: 多 Bot 仲裁 — 武装竞争窗口 (参数动态, 默认关闭)
-        from bridge.arbiter import load_cfg as _arb_cfg
-
-        _arbiter_cfg = _arb_cfg()
-        if _arbiter_cfg.get("enabled", False):
-            try:
-                from bridge.arbiter import arm
-
-                _emoji = _arbiter_cfg.get("emoji", "") or None
-                _win = _arbiter_cfg.get("window_sec", None)
-                if not arm(str(msg_id), emoji=_emoji, window_sec=_win):
-                    astrbot_logger.debug("[ParserLite] 仲裁: 已放弃此消息")
-                    return
-            except Exception:
-                pass
         urls = self._extract_urls(event)
         if not urls:
             urls = self._reply_urls(event)  # 引用消息逃生通道 (小程序卡片)

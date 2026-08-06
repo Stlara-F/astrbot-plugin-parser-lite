@@ -213,44 +213,7 @@ _BRIDGE_FIELDS: list[dict] = [
         "desc": tr("push_interval"),
         "default": 300,
     },
-    {
-        "path": "delay_send",
-        "type": "object",
-        "desc": tr("delay_send"),
-        "default": {},
-        "items": {
-            "enabled": {"type": "bool", "description": "启用", "default": False},
-            "threshold_mb": {"type": "int", "description": "阈值MB", "default": 20},
-            "timeout_sec": {"type": "int", "description": "超时秒", "default": 300},
-            "emoji_ids": {
-                "type": "list",
-                "description": "触发表情ID",
-                "items": {"type": "string"},
-                "default": ["128077"],
-            },
-        },
-    },
-    {
-        "path": "arbiter",
-        "type": "object",
-        "desc": tr("arbiter"),
-        "default": {},
-        "items": {
-            "enabled": {"type": "bool", "description": "启用", "default": False},
-            "emoji": {"type": "string", "description": "竞争表情", "default": "👍"},
-            "window_sec": {"type": "float", "description": "窗口秒", "default": 1.5},
-        },
-    },
-    {
-        "path": "cookie_health",
-        "type": "object",
-        "desc": tr("cookie_health"),
-        "default": {},
-        "items": {
-            "enabled": {"type": "bool", "description": "启用", "default": False},
-            "interval_sec": {"type": "int", "description": "间隔秒", "default": 3600},
-        },
-    },
+    # T3: delay_send/arbiter/cookie_health 已移除 (依赖 OneBot11 notice, AstrBot 无法触发)
 ]
 
 _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}

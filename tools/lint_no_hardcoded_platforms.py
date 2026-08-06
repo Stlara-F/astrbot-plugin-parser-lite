@@ -25,11 +25,6 @@ LITERAL = re.compile(
 
 # 平台能力声明上下文 (集中声明点, 可审计): 注册表/能力集合初始化
 ALLOW_LINES = (
-    "_COOKIE_CHECKERS[",
-    "_LAZY_DOWNLOAD_PLATFORMS",
-    "_COOKIE_SYNC_PLATFORMS",
-    "check_bili_cookie,",  # 注册表值引用 (函数定义在 src/ 上游)
-    "check_zhihu_cookie,",
     'return {"bilibili"}',  # lazy_download_platforms 回退默认 (声明点)
 )
 
