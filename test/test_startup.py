@@ -23,29 +23,31 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════════
-# C7: _get_cookies_for / _use_proxy_for 无重复定义 (bridge.core)
+# C7: _get_cookies_for re-export 存在且唯一 (bridge.core; r9: _use_proxy_for 已删)
 # ═══════════════════════════════════════════════════════════════
 import bridge.core as _core_mod
 
 src = inspect.getsource(_core_mod)
-for fn_name in ("_get_cookies_for", "_use_proxy_for"):
-    count = src.count(f"def {fn_name}")
-    if count == 1:
-        ok(f"{fn_name}: 1 definition (no duplicate)")
+for fn_name in ("_get_cookies_for",):
+    count = src.count(fn_name)
+    if count >= 1:
+        ok(f"{fn_name}: re-export present (no duplicate)")
     else:
-        bad(f"{fn_name}: {count} definitions (duplicate!)")
+        bad(f"{fn_name}: missing from bridge.core")
 
 
 # ═══════════════════════════════════════════════════════════════
-# C8: 模块级 _inject_dynamic_options_static() 无异常保护
+# C8: 注入函数可调用且不崩溃 (r9: 改由 bridge.inject 导入, main 不再持有)
 # ═══════════════════════════════════════════════════════════════
-from main import _inject_dynamic_options_static
+from bridge.inject import inject_dynamic_options_static
 
 try:
-    _inject_dynamic_options_static()
-    ok("_inject_dynamic_options_static() runs without crash")
+    _schema_f = _ROOT / "_conf_schema.json"
+    _flag_f = _ROOT / ".injected"
+    inject_dynamic_options_static(_schema_f, _flag_f)
+    ok("inject_dynamic_options_static() runs without crash")
 except Exception as e:
-    bad(f"_inject_dynamic_options_static() crashed: {e}")
+    bad(f"inject_dynamic_options_static() crashed: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════

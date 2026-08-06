@@ -1,6 +1,6 @@
 """
 Proxy configuration & network tests.
-Covers: C2, C19, C20, C27, C31, C35
+Covers: C2, C19, C20, C27, C31
 """
 
 import inspect
@@ -19,10 +19,10 @@ if has_method:
 else:
     sk("ensure_client NOT found — production hasattr guard active")
 parse_src = inspect.getsource(_m.ParserLite.parse_url)
-if "_apply_downloader_proxy" in parse_src:
-    ok("parse_url uses _apply_downloader_proxy (direct httpx/curl injection)")
+if "apply_downloader_proxy" in parse_src:
+    ok("parse_url uses apply_downloader_proxy (直连客户端重建, r8)")
 else:
-    sk("parse_url proxy injection not verified")
+    sk("parse_url client rebuild not verified")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -57,29 +57,13 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════════
-# C31: _apply_downloader_proxy 对 curl_cffi 使用 proxies= dict
+# C31: apply_downloader_proxy 直连重建 (r8: 代理体系已收敛)
 # ═══════════════════════════════════════════════════════════════
 proxy_src = inspect.getsource(_m._apply_downloader_proxy)
-if 'proxies={"http"' in proxy_src or 'proxies={\\"http\\"' in proxy_src:
-    ok("_apply_downloader_proxy uses proxies=dict for curl_cffi")
+if "HttpxClient(" in proxy_src and "CurlSession(" in proxy_src:
+    ok("_apply_downloader_proxy rebuilds httpx+curl clients (direct)")
 else:
-    sk("curl_cffi proxy format not confirmed")
-
-
-# ═══════════════════════════════════════════════════════════════
-# C35: _resolve_proxy_url 多协议支持 + _PROXY_PROTOCOLS 轮询
-# ═══════════════════════════════════════════════════════════════
-rp_src = inspect.getsource(_m._resolve_proxy_url)
-if '"socks5h"' in rp_src and '"socks4"' in rp_src:
-    ok("_resolve_proxy_url supports socks4/socks4a/socks5/socks5h keywords")
-elif '"socks5"' in rp_src:
-    ok("_resolve_proxy_url supports socks5 (basic)")
-else:
-    bad("_resolve_proxy_url: no protocol keywords found (socks4/socks5/etc)")
-if "_PROXY_PROTOCOLS" in inspect.getsource(_m):
-    ok("_PROXY_PROTOCOLS defined for auto-protocol rotation")
-else:
-    bad("_PROXY_PROTOCOLS NOT defined — auto-protocol rotation disabled")
+    sk("_apply_downloader_proxy client rebuild not confirmed")
 
 
 finish()

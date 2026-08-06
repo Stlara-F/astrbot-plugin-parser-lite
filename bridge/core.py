@@ -72,10 +72,9 @@ CACHE_INTERVAL = 24 * 3600
 
 
 def _is_parser_enabled(platform: str) -> bool:
-    """平台启用判定 (T1: 与 enabled 列表收敛, 无配置 → 全部启用).
+    """平台启用判定 (r9: 与 enabled 列表收敛, 无配置 → 全部启用).
 
     优先级: platforms.items.enabled 勾选 → 旧模板 enable → True.
-    (plite_disabled_platforms 已移除, 与 enabled 语义重合)
     """
     try:
         from bridge.proxy import enabled_platforms

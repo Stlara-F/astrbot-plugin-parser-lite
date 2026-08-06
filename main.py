@@ -60,6 +60,7 @@ from astrbot.api.star import Context, Star
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
 from bridge.cfg import bridge_cfg
 from bridge.core import (
+    BridgeConfig,
     ParserLite,
     _detect_missing_libs,
     _load_disabled_groups,

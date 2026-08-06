@@ -47,13 +47,13 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════════
-# C22: configure() 写入 bool 直接赋值 data[k] = _label(k) in features_list
+# C22: features 标签 → bool 反向映射 (r9: label 单一来源 i18n)
 # ═══════════════════════════════════════════════════════════════
 cfg3_src = inspect.getsource(_m.BridgeConfig.configure)
-if "_label(k) in features_list" in cfg3_src:
+if "label(k) in features_list" in cfg3_src:
     ok("features mapping assigns bool directly")
 else:
-    bad("features mapping missing _label check")
+    bad("features mapping missing label check")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -86,12 +86,12 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════════
-# C36: configure 通过 _read_proxy_config 读取代理 (含 schema 回退)
+# C36: configure 重建 DOWNLOADER 客户端 (r8: 代理体系已收敛直连)
 # ═══════════════════════════════════════════════════════════════
-if "_read_proxy_config" in cfg3_src:
-    ok("configure uses _read_proxy_config (with schema fallback)")
+if "apply_downloader_proxy" in cfg3_src:
+    ok("configure rebuilds downloader client (direct)")
 else:
-    bad("configure does NOT use _read_proxy_config")
+    bad("configure does NOT rebuild downloader client")
 
 
 # ═══════════════════════════════════════════════════════════════
