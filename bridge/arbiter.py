@@ -27,6 +27,8 @@ _DEFAULT_WINDOW_SEC = 1.5
 
 def _emoji_id(emoji: str) -> str:
     # OneBot V11 表情: 文本表情用 unicode 码点, emoji id 用数字 (face 类型)
+    if not emoji:
+        emoji = _DEFAULT_EMOJI  # P3-9: 空串 → 默认竞争表情 (否则永远不匹配)
     try:
         return str(ord(emoji[0]))
     except Exception:

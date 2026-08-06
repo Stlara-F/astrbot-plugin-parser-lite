@@ -64,6 +64,7 @@ class CookieHealth:
         self._store = JsonStateStore(state_path)
         self._last_status: dict[str, dict] = self._store.data
         self._task: asyncio.Task | None = None
+        self._stopped: asyncio.Event | None = None
         self._notify: _NotifyFn | None = None
 
     def save(self) -> None:
@@ -104,14 +105,21 @@ class CookieHealth:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning(f"[ParserLite] cookie 检查异常: {e}")
-            await asyncio.sleep(interval_sec)
+                logger.warning(f"[ParserLite] cookie 检查异常: {e}", exc_info=True)
+            # P2-10: 可中断休眠 (stop 立即生效, 不等满一个周期)
+            try:
+                await asyncio.wait_for(self._stopped.wait(), timeout=interval_sec)
+            except asyncio.TimeoutError:
+                continue
+            return  # _stopped 置位 → 退出
 
     def start(self, interval_sec: float, cookies: dict[str, str], notify: _NotifyFn) -> None:
+        self._stopped = asyncio.Event()
         self._task = asyncio.create_task(self.run(interval_sec, cookies, notify))
 
     async def stop(self) -> None:
         if self._task:
+            self._stopped.set()
             self._task.cancel()
             try:
                 await self._task

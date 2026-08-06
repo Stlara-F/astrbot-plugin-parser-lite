@@ -201,6 +201,33 @@ def _plain(text: str):
 async def send_media_file(event, path, media_type: str, source_url: str = "",
                           converters: dict | None = None, logger=None,
                           cover_path: str = "") -> SendReport:
+    """媒体发送入口 — fail-fast 预算 (P2-8): 每级 15s, 总 60s.
+
+    内部 event.send 包装为受限调用: 单级卡死不耗尽全部时间预算.
+    """
+    import asyncio as _aio
+    import time as _time
+
+    _orig_send = event.send
+    _deadline = _time.monotonic() + 60.0
+
+    async def _bounded_send(segs):
+        _remain = _deadline - _time.monotonic()
+        if _remain <= 0:
+            raise TimeoutError("媒体发送预算耗尽 (60s)")
+        await _aio.wait_for(_orig_send(segs), timeout=min(15.0, _remain))
+
+    event.send = _bounded_send
+    try:
+        return await _send_media_impl(event, path, media_type, source_url,
+                                      converters, logger, cover_path)
+    finally:
+        event.send = _orig_send
+
+
+async def _send_media_impl(event, path, media_type: str, source_url: str = "",
+                           converters: dict | None = None, logger=None,
+                           cover_path: str = "") -> SendReport:
     """媒体发送骨架 (md5 秒传 → 正常路径多级 failback).
 
     :param converters: 扩展回调 {"image": async fn(path)->bytes, "video": async fn(path)->Path,

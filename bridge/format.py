@@ -11,9 +11,18 @@ from nonebot_plugin_parser_lite.data import (
 )
 
 
+def _safe_label(result: ParseResult) -> str:
+    """平台/作者标签 (P3-3: None 防护)."""
+    _p = getattr(result, "platform", None)
+    _pn = getattr(_p, "display_name", None) or getattr(_p, "name", None) or "解析"
+    _a = getattr(result, "author", None)
+    _an = getattr(_a, "name", None) or ""
+    return f"【{_pn}】{_an}"
+
+
 def format_full(result: ParseResult) -> str:
     lines = [
-        f"【{result.platform.display_name}】{result.author.name}",
+        _safe_label(result),
         result.title or "",
     ]
     if result.timestamp:
@@ -62,7 +71,7 @@ def format_full(result: ParseResult) -> str:
 
 
 def format_brief(result: ParseResult) -> str:
-    lines = [f"【{result.platform.display_name}】{result.author.name}", result.title or ""]
+    lines = [_safe_label(result), result.title or ""]
     s = result.stats
     parts = []
     if s.view_count:

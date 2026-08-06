@@ -90,20 +90,35 @@ if not hasattr(logging.Logger, "success"):
     logging.Logger.success = logging.Logger.info
 
 # ── 日志桥接 ──────────────────────────────────────────────────────────────────
+_LOGBRIDGE_REENTRANT = __import__("threading").local()
+
+
 class _LoguruBridge(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
+        # P1-5: 重入防护 — 桥接目标 logger 再进本 handler 时直接回退标准
+        # logging (避免 opt(depth) 无法抵消嵌套导致无限递归/栈溢出)
+        if getattr(_LOGBRIDGE_REENTRANT, "busy", False):
+            try:
+                logging.getLogger("parser-lite.bridge").log(record.levelno, record.getMessage())
+            except Exception:
+                pass
+            return
         try:
             msg = self.format(record)
             lv = record.levelno
             if hasattr(astrbot_logger, "opt"):
-                fn = (
-                    astrbot_logger.opt(depth=1).critical if lv >= logging.CRITICAL
-                    else astrbot_logger.opt(depth=1).error if lv >= logging.ERROR
-                    else astrbot_logger.opt(depth=1).warning if lv >= logging.WARNING
-                    else astrbot_logger.opt(depth=1).info if lv >= logging.INFO
-                    else astrbot_logger.opt(depth=1).debug
-                )
-                fn(msg)
+                _LOGBRIDGE_REENTRANT.busy = True
+                try:
+                    fn = (
+                        astrbot_logger.opt(depth=1).critical if lv >= logging.CRITICAL
+                        else astrbot_logger.opt(depth=1).error if lv >= logging.ERROR
+                        else astrbot_logger.opt(depth=1).warning if lv >= logging.WARNING
+                        else astrbot_logger.opt(depth=1).info if lv >= logging.INFO
+                        else astrbot_logger.opt(depth=1).debug
+                    )
+                    fn(msg)
+                finally:
+                    _LOGBRIDGE_REENTRANT.busy = False
             else:
                 # 无 opt() 时回退标准 logging (避免 astrbot_logger.log 递归触发 emit)
                 _std = logging.getLogger("parser-lite.bridge")
@@ -179,8 +194,8 @@ class ParserLitePlugin(Star):
             try:
                 from bridge.render_patch import apply_render_patch
                 apply_render_patch()
-            except Exception:
-                pass
+            except Exception as _rp_e:
+                astrbot_logger.debug(f"[ParserLite] render 补丁跳过: {_rp_e}")
             self._log_bridge = _LoguruBridge()
             self._log_bridge.setFormatter(logging.Formatter("%(name)s | %(message)s"))
             sdk = logging.getLogger("nonebot_plugin_parser_lite")
@@ -540,7 +555,8 @@ class ParserLitePlugin(Star):
                 _msg_id = (_msg_id or {}).get("message_id") if isinstance(_msg_id, dict) else None
                 _sz = p.stat().st_size if p.exists() else 0
                 if _msg_id and _sz > _threshold:
-                    _dl_key = f"{_msg_id}:{p.name}"
+                    # P3-2: key 统一 (msg_id 归一化 + 文件名空/空格安全)
+                    _dl_key = f"{str(_msg_id).strip()}:{Path(p.name or 'media').name or 'media'}"
                     self._delay_sender.arm(str(_msg_id), _dl_key,
                                            timeout_sec=float(_dl_cfg.get("timeout_sec", 300) or 300))
 
@@ -554,8 +570,8 @@ class ParserLitePlugin(Star):
                     try:
                         await event.send(event.chain_result([Comp.Plain(
                             f"视频较大 ({_sz // 1024 // 1024}MB), 回应 👍 后发送")]))
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        astrbot_logger.debug(f"[ParserLite] 延迟提示发送失败: {_e}")
 
     async def _compress_image(self, p: Path) -> bytes:
         """压缩超大图片 (JPEG quality 80%, 最大 20MB)"""

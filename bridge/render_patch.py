@@ -15,6 +15,9 @@ import functools
 import re
 from typing import Any
 
+# 原方法引用 (P2-9: restore_render_patch 可还原)
+_ORIGINALS: dict[str, Any] = {}
+
 
 def strip_html_to_text(text: str) -> str:
     """HTML 源码 → 纯文本 (BeautifulSoup 浏览器级解析).
@@ -105,6 +108,8 @@ def pl_str(value) -> str:
 def apply_render_patch() -> bool:
     """safe_src 默认 method + render_image 入口清洗 HTML.
 
+    可还原: 原方法引用保存在 _ORIGINALS, restore_render_patch() 恢复.
+
     :return: 是否已应用
     """
     try:
@@ -113,6 +118,7 @@ def apply_render_patch() -> bool:
             return True  # 已 patch
 
         _orig_safe_src = _render.safe_src
+        _ORIGINALS["safe_src"] = _orig_safe_src
 
         @functools.wraps(_orig_safe_src)
         async def _patched_safe_src(obj: Any, method: str = "get_path", **kw):
@@ -123,6 +129,7 @@ def apply_render_patch() -> bool:
 
         # ② render_image 入口清洗 HTML 字符串 (微博评论等平台)
         _orig_render_image = _render.RENDERER.render_image
+        _ORIGINALS["render_image"] = _orig_render_image
 
         @functools.wraps(_orig_render_image)
         async def _patched_render_image(result, *args, **kwargs):
@@ -136,6 +143,7 @@ def apply_render_patch() -> bool:
         # 注意: 赋值到实例属性 → 必须是"无 self"裸函数 (调用方直接传 result),
         # 否则 render_image 内部 self.render_html(result) 会把 result 当 self.
         _orig_render_html = _render.RENDERER.render_html
+        _ORIGINALS["render_html"] = _orig_render_html
         _renderer = _render.RENDERER
 
         @functools.wraps(_orig_render_html)
@@ -161,6 +169,25 @@ def apply_render_patch() -> bool:
 
         _patched_render_html._pl_env_filters = True  # type: ignore[attr-defined]
         _render.RENDERER.render_html = _patched_render_html
+        return True
+    except Exception:
+        return False
+
+
+def restore_render_patch() -> bool:
+    """还原渲染补丁 (恢复原方法引用, P2-9: 可逆 monkey patch).
+
+    :return: 是否还原成功
+    """
+    try:
+        import nonebot_plugin_parser_lite.render as _render
+
+        if "safe_src" in _ORIGINALS:
+            _render.safe_src = _ORIGINALS.pop("safe_src")
+        if "render_image" in _ORIGINALS:
+            _render.RENDERER.render_image = _ORIGINALS.pop("render_image")
+        if "render_html" in _ORIGINALS:
+            _render.RENDERER.render_html = _ORIGINALS.pop("render_html")
         return True
     except Exception:
         return False

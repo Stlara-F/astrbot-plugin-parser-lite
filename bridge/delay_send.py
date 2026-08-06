@@ -14,6 +14,9 @@ import time
 
 logger = logging.getLogger("parser-lite.bridge.delay")
 
+# 持有触发 task 引用 (防 GC; 完成即由 done_callback 释放)
+_PENDING_TRIGGERS: set = set()
+
 _TriggerFn = Callable[[str], Awaitable[None]]
 """trigger(key) — 触发实际发送"""
 
@@ -61,19 +64,15 @@ class DelaySender:
             try:
                 import asyncio
 
-                try:
-                    loop = asyncio.get_running_loop()
-                    _task = loop.create_task(self._trigger(entry["key"]))
-                    _ = _task  # 持有引用防 GC
-                except RuntimeError:
-                    # 无运行中 loop (测试/脚本环境) → 直接同步执行
-                    import asyncio as _aio
-
-                    async def _run():
-                        await self._trigger(entry["key"])
-
-                    _aio.run(_run())
+                # P2-3: 生产环境始终存在运行中 loop; 无 loop (脚本/测试) 不触发
+                # (同步执行分支已删除 — 死代码)
+                loop = asyncio.get_running_loop()
+                _t = loop.create_task(self._trigger(entry["key"]))
+                _PENDING_TRIGGERS.add(_t)  # 持有引用防 GC, 完成即释放
+                _t.add_done_callback(_PENDING_TRIGGERS.discard)
                 return True
+            except RuntimeError:
+                logger.debug("[ParserLite] 延迟发送: 无运行中事件循环, 跳过触发")
             except Exception as e:
                 logger.warning(f"[ParserLite] 延迟发送触发失败: {e}")
         return False

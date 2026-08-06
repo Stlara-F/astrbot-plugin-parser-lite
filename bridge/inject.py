@@ -584,7 +584,13 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
             if _k not in _seen:
                 _ordered[_k] = _v
         schema = _ordered
-        schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), "utf-8")
-        flag_path.write_text(str(SCHEMA_VERSION))
+        # P1-8: 多实例并发启动时 schema 文件原子写 (tmp + os.replace)
+        _schema_tmp = schema_path.with_name(schema_path.name + ".tmp")
+        _schema_tmp.write_text(json.dumps(schema, ensure_ascii=False, indent=2), "utf-8")
+        import os as _os
+        _os.replace(_schema_tmp, schema_path)
+        _flag_tmp = flag_path.with_name(flag_path.name + ".tmp")
+        _flag_tmp.write_text(str(SCHEMA_VERSION))
+        _os.replace(_flag_tmp, flag_path)
         _logger.info(f"[ParserLite] schema injected: {', '.join(injected) if injected else '(defaults sync)'}")
     return injected
