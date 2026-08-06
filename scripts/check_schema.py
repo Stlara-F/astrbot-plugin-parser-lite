@@ -87,12 +87,18 @@ def main() -> int:
         parsers_items = list((schema.get("parsers", {}).get("items") or {}).keys())
         if parsers_items:
             errors.append(f"FAIL: 已废弃 parsers.items 不应注入: {parsers_items} (统一 platforms)")
-        # platforms (动态注入) 必须存在且含三项统一字段
+        # platforms (动态注入) 必须存在且含统一字段 (新结构 object/items 或旧模板)
         pfm = schema.get("platforms", {})
         if not pfm:
             errors.append("FAIL: 缺少 platforms 配置 (统一平台配置)")
+        elif isinstance(pfm, dict) and ("items" in pfm or pfm.get("type") == "object"):
+            # 新结构: platforms.items.{enabled, proxied, cookies}
+            items = pfm.get("items") or {}
+            for field in ("enabled", "proxied", "cookies"):
+                if field not in items:
+                    errors.append(f"FAIL: platforms.items 缺少字段 {field}")
         else:
-            # templates: {platform_name: {name, items: {...}}}
+            # 旧模板: templates: {platform_name: {name, items: {...}}}
             tmpls = pfm.get("templates") or {}
             sample = next(iter(tmpls.values()), {})
             items = (sample.get("items") or {}) if isinstance(sample, dict) else {}

@@ -10,8 +10,8 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from bridge.cfg import read_cfg
-from bridge.context import BridgeConfig, up_renderer
+from bridge.cfg import global_source, read_cfg
+from bridge.context import up_renderer
 
 _CARD_CACHE_MAX = 10
 _CARD_CACHE: OrderedDict[str, bytes] = OrderedDict()
@@ -28,15 +28,6 @@ def _get_components():
 
         _COMPONENTS_CACHE = {"File": File, "Image": Image, "Record": Record, "Video": Video}
     return _COMPONENTS_CACHE
-
-# 最近一次发送报告 (OneBot11 发送反馈回显: 成功/失败 + 段结构 + 原因)
-# 主渠道: 函数返回 SendReport (dataclass); 模块级仅为最近快照 (诊断用)
-last_send_report: dict = {"ok": None, "segments": [], "errors": [], "stage": ""}
-
-
-def reset_send_report() -> None:
-    last_send_report.update({"ok": None, "segments": [], "errors": [], "stage": ""})
-
 
 @dataclass
 class SendReport:
@@ -85,7 +76,6 @@ def _log_onebot11(logger, stage: str, segments) -> None:
         import json
         segs = _onebot11_segments(segments)
         logger.info(f"[ParserLite] onebot11 send [{stage}]: {json.dumps(segs, ensure_ascii=False)}")
-        last_send_report["segments"] = segs
     except Exception:
         pass
 
@@ -106,7 +96,7 @@ def get_sendable_types() -> list[str]:
 def should_send(media_type: str) -> bool:
     """发送策略门 (配置驱动, 默认全类型)."""
     try:
-        s = read_cfg(BridgeConfig._source or {}, "send_strategy", get_sendable_types())
+        s = read_cfg(global_source(), "send_strategy", get_sendable_types())
         if isinstance(s, str):
             import json
             try:
@@ -146,7 +136,6 @@ async def send_card(event, result, format_full: Callable, logger=None) -> SendRe
         logger.info(f"[ParserLite] card cache hit ({len(data)} bytes)")
         _report.ok, _report.stage = True, "card-cache"
         _report.segments = _onebot11_segments(_segs)
-        last_send_report.update(_report.snapshot())
         return _report
 
     try:
@@ -162,7 +151,6 @@ async def send_card(event, result, format_full: Callable, logger=None) -> SendRe
         logger.info(f"[ParserLite] card rendered ({len(data)} bytes)")
         _report.ok, _report.stage = True, "card"
         _report.segments = _onebot11_segments(_segs)
-        last_send_report.update(_report.snapshot())
         return _report
     except Exception as _e:
         _reason = f"{type(_e).__name__}: {_e}"
@@ -174,14 +162,12 @@ async def send_card(event, result, format_full: Callable, logger=None) -> SendRe
             await event.send(event.chain_result(_segs))
             _report.ok, _report.stage = True, "card-fallback"
             _report.segments = _onebot11_segments(_segs)
-            last_send_report.update(_report.snapshot())
             return _report
         except Exception as _e2:
             _reason2 = f"{type(_e2).__name__}: {_e2}"
             logger.error(f"[ParserLite] 回退文本发送也失败 (OneBot API 可能不可用): {_reason2}")
             _report.stage = "card-fallback"
             _report.errors.append(f"send: {_reason2}")
-            last_send_report.update(_report.snapshot())
             return _report
 
 
@@ -253,7 +239,6 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
     if not p.exists():
         logger.warning(f"[ParserLite] send_media_file: file missing {p}")
         _report.errors.append(f"file missing: {p}")
-        last_send_report.update(_report.snapshot())
         return _report
     try:
         p.chmod(0o644)
@@ -262,19 +247,16 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
     if p.stat().st_size == 0:
         logger.warning(f"[ParserLite] send_media_file: empty file {p}")
         _report.errors.append(f"empty file: {p.name}")
-        last_send_report.update(_report.snapshot())
         return _report
     converters = converters or {}
     _Cmps = _get_components()
     File, Image, Record, Video = _Cmps["File"], _Cmps["Image"], _Cmps["Record"], _Cmps["Video"]
 
-    reset_send_report()
-    last_send_report["stage"] = f"media:{media_type}"
 
     def _try_send(stage: str, segs, exc: Exception | None = None):
         _log_onebot11(logger, stage, segs)
         if exc is not None:
-            last_send_report["errors"].append(f"{stage}: {type(exc).__name__}: {exc}")
+            _report.errors.append(f"{stage}: {type(exc).__name__}: {exc}")
 
     async def _send_file_stage(stage: str, p_: Path) -> bool:
         """OneBot11 文件发送 (视频/音频超限兜底)."""
@@ -284,19 +266,15 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
             _try_send(stage, _segs)
             _report.ok, _report.stage = True, stage
             _report.segments = _onebot11_segments(_segs)
-            last_send_report.update(_report.snapshot())
             return _report
         except Exception as _e:
             _try_send(stage, [], _e)
             return _report
 
     # 上游 use_base64 (原始调用优先): true → 强制 base64 发送
-    # 读取单一事实来源 _source (与 read_cfg 一致, 避免上游单例缓存污染)
+    # 读取单一事实来源 (global_source, B7: 顶部 import, 无重复软导入)
     try:
-        from bridge.cfg import read_cfg as _read_cfg
-        from bridge.context import BridgeConfig as _BC
-
-        _use_b64 = bool(_read_cfg(_BC._source or {}, "plite_use_base64", False))
+        _use_b64 = bool(read_cfg(global_source(), "plite_use_base64", False))
     except Exception:
         _use_b64 = False
 
@@ -310,7 +288,6 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
         _try_send(stage, segs)
         _report.ok, _report.stage = True, stage
         _report.segments = _onebot11_segments(segs)
-        last_send_report.update(_report.snapshot())
         if _m5 and _md5_failed != _m5:
             try:
                 from bridge.media_cache import get_cache as _gc
@@ -322,11 +299,9 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
     # md5 秒传: 有缓存指纹 → file://md5 引用 (QQ 服务器资源秒回应, 参考
     # SnowLuma fast-upload; 失败 → 回退正常路径, 多级 failback)
     try:
-        from bridge.cfg import read_cfg as _rc2
-        from bridge.context import BridgeConfig as _BC2
         from bridge.media_cache import compute_md5, get_cache, md5_file_ref
 
-        _md5_fast = bool(_rc2(_BC2._source or {}, "plite_md5_fast_send", True))
+        _md5_fast = bool(read_cfg(global_source(), "plite_md5_fast_send", True))
         if _md5_fast and media_type in ("image", "video", "audio"):
             _m5 = compute_md5(p)
             if get_cache().has(_m5):
@@ -342,7 +317,6 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
                     _try_send(f"{media_type}-md5", [_md5_seg])
                     _report.ok, _report.stage = True, f"{media_type}-md5"
                     _report.segments = _onebot11_segments([_md5_seg])
-                    last_send_report.update(_report.snapshot())
                     return _report
                 except Exception as _e:
                     _try_send(f"{media_type}-md5", [], _e)
@@ -396,14 +370,10 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
         _fsz = mp4.stat().st_size if mp4.exists() else 0
         if _fsz == 0:
             _report.errors.append("empty video")
-            last_send_report.update(_report.snapshot())
             return _report
         # 大文件阈值: 超限 → Comp.File 文件发送 (OneBot11 base64 大视频必失败)
         try:
-            from bridge.cfg import read_cfg as _read_cfg
-            from bridge.context import BridgeConfig as _BC
-
-            _th_mb = int(_read_cfg(_BC._source or {}, "plite_video_file_threshold_mb", 100) or 100)
+            _th_mb = int(read_cfg(global_source(), "plite_video_file_threshold_mb", 100) or 100)
         except Exception:
             _th_mb = 100
         if _fsz > _th_mb * 1024 * 1024:
@@ -485,5 +455,4 @@ async def _send_media_impl(event, path, media_type: str, source_url: str = "",
                 return _ok("audio-url", _segs)
             except Exception as _e:
                 _try_send("audio-url", [], _e)
-    last_send_report.update(_report.snapshot())
     return _report

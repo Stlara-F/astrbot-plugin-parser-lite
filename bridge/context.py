@@ -118,10 +118,16 @@ class BridgeConfig:
 
         _UpConfig = up_config()
         data = {**(_config or getattr(cls, "_source", {}) or {}), **kwargs}
+        # B11: 保留 _source 单例身份 (clear+update), 避免外部缓存引用漂移
         if _config is not None:
-            cls._source = _config
+            if cls._source is None:
+                cls._source = {}
+            cls._source.clear()
+            cls._source.update(_config)
         elif kwargs:
-            cls._source = data  # AstrBot configure(**self.config) 走此分支
+            if cls._source is None:
+                cls._source = {}
+            cls._source.update({k: v for k, v in kwargs.items() if k != "__hash__"})
         # features 标签 → plite_* bool 反向映射 (兼容中英文旧值 + Optional[bool])
         features_list = data.get("features", [])
         if isinstance(features_list, list):

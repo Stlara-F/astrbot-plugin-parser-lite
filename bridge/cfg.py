@@ -55,3 +55,30 @@ def global_source() -> dict:
     from bridge.context import BridgeConfig
 
     return BridgeConfig._source or {}
+
+
+def set_plite_bili_ck(ck: str) -> bool:
+    """B4: 统一写入 B站 cookie (source 原位更新 + 显式 configure 触发刷新).
+
+    :return: 是否发生更新 (值未变返回 False)
+    """
+    try:
+        from bridge.context import BridgeConfig
+
+        src = BridgeConfig._source
+        if src is None:
+            src = BridgeConfig._source = {}
+        if str(src.get("plite_bili_ck", "") or "") == ck:
+            return False
+        src["plite_bili_ck"] = ck
+        BridgeConfig.configure(src)  # 显式传参触发 pconfig 刷新
+        return True
+    except Exception:
+        return False
+
+
+def platforms_items() -> dict:
+    """B12: 平台配置单一入口 (新结构 items / 旧模板迁移由 proxy 归一化)."""
+    from bridge.proxy import _platforms_block
+
+    return _platforms_block().get("items") or {}

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from bridge.cfg import global_source
 from bridge.context import BridgeConfig, up_base_parser, up_downloader
 from bridge.proxy import (
     PROXY_PROTOCOLS,
@@ -121,15 +122,10 @@ class ParserLite:
                 cookies = get_cookies_for(
                     str(getattr(getattr(parser_cls, "platform", None), "name", "")).lower())
                 if cookies and str(getattr(getattr(parser_cls, "platform", None), "name", "")).lower() == "bilibili":
-                    ck_str = next(iter(cookies.values())) if cookies else ""
-                    if ck_str:
-                        BridgeConfig._source = BridgeConfig._source or {}
-                        BridgeConfig._source["plite_bili_ck"] = ck_str
-                        BridgeConfig.configure()
-                        try:
-                            object.__setattr__(BridgeConfig.get_config(), "plite_bili_ck", ck_str)
-                        except Exception:
-                            pass
+                    # B4: 统一入口写入 (source 原位更新 + 显式 configure 刷新)
+                    from bridge.cfg import set_plite_bili_ck
+
+                    set_plite_bili_ck(next(iter(cookies.values())) or "")
                 return await parser.parse(kw, mwp)
             except Exception as e:
                 _matched_err = e
@@ -161,7 +157,7 @@ class ParserLite:
         from bridge.core import CustomParser
 
         self._custom_parsers = []
-        source = BridgeConfig._source or {}
+        source = global_source()
         entries = source.get("custom_parsers", [])
         if isinstance(entries, str):
             try:

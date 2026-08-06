@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 
-from bridge.cfg import read_cfg
-from bridge.context import BridgeConfig, up_downloader
+from bridge.cfg import global_source, read_cfg
+from bridge.context import up_downloader
 
 # 代理协议轮询列表 (curl_cffi 全支持, httpx 需 httpx[socks])
 PROXY_PROTOCOLS = ("http://", "https://", "socks5://", "socks5h://")
@@ -69,7 +69,7 @@ def read_proxy_config() -> str:
     """
     import logging
 
-    px = read_cfg(BridgeConfig._source or {}, "plite_http_proxy", "") or ""
+    px = read_cfg(global_source(), "plite_http_proxy", "") or ""
     logging.getLogger("nonebot_plugin_parser_lite").info(
         f"[ParserLite] proxy config: proxy={_mask_proxy(px)}")
     return px
@@ -91,8 +91,8 @@ def client_closed(client) -> bool:
 async def _safe_close(_c):
     try:
         await _c.aclose() if hasattr(_c, "aclose") else _c.close()
-    except Exception:
-        pass  # curl_cffi 未初始化会话关闭会抛 TypeError — 忽略
+    except (TypeError, RuntimeError, asyncio.CancelledError):
+        pass  # curl_cffi 未初始化会话关闭会抛 TypeError — 忽略 (B18: 收窄捕获)
 
 
 def apply_downloader_proxy(proxy_url: str):
@@ -123,7 +123,11 @@ def apply_downloader_proxy(proxy_url: str):
                 try:
                     asyncio.get_running_loop().create_task(_safe_close(_old))
                 except RuntimeError:
-                    pass
+                    # B3: 无运行中 loop → 同步 close 兜底 (释放连接池, 不静默丢弃)
+                    try:
+                        _old.close()
+                    except (TypeError, RuntimeError):
+                        pass
         if not proxy_url:
             client._httpx = HttpxClient(verify=False, follow_redirects=True,
                                         timeout=Timeout(timeout=15))
@@ -150,7 +154,7 @@ def _platforms_block() -> dict:
     schema 形式 {"items": {"enabled": [...]}} → 配置形式 {"enabled": [...]}
     """
     try:
-        pfm = (BridgeConfig._source or {}).get("platforms", {}) or {}
+        pfm = (global_source()).get("platforms", {}) or {}
         if isinstance(pfm, dict):
             if "enabled" in pfm or "proxied" in pfm or "cookies" in pfm:
                 return {"items": pfm}  # AstrBot 展平形态 → 归一化
@@ -265,7 +269,7 @@ def sync_cookies_to_upstream() -> None:
 def load_parsers_config() -> dict:
     """读取 parsers 配置 (仅旧配置迁移期兼容, 新配置统一 platforms)."""
     try:
-        p = (BridgeConfig._source or {}).get("parsers", {}) or {}
+        p = (global_source()).get("parsers", {}) or {}
         if isinstance(p, dict):
             inner = p.get("items", p) if isinstance(p.get("items"), dict) else p
             if isinstance(inner, dict):

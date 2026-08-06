@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import time
 
+from bridge.cfg import global_source
+
 
 @dataclass
 class CheckResult:
@@ -188,9 +190,8 @@ async def check_render() -> tuple[bool, str, bool]:
 async def check_schema() -> tuple[bool, str, bool]:
     """注入 schema 完整 (commit gate 复用)."""
     try:
-        from bridge.core import BridgeConfig
 
-        src = BridgeConfig._source or {}
+        src = global_source()
         if not src:
             return False, "未初始化 (首次运行注入)", True  # 警告非致命
         required = ["plite_http_proxy", "send_strategy", "plite_dedup_ttl"]

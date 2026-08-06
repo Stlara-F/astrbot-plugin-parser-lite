@@ -12,7 +12,6 @@ import argparse
 import asyncio
 from dataclasses import dataclass, field
 import os
-import time
 
 os.environ["PARSER_LITE_STANDALONE"] = "1"
 os.environ["PARSER_LITE_BASE_DIR"] = str(__import__("pathlib").Path(__file__).parent.parent / "src" / "nonebot_plugin_parser_lite")
@@ -240,7 +239,6 @@ def test_coverage(result: TestResult):
 # Main
 # ═══════════════════════════════════════════════════════════════
 async def main():
-    global TEST_URLS
     # ── Smoke: 自检 UTF-8 编码 ──
     _self_path = __import__("pathlib").Path(__file__)
     try:
@@ -251,7 +249,6 @@ async def main():
         return 1
 
     urls = _load_test_urls()
-    TEST_URLS = urls
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--online", action="store_true", help="Run online parse tests (requires network)")
@@ -259,7 +256,6 @@ async def main():
     args = ap.parse_args()
 
     overall = TestResult()
-    start = time.time()
 
 
     # Phase 1: URL Detection (always)
@@ -315,7 +311,6 @@ async def main():
     for m in sorted(all_platforms - tested):
         overall.skip(f"  Untested: {m}")
 
-    time.time() - start
     return 0 if overall.failed == 0 else 1
 
 

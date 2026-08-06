@@ -90,7 +90,10 @@ def _build_feature_table():
 
 
 def _is_parser_enabled(platform: str) -> bool:
-    """平台启用: platforms.items.enabled 勾选 (默认全部), 兼容旧 enable/disabled_platforms."""
+    """平台启用判定 (B8: 显式三路, 无配置 → 全部启用).
+
+    优先级: platforms.items.enabled 勾选 → 旧模板 enable → 上游 disabled_platforms.
+    """
     try:
         from bridge.proxy import enabled_platforms as _enabled_platforms
 
@@ -102,15 +105,18 @@ def _is_parser_enabled(platform: str) -> bool:
             return bool(_pc["enable"])
         from bridge.resolve import BridgeConfig
         cfg = BridgeConfig.get_config()
-        return platform not in [
+        _disabled = [
             p.name.lower() if hasattr(p, "name") else str(p).lower()
             for p in (cfg.disabled_platforms if hasattr(cfg, "disabled_platforms") else [])
         ]
+        # 显式语义: 未配置任何禁用 → 全部启用 (设计默认)
+        return platform not in _disabled
     except Exception:
         return True
 
 
 _DISABLED_GROUPS_FILE = None  # 延迟解析 (统一路径, 消除 __file__ 环境差异)
+_DISABLED_GROUPS_STORE = None  # JsonStateStore (B6: 统一锁/原子写/节流)
 
 
 def _disabled_groups_path() -> Path:
@@ -122,12 +128,32 @@ def _disabled_groups_path() -> Path:
     return _DISABLED_GROUPS_FILE
 
 
+def _disabled_groups_store():
+    """禁用群组状态存储 (JsonStateStore: 锁 + 原子写 + 节流)."""
+    global _DISABLED_GROUPS_STORE
+    if _DISABLED_GROUPS_STORE is None:
+        from bridge.state_store import JsonStateStore
+
+        _DISABLED_GROUPS_STORE = JsonStateStore(
+            _disabled_groups_path(), flush_every=1, flush_interval=0.5)
+    return _DISABLED_GROUPS_STORE
+
+
 def _load_disabled_groups() -> set[str]:
     try:
+        _store = _disabled_groups_store()
+        _raw = _store.data
+        if isinstance(_raw, dict):
+            return {str(k) for k in _raw}
+        # 旧格式 (JSON list) 迁移 → dict 结构
         _f = _disabled_groups_path()
         if _f.exists():
             import json
-            return set(json.loads(_f.read_text(encoding="utf-8")))
+            _legacy = json.loads(_f.read_text(encoding="utf-8"))
+            if isinstance(_legacy, list):
+                _store.update(lambda d: d.update({str(g): 1 for g in _legacy}))
+                _store.flush()
+                return {str(g) for g in _legacy}
     except Exception:
         pass
     return set()
@@ -135,16 +161,19 @@ def _load_disabled_groups() -> set[str]:
 
 def _save_disabled_groups(data: set[str]) -> None:
     try:
-        import json
-        _f = _disabled_groups_path()
-        _f.parent.mkdir(parents=True, exist_ok=True)
-        _f.write_text(json.dumps(sorted(data)), encoding="utf-8")
+        _store = _disabled_groups_store()
+        _store.update(lambda d: (d.clear(), d.update({str(g): 1 for g in data}))[1])
+        _store.flush()  # 命令触发场景即时落盘
     except Exception:
         pass
 
 
 def _detect_missing_libs() -> str:
-    """检测 Chromium 缺失系统库 (Linux)."""
+    """检测 Chromium 缺失系统库 (B19: 仅 Linux, Windows/macOS 不误报)."""
+    import sys as _sys
+
+    if _sys.platform != "linux":
+        return ""
     import ctypes
     import ctypes.util
 
