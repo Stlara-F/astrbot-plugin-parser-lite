@@ -71,9 +71,6 @@ from bridge.core import (
 
 _CONF_SCHEMA_PATH = Path(__file__).parent / "_conf_schema.json"
 
-# A5: 支持懒下载的平台 (平台能力集中声明; 上游仅 B站实现 lazy_download)
-_LAZY_DOWNLOAD_PLATFORMS = frozenset({"bilibili"})
-
 
 # ── 兼容 re-export (从 bridge.core) — 保持外部 API / 测试稳定 ──
 from bridge.core import (  # noqa: F401
@@ -1154,7 +1151,7 @@ class ParserLitePlugin(Star):
         if self._limiter is not None:
             from bridge.rate_limit import clean_url, load_rate_cfg
 
-            _rcfg = load_rate_cfg(BridgeConfig._source)
+            _rcfg = load_rate_cfg()  # R9: 内部默认 global_source(), 不直接摸 _source
             _sender = event.get_sender_id() or ""
             for _u in urls[:3]:
                 _ok, _why = self._limiter.allow(
@@ -1218,10 +1215,12 @@ class ParserLitePlugin(Star):
             if self._should_send("card"):
                 await self._send_card(event, result)
             await self._send_items(event, result.content, result)
-            # A5: 懒下载会话 (支持懒下载的平台集中声明; 当前仅 B站 upstream 实现)
+            # R1: 懒下载会话 (平台能力动态推导: proxy.lazy_download_platforms)
+            from bridge.proxy import lazy_download_platforms
+
             if (
                 result.platform
-                and result.platform.name.lower() in _LAZY_DOWNLOAD_PLATFORMS
+                and result.platform.name.lower() in lazy_download_platforms()
             ):
                 LazyManager.add(
                     self._key(event),

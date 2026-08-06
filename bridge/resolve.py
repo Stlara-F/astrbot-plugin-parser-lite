@@ -8,6 +8,7 @@ bridge 仅在其前后做适配: 配置热载 / 代理语义 / 超时守卫 / ht
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from bridge.cfg import global_source
@@ -22,19 +23,7 @@ from bridge.proxy import (
 
 PARSE_TIMEOUT = 60.0  # 单次解析总超时(秒) — 防慢代理/死链拖死
 
-
-def ck_sync_platforms() -> set[str]:
-    """上游声明 cookie 字段的平台集 (plite_<name>_ck → name, 0 硬编码动态推导)."""
-    from bridge.context import up_config
-
-    out = set()
-    try:
-        for f in up_config().model_fields:
-            if f.startswith("plite_") and f.endswith("_ck"):
-                out.add(f[len("plite_") : -len("_ck")])
-    except Exception:
-        pass
-    return out
+_logger = logging.getLogger("nonebot_plugin_parser_lite")
 
 
 class ParserLite:
@@ -89,9 +78,7 @@ class ParserLite:
 
     async def _parse_via_proxy(self, ordered: list, url: str, proxy_url: str):
         """代理轮询 (协议逐试) + 全失败回退直连."""
-        import logging
 
-        _logger = logging.getLogger("nonebot_plugin_parser_lite")
         _try_protocols = PROXY_PROTOCOLS if "://" not in proxy_url else (proxy_url,)
         _last_err = None
         for _proto in _try_protocols:
@@ -122,9 +109,6 @@ class ParserLite:
 
     async def _try_all_parsers(self, ordered: list, url: str) -> Any:
         """遍历解析器, 调用上游原始 search_url/parse (保留原始调用)."""
-        import logging
-
-        _logger = logging.getLogger("nonebot_plugin_parser_lite")
 
         _matched_err = None
         for parser_cls in ordered:
@@ -156,11 +140,7 @@ class ParserLite:
                     continue
                 return await cp.parse(kw, mwp)
             except Exception as e:
-                import logging
-
-                logging.getLogger("nonebot_plugin_parser_lite").warning(
-                    f"[ParserLite] CustomParser failed: {e}"
-                )
+                _logger.warning(f"[ParserLite] CustomParser failed: {e}")
         raise ValueError(f"Unsupported URL: {url}")
 
     def _load_custom_parsers(self):
@@ -184,11 +164,7 @@ class ParserLite:
             try:
                 self._custom_parsers.append(CustomParser(entry))
             except Exception as e:
-                import logging
-
-                logging.getLogger("nonebot_plugin_parser_lite").warning(
-                    f"[ParserLite] CustomParser init skip: {e}"
-                )
+                _logger.warning(f"[ParserLite] CustomParser init skip: {e}")
 
     def _get_parser(self, parser_cls):
         name = parser_cls.__name__

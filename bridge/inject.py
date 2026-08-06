@@ -16,6 +16,7 @@ from bridge.context import up_base_parser, up_config
 from bridge.core import CustomParser
 from bridge.i18n import (  # noqa: F401 (翻译/标签单一来源, 兼容外部引用)
     TRANSLATIONS,
+    is_bool_annotation,
     label,
     tr,
 )
@@ -64,9 +65,7 @@ def extract_slider(finfo) -> dict | None:
 
 
 def is_bool_field(finfo) -> bool:
-    """bool 字段判定 — 委托 i18n.is_bool_annotation (单一来源)."""
-    from bridge.i18n import is_bool_annotation
-
+    """bool 字段判定 — 委托 i18n.is_bool_annotation (单一来源, 顶部已 import)."""
     return is_bool_annotation(finfo.annotation)
 
 

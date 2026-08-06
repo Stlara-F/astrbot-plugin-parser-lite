@@ -30,6 +30,7 @@ ALLOW_LINES = (
     "_COOKIE_SYNC_PLATFORMS",
     "check_bili_cookie,",  # 注册表值引用 (函数定义在 src/ 上游)
     "check_zhihu_cookie,",
+    'return {"bilibili"}',  # lazy_download_platforms 回退默认 (声明点)
 )
 
 

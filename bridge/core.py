@@ -105,9 +105,7 @@ def _is_parser_enabled(platform: str) -> bool:
         _pc = _platform_cfg(platform)
         if "enable" in _pc:
             return bool(_pc["enable"])
-        from bridge.resolve import BridgeConfig
-
-        cfg = BridgeConfig.get_config()
+        cfg = BridgeConfig.get_config()  # 顶部已 import (R3: 不绕路 resolve)
         _disabled = [
             p.name.lower() if hasattr(p, "name") else str(p).lower()
             for p in (

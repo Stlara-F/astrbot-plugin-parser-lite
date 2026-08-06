@@ -1,6 +1,6 @@
 """bridge 配置读取辅助 — 无 astrbot 依赖, 可独立测试.
 
-_bridge_cfg(key, default): 从 BridgeConfig._source 读取 bridge 语义配置,
+bridge_cfg(key, default): 全局配置读取唯一入口 (read_cfg(global_source())),
 缺失/None 回退默认值 (0 硬编码: 所有桥接参数走此通道).
 """
 
@@ -64,10 +64,3 @@ def bridge_cfg(key: str, default: Any = None) -> Any:
     各模块直接散用 read_cfg/global_source/BridgeConfig._source.
     """
     return read_cfg(global_source(), key, default)
-
-
-def platforms_items() -> dict:
-    """平台配置单一入口 (新结构 items / 旧模板迁移由 proxy 归一化)."""
-    from bridge.proxy import _platforms_block
-
-    return _platforms_block().get("items") or {}

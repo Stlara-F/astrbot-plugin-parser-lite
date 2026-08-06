@@ -90,8 +90,8 @@ class BridgeConfig:
 
     @classmethod
     def configure(cls, _config: dict | None = None, **kwargs):
-        from bridge.proxy import apply_downloader_proxy
-        from bridge.resolve import read_proxy_config
+        # R4: 统一从 proxy 导入 (不绕路 resolve)
+        from bridge.proxy import apply_downloader_proxy, read_proxy_config
 
         _UpConfig = up_config()
         data = {**(_config or getattr(cls, "_source", {}) or {}), **kwargs}
