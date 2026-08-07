@@ -24,9 +24,11 @@ class Stats(Struct):
     count_shared: int = 0
     """分享数"""
 
+
 class AlbumInfo(Struct):
     name: str
     id: str
+
 
 class TrackInfo(Struct):
     stats: Stats

@@ -1,2 +1,9 @@
 __pycache__/
 node_modules/
+
+# AstrBot 适配层运行时产物 (bridge-refactor)
+_conf_schema.json
+.injected
+data/
+test/_doctor_snapshot.json
+*.pyc
