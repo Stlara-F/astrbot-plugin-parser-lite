@@ -244,3 +244,24 @@ async def _close_session_like():
         exc = e
     assert exc is not None  # 模拟真实异常存在
     # bridge 的 _safe_close 包装会吞掉它 (见 core._apply_downloader_proxy)
+
+
+def test_up_renderer_refresh_after_upstream_rebuild():
+    """上游模块被 main.py 清理重建后, up_renderer() 必须返回已 patch 的新实例.
+
+    回归: 缓存 _UP_RENDERER 指向旧实例, patch 作用于新模块 → pl_esc 未注册.
+    """
+    from bridge import context
+
+    # 触发首次缓存 + patch
+    _r1 = context.up_renderer()
+    assert getattr(_r1.render_html, "_pl_env_filters", False)
+
+    # 模拟 main.py:49-52 清 sys.modules → 上游模块重建
+    for _m in list(sys.modules):
+        if _m.startswith("nonebot_plugin_parser_lite"):
+            del sys.modules[_m]
+
+    _r2 = context.up_renderer()
+    assert _r2 is not _r1  # 已重建
+    assert getattr(_r2.render_html, "_pl_env_filters", False)  # 新实例已 patch

@@ -55,6 +55,12 @@ def up_renderer():
         from bridge.render_patch import apply_render_patch
 
         apply_render_patch()
+        # 引用对齐: main.py 清 sys.modules 会重建上游模块 → 缓存必须跟随
+        # (否则 patch 打到新模块实例, 调用仍走旧实例 → pl_esc 未注册)
+        import nonebot_plugin_parser_lite.render as _render_mod
+
+        global _UP_RENDERER
+        _UP_RENDERER = _render_mod.RENDERER
     except Exception:
         pass
     return _UP_RENDERER
