@@ -10,7 +10,6 @@ class Stat(Struct):
     share: int
     views: int
 
-
 class BangumiInfo(Struct):
     cover: str
     evaluate: str

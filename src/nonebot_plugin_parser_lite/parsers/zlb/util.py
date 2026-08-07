@@ -61,7 +61,7 @@ def _iter_media_and_text(soup: BeautifulSoup):
                     if "emoji" in classes:
                         yield Creator.sticker(
                             url=src,
-                            desc=element.get("alt", None),  # pyright: ignore[reportArgumentType]
+                            desc=element.get("alt", None), # pyright: ignore[reportArgumentType]
                             size="small",
                         )
                     else:

@@ -19,7 +19,6 @@ class Blog(Struct):
     copyright_author_name: str
     """发布时声明的版权作者"""
 
-
 class BlogData(Blog):
     msg: str
     id: int
@@ -32,7 +31,6 @@ class BlogData(Blog):
     favorite_count: int
     atlas_id: int
     """所属atlas id"""
-
 
 class AtlasData(Struct):
     id: int
