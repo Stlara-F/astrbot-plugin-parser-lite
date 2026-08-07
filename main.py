@@ -10,7 +10,6 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-import re
 import sys
 import time
 import traceback
@@ -54,11 +53,9 @@ for _mod in list(sys.modules):
 from astrbot.api import AstrBotConfig
 from astrbot.api import logger as astrbot_logger
 from astrbot.api.event import AstrMessageEvent, filter
-import astrbot.api.message_components as Comp
 from astrbot.api.star import Context, Star
 
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
-from bridge.cfg import bridge_cfg
 from bridge.core import (  # noqa: F401
     BridgeConfig,
     ParserLite,
@@ -135,21 +132,9 @@ from bridge.format import format_full
 # ── 动态注入 ──────────────────────────────────────────────────────────────────
 # 模块加载时执行注入 (含 _injected 开关保护) — 委托 bridge.inject 决策树
 from bridge.inject import inject_dynamic_options_static  # noqa: E402
-from bridge.url_extract import (
-    collect_urls,
-    extract_card_json_url,
-    extract_urls,
-    url_from_text,
-)
 from nonebot_plugin_parser_lite.data import (
-    AudioContent,
-    GraphicContent,
-    ImageContent,
     ParseResult,
-    StickerContent,
-    VideoContent,
 )
-from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
 
 inject_dynamic_options_static(
     Path(__file__).parent / "_conf_schema.json",
@@ -231,208 +216,13 @@ class ParserLitePlugin(Star):
                 pass
 
     async def _auto_ensure_chromium(self) -> None:
-        try:
-            # 新版: 通过 BrowserManager 验证 (复用上游单例, 与 render 共用)
-            from nonebot_plugin_parser_lite.utils.browser import BrowserManager
+        # r11: Chromium 安装统一编排 (bridge.chromium, 与命令共用)
+        from bridge.chromium import ensure_chromium
 
-            await BrowserManager.ensure_started()
-            astrbot_logger.info("[ParserLite] Chromium 已就绪")
-            return
-        except Exception:
-            pass
-        astrbot_logger.info("[ParserLite] Chromium 未安装, 异步安装中...")
-        pb = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
-        installed = False
-        for url, name in [
-            ("https://npmmirror.com/mirrors/playwright", "npmmirror"),
-            ("https://playwright.azureedge.net", "Azure"),
-        ]:
-            env = os.environ.copy()
-            env["PLAYWRIGHT_DOWNLOAD_HOST"] = url
-            if pb:
-                env["PLAYWRIGHT_BROWSERS_PATH"] = pb
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "-m",
-                    "playwright",
-                    "install",
-                    "chromium",
-                    env=env,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(), timeout=600
-                )
-                if proc.returncode == 0:
-                    astrbot_logger.info(f"[ParserLite] Chromium 安装完成 ({name})")
-                    installed = True
-                    break
-                err = stderr.decode(errors="replace").strip()[-300:]
-                astrbot_logger.warning(
-                    f"[ParserLite] Chromium 安装失败 ({name}): rc={proc.returncode} {err}"
-                )
-            except asyncio.TimeoutError:
-                astrbot_logger.warning(f"[ParserLite] Chromium 安装超时 ({name})")
-            except Exception as e:
-                astrbot_logger.warning(f"[ParserLite] Chromium 安装异常 ({name}): {e}")
-        if not installed:
-            # 浏览器二进制已下载但缺系统库 → 尝试 apt-get 自动补齐
-            missing = _detect_missing_libs()
-            if missing:
-                astrbot_logger.warning(
-                    f"[ParserLite] 检测到缺失系统库, 尝试 apt-get 安装:\n{missing}"
-                )
-                try:
-                    # P1-6: apt-get 输出量大, PIPE 缓冲会死锁 → 重定向到 DEVNULL
-                    _apt_proc = await asyncio.create_subprocess_exec(
-                        "apt-get",
-                        "update",
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL,
-                    )
-                    await asyncio.wait_for(_apt_proc.communicate(), timeout=300)
-                    _apt_proc = await asyncio.create_subprocess_exec(
-                        "apt-get",
-                        "install",
-                        "-y",
-                        "--no-install-recommends",
-                        "libnspr4",
-                        "libnss3",
-                        "libgbm1",
-                        "libasound2",
-                        "libxkbcommon0",
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL,
-                    )
-                    await asyncio.wait_for(_apt_proc.communicate(), timeout=600)
-                    if _apt_proc.returncode == 0:
-                        astrbot_logger.info(
-                            "[ParserLite] 系统库安装完成, 验证 Chromium..."
-                        )
-                        try:
-                            from nonebot_plugin_parser_lite.utils.browser import (
-                                BrowserManager,
-                            )
-
-                            await BrowserManager.ensure_started()
-                            astrbot_logger.info(
-                                "[ParserLite] Chromium 已就绪 (系统库补齐后)"
-                            )
-                            return
-                        except Exception as _e2:
-                            astrbot_logger.error(
-                                f"[ParserLite] ✗ 系统库已安装但 Chromium 仍无法启动: {_e2}"
-                            )
-                    else:
-                        astrbot_logger.error(
-                            f"[ParserLite] ✗ apt-get 安装系统库失败: rc={_apt_proc.returncode}"
-                        )
-                except asyncio.TimeoutError:
-                    astrbot_logger.error("[ParserLite] ✗ apt-get 安装系统库超时")
-                except Exception as _e3:
-                    astrbot_logger.error(f"[ParserLite] ✗ apt-get 异常: {_e3}")
-            # 显式报错: 列出缺失库 + 修复指引
-            _missing_now = _detect_missing_libs()
-            astrbot_logger.error(
-                "[ParserLite] ✗✗ Chromium 环境自动组装失败, 卡片渲染将回退为文本 ✗✗\n"
-                f"缺失系统库:\n{_missing_now or '(未检测到缺失库, 请检查 playwright 安装)'}\n"
-                "修复方式(需容器 root):\n"
-                "  1) apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0\n"
-                "  2) 或运行: python -m playwright install-deps chromium\n"
-                "  3) 或发送指令 /parse_install_chromium 重试浏览器下载"
-            )
-            return
-        # 二进制就绪后仍验证启动 (apt 补库可能仍失败)
-        try:
-            from nonebot_plugin_parser_lite.utils.browser import BrowserManager
-
-            await BrowserManager.ensure_started()
-            astrbot_logger.info("[ParserLite] Chromium 已就绪")
-        except Exception as _e:
-            _missing_after = _detect_missing_libs()
-            astrbot_logger.error(
-                f"[ParserLite] ✗ Chromium 已下载但无法启动: {_e}\n"
-                f"缺失系统库: {_missing_after or '(none detected)'}\n"
-                "请运行: apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0"
-                " 或 python -m playwright install-deps chromium"
-            )
-
-    # ── OneBot 适配 ───────────────────────────────────────────────────────────
-    def _gid(self, event: AstrMessageEvent) -> str:
-        try:
-            origin = event.unified_msg_origin
-            return origin.split(":")[-1] if origin and ":" in origin else "unknown"
-        except Exception:
-            return "unknown"
-
-    def _key(self, event: AstrMessageEvent) -> str:
-        try:
-            return event.unified_msg_origin or event.get_sender_id()
-        except Exception:
-            return event.get_sender_id()
-
-    def _disabled(self, event: AstrMessageEvent) -> bool:
-        return self._gid(event) in self._disabled_groups
-
-    def _blacklisted(self, event: AstrMessageEvent) -> bool:
-        return event.get_sender_id() in get_config().blacklist_users
-
-    @staticmethod
-    def _url_from_text(event: AstrMessageEvent) -> str | None:
-        return url_from_text(event.get_message_str)
-
-    @classmethod
-    def _extract_urls(cls, event: AstrMessageEvent) -> list[str]:
-        import astrbot.api.message_components as _Comp
-
-        return extract_urls(event, _Comp)
-
-    @staticmethod
-    def _reply_urls(event: AstrMessageEvent) -> list[str]:
-        """从被回复消息中提取 URL — 小程序卡片链接的逃生通道.
-
-        兼容 OneBot reply 段 (data.text / data.message) 与 AstrBot message_obj 链.
-        """
-        urls: list[str] = []
-        msg_obj = getattr(event, "message_obj", None)
-        chain = getattr(msg_obj, "message", None) or []
-        for seg in chain if isinstance(chain, list) else []:
-            seg_type = str(seg.get("type", "")) if isinstance(seg, dict) else ""
-            if "reply" not in seg_type:
-                continue
-            data = seg.get("data", {}) if isinstance(seg, dict) else {}
-            if not isinstance(data, dict):
-                continue
-            for key in ("text", "message", "content"):
-                raw = data.get(key, "")
-                if isinstance(raw, list):
-                    for sub in raw:
-                        if isinstance(sub, dict):
-                            sub_data = sub.get("data", {})
-                            if isinstance(sub_data, dict):
-                                collect_urls(str(sub_data.get("text", "")), urls)
-                                d = sub_data.get("data", "")
-                                if isinstance(d, str) and d:
-                                    collect_urls(d, urls)
-                                    u = extract_card_json_url(d)
-                                    if u:
-                                        urls.append(u)
-                elif isinstance(raw, str) and raw:
-                    collect_urls(raw, urls)
-                    u = extract_card_json_url(raw)
-                    if u:
-                        urls.append(u)
-        # 去重
-        seen = set()
-        result = []
-        for u in urls:
-            u = u.strip().rstrip(".,;!?，。；！？〉》）〕")
-            if u not in seen:
-                seen.add(u)
-                result.append(u)
-        return result
+        await ensure_chromium(
+            browsers_path="",  # initialize 已设置 PLAYWRIGHT_BROWSERS_PATH
+            log=astrbot_logger,
+        )
 
     async def _parse_raw(self, url: str) -> ParseResult | None:
         if self._parser is None:
@@ -452,162 +242,6 @@ class ParserLitePlugin(Star):
         result = await self._parse_raw(url)
         return format_full(result) if result else ""
 
-    # ── 多媒体发送管线 (委托 bridge.send: OneBot11 分派 + FFmpeg 转换回调注入) ──
-    async def _send_any(
-        self,
-        event: AstrMessageEvent,
-        p: Path,
-        media_type: str,
-        source_url: str = "",
-        duration: float = 0.0,
-        cover_path: str = "",
-    ):
-        from bridge.send import send_media_file
-
-        converters = {
-            "image": self._compress_image,
-            "video": self._convert_video,
-            "audio": lambda path: self._convert_audio(path, fmt="mp3"),
-        }
-        report = await send_media_file(
-            event,
-            p,
-            media_type,
-            source_url,
-            converters,
-            astrbot_logger,
-            cover_path=cover_path,
-        )
-        if report:
-            return
-        # 发送失败回显 (OneBot11 发送反馈: 完整错误链, 可倒查发送功能缺陷)
-        try:
-            _why = "; ".join(report.errors)[:300] or "OneBot API 不可用"
-            await event.send(
-                event.chain_result(
-                    [Comp.Plain(f"[ParserLite] {media_type} 发送失败: {_why}")]
-                )
-            )
-        except Exception:
-            pass
-        # T3: delay_send 兜底已移除 (依赖 OneBot11 notice, AstrBot 无法触发)
-
-    async def _compress_image(self, p: Path) -> bytes:
-        """压缩超大图片 (JPEG quality 80%, 最大 20MB)"""
-        import io
-
-        from PIL import Image as PILImage
-
-        img = PILImage.open(str(p))
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=80, optimize=True)
-        return buf.getvalue()
-
-    async def _convert_audio(self, p: Path, fmt: str = "mp3") -> Path:
-        """FFmpeg 音频转码: → MP3 (128k) 或 AMR (8k mono)"""
-        if not await FFmpeg.is_available():
-            return p
-        if p.suffix.lower() in (".mp3", ".m4a", ".aac", ".wav") and fmt == "mp3":
-            return p
-        out = p.parent / f"{p.stem}_cvt.{fmt}"
-        if out.exists():
-            return out
-        opts = (
-            [
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-i",
-                str(p),
-                "-ac",
-                "1",
-                "-ar",
-                "44100",
-                "-b:a",
-                "128k",
-                str(out),
-            ]
-            if fmt == "mp3"
-            else [
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-i",
-                str(p),
-                "-ac",
-                "1",
-                "-ar",
-                "8000",
-                "-b:a",
-                "12.2k",
-                str(out),
-            ]
-        )
-        try:
-            await FFmpeg.exec_ffmpeg(opts)
-            return out
-        except Exception:
-            return p
-
-    async def _convert_video(self, p: Path) -> Path:
-        """FFmpeg 视频转封装/转码: → H.264 + AAC in MP4"""
-        if not await FFmpeg.is_available():
-            return p
-        if p.suffix.lower() == ".mp4":
-            return p
-        out = p.parent / f"{p.stem}_cvt.mp4"
-        if out.exists():
-            return out
-        try:
-            await FFmpeg.exec_ffmpeg(
-                [
-                    "-y",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    str(p),
-                    "-c:v",
-                    "libx264",
-                    "-preset",
-                    "fast",
-                    "-crf",
-                    "28",
-                    "-c:a",
-                    "aac",
-                    "-b:a",
-                    "96k",
-                    "-movflags",
-                    "+faststart",
-                    str(out),
-                ]
-            )
-            return out
-        except Exception:
-            return p
-
-    async def _send_card(self, event: AstrMessageEvent, result: ParseResult):
-        # 委托 bridge.send (薄发送层: 上游渲染 → AstrBot 发送, 文本回退)
-        # OneBot11 发送反馈: 失败时向用户回显原因 (可倒查发送功能缺陷)
-        from bridge.send import send_card
-
-        report = await send_card(event, result, format_full, astrbot_logger)
-        if not report:
-            _why = "; ".join(report.errors)[:300] or "未知原因"
-            try:
-                await event.send(
-                    event.chain_result(
-                        [Comp.Plain(f"[ParserLite] 解析成功但卡片发送失败: {_why}")]
-                    )
-                )
-            except Exception:
-                pass
-        return report
-
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_message_group(self, event: AstrMessageEvent):
         await self._handle_card_message(event)
@@ -620,238 +254,6 @@ class ParserLitePlugin(Star):
         # r8: card_semantic 注入已移除 (自研模块删除)
         await self._handle_card_message(event)
 
-    def _should_send(self, media_type: str) -> bool:
-        """发送策略门: 委托 bridge.send (配置驱动, 默认全部类型)."""
-        from bridge.send import should_send
-
-        return should_send(media_type)
-
-    async def _send_items(
-        self, event: AstrMessageEvent, items: list, result: ParseResult
-    ):
-        """统一发送入口: 超过4项且配置允许 → 合并转发, 否则逐一发送"""
-        need_forward = (
-            get_config().need_forward_contents
-            and len([i for i in items if hasattr(i, "path_task")]) > 4
-        )
-        if need_forward:
-            await self._send_as_forward(event, items, result)
-        else:
-            for item in items:
-                await self._send_one(event, item)
-
-    async def _send_one(self, event: AstrMessageEvent, item):
-        """发送单个媒体项"""
-        if not hasattr(item, "path_task"):
-            return
-        try:
-            src_url = getattr(item.path_task, "url", "")
-            dur = getattr(item, "duration", 0.0)
-            # bridge 语义字段从 _source 读取 (不在上游 Config 模型)
-            _direct = bool(bridge_cfg("plite_direct_link", False))
-            _cover_only = bool(bridge_cfg("plite_send_cover_only", False))
-            # F5: 直链免下载模式 (配置驱动, 非硬编码)
-            if _direct and src_url:
-                sent = await self._try_direct_send(event, item, src_url)
-                if sent:
-                    return
-            # F6: 视频仅发封面 (配置驱动)
-            if isinstance(item, VideoContent) and _cover_only:
-                if self._should_send("image"):
-                    await self._send_video_cover(event, item)
-                return
-            p = Path(str(await item.path_task))
-            # 视频封面: 优先上游 VideoContent.cover (原始调用), 无则 ffmpeg 截帧兜底
-            _cover_p = ""
-            if isinstance(item, VideoContent):
-                _cover_p = str(await self._resolve_cover_path(item)) or ""
-            if isinstance(item, (ImageContent, GraphicContent, StickerContent)):
-                if self._should_send("image"):
-                    await self._send_any(event, p, "image", source_url=src_url)
-            elif isinstance(item, VideoContent):
-                if self._should_send("video"):
-                    await self._send_any(
-                        event,
-                        p,
-                        "video",
-                        source_url=src_url,
-                        duration=dur,
-                        cover_path=_cover_p,
-                    )
-            elif isinstance(item, AudioContent):
-                if self._should_send("audio"):
-                    await self._send_any(
-                        event, p, "audio", source_url=src_url, duration=dur
-                    )
-        except Exception:
-            pass
-
-    async def _resolve_cover_path(self, item) -> Path | None:
-        """视频封面路径: 优先上游 cover path_task (原始调用), 失败返回 None."""
-        try:
-            _cover = getattr(item, "cover", None)
-            if _cover is not None and getattr(_cover, "path_task", None) is not None:
-                _cp = Path(str(await _cover.path_task))
-                if _cp.exists():
-                    return _cp
-        except Exception:
-            pass
-        return None
-
-    async def _try_direct_send(
-        self, event: AstrMessageEvent, item, src_url: str
-    ) -> bool:
-        """F5: HEAD+Range 探测大小, 未超限则 URL 直发 (免下载). 失败返回 False."""
-        try:
-            import httpx
-
-            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-                resp = await client.head(src_url, headers={"Range": "bytes=0-0"})
-                size = None
-                cr = resp.headers.get("content-range", "")
-                cl = resp.headers.get("content-length", "")
-                if cr and "/" in cr:
-                    size = int(cr.split("/")[-1])
-                elif cl and cl.isdigit():
-                    size = int(cl)
-            if size is None:
-                return False
-            max_mb = int(get_config().max_size)
-            if size > max_mb * 1024 * 1024:
-                return False  # 超限回退下载
-            if isinstance(item, VideoContent):
-                if self._should_send("video"):
-                    await event.send(event.chain_result([Comp.Video.fromURL(src_url)]))
-                return True
-            if isinstance(item, (ImageContent, GraphicContent)):
-                if self._should_send("image"):
-                    await event.send(event.chain_result([Comp.Image.fromURL(src_url)]))
-                return True
-            return False
-        except Exception:
-            return False
-
-    async def _send_video_cover(self, event: AstrMessageEvent, item) -> None:
-        """F6: 视频仅发封面 — 优先上游 cover (原始调用), 无则 ffmpeg 截帧兜底."""
-        try:
-            _cp = await self._resolve_cover_path(item)
-            if _cp is not None:
-                if self._should_send("image"):
-                    await self._send_any(
-                        event,
-                        _cp,
-                        "image",
-                        source_url=getattr(item.path_task, "url", ""),
-                    )
-                return
-            from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
-
-            if not await FFmpeg.is_available():
-                return
-            vpath = Path(str(await item.path_task))
-            cover = vpath.parent / f"{vpath.stem}_cover.jpg"
-            await FFmpeg.exec_ffmpeg(
-                [
-                    "-i",
-                    str(vpath),
-                    "-frames:v",
-                    "1",
-                    "-q:v",
-                    "5",
-                    "-y",
-                    str(cover),
-                ]
-            )
-            if cover.exists():
-                if self._should_send("image"):
-                    await self._send_any(
-                        event,
-                        cover,
-                        "image",
-                        source_url=getattr(item.path_task, "url", ""),
-                    )
-                cover.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-    async def _send_as_forward(
-        self, event: AstrMessageEvent, items: list, result: ParseResult
-    ):
-        """合并转发: 将多项媒体内容打包为 Comp.Nodes (移植自上游 Renderer.__build_forward_segs)"""
-        nodes = []
-        author = result.author.name if result.author and result.author.name else "解析"
-        platform = result.platform.display_name if result.platform else ""
-        MAX_PER_NODE = int(bridge_cfg("plite_forward_max_nodes", 90) or 90)
-
-        for item in items:
-            if not hasattr(item, "path_task"):
-                continue
-            if len(nodes) >= MAX_PER_NODE:
-                break
-            try:
-                p = Path(str(await item.path_task))
-                if isinstance(item, ImageContent):
-                    nodes.append(
-                        Comp.Node(
-                            content=[
-                                Comp.Plain(f"{author} | {platform}"),
-                                Comp.Image.fromFileSystem(str(p)),
-                            ],
-                            name=author,
-                            uin="0",
-                        )
-                    )
-                elif isinstance(item, VideoContent):
-                    nodes.append(
-                        Comp.Node(
-                            content=[
-                                Comp.Plain(f"{author} 的视频"),
-                                Comp.Video.fromFileSystem(str(p)),
-                            ],
-                            name=author,
-                            uin="0",
-                        )
-                    )
-                elif isinstance(item, AudioContent):
-                    nodes.append(
-                        Comp.Node(
-                            content=[
-                                Comp.Plain(f"{author} 的音频"),
-                                Comp.Record.fromFileSystem(str(p)),
-                            ],
-                            name=author,
-                            uin="0",
-                        )
-                    )
-            except Exception:
-                pass
-
-        if nodes:
-            # E4: 发送降级链 — 合并转发失败 → 逐项单发 (动态降级, 无硬编码)
-            from bridge.fallback import send_with_fallback
-
-            async def _try_forward() -> bool:
-                await event.send(event.chain_result([Comp.Nodes(nodes=nodes)]))
-                return True
-
-            async def _try_individual() -> bool:
-                sent_any = False
-                for _node in nodes:
-                    for _seg in getattr(_node, "content", []) or []:
-                        try:
-                            await event.send(event.chain_result([_seg]))
-                            sent_any = True
-                        except Exception:
-                            pass
-                return sent_any
-
-            await send_with_fallback(
-                try_send=_try_forward,
-                fallbacks=[_try_individual],
-                logger=astrbot_logger,
-                label="合并转发",
-            )
-
     async def _handle_card_message(self, event: AstrMessageEvent):
         # r8: 消息级去重/限频/防抖已移除 (自研模块删除); 缓存由上游承载
         urls = self._extract_urls(event)
@@ -859,47 +261,29 @@ class ParserLitePlugin(Star):
             urls = self._reply_urls(event)  # 引用消息逃生通道 (小程序卡片)
         if not urls:
             return
-        if self._disabled(event) or self._blacklisted(event):
+        from bridge.commands import is_blacklisted, is_disabled
+        from bridge.send import dispatch_result
+
+        if is_disabled(self, event) or is_blacklisted(self, event):
             return
+
         for url in urls[:3]:
             try:
                 result = await self._parse_raw(url)
                 if result is None:
                     continue
-                if self._should_send("card"):
-                    await self._send_card(event, result)
-                await self._send_items(event, result.content, result)
+                await dispatch_result(event, result)
             except Exception:
                 astrbot_logger.error(
                     f"[ParserLite] _handle_card_message 异常\n{traceback.format_exc()}"
                 )
 
-    # ── 命令 ──────────────────────────────────────────────────────────────────
+    # ── 命令 (r11: 业务全委托 bridge.commands, 本层仅薄转发) ──────────────────
     async def cmd_parse(self, event: AstrMessageEvent):
-        if self._blacklisted(event) or self._disabled(event):
-            yield event.plain_result("本群已禁用")
-            return
-        urls = self._extract_urls(event)
-        if not urls:
-            urls = self._reply_urls(event)  # 引用消息逃生通道 (小程序卡片)
-        if not urls:
-            yield event.plain_result("未找到链接")
-            return
-        url = urls[0]
-        astrbot_logger.info(f"[ParserLite] cmd_parse: {url[:120]}")
-        try:
-            result = await self._parse_raw(url)
-            if result is None:
-                yield event.plain_result("不支持的链接")
-                return
-            if self._should_send("card"):
-                await self._send_card(event, result)
-            await self._send_items(event, result.content, result)
-        except Exception as e:
-            astrbot_logger.error(
-                f"[ParserLite] cmd_parse 异常\n{traceback.format_exc()}"
-            )
-            yield event.plain_result(f"解析失败: {e}")
+        from bridge.commands import parse
+
+        async for msg in parse(self, event):
+            yield msg
 
     async def cmd_clean(self, event: AstrMessageEvent):
         from bridge.commands import clean_cache
@@ -912,239 +296,43 @@ class ParserLitePlugin(Star):
         yield event.plain_result(status_text(self))
 
     async def cmd_enable(self, event: AstrMessageEvent):
-        from bridge.commands import toggle_group
+        from bridge.commands import gid, toggle_group
 
-        yield event.plain_result(toggle_group(self, self._gid(event), True))
+        yield event.plain_result(toggle_group(self, gid(event), True))
 
     async def cmd_disable(self, event: AstrMessageEvent):
-        from bridge.commands import toggle_group
+        from bridge.commands import gid, toggle_group
 
-        yield event.plain_result(toggle_group(self, self._gid(event), False))
+        yield event.plain_result(toggle_group(self, gid(event), False))
 
     async def cmd_doctor(self, event: AstrMessageEvent):
-        """自检: 全动态扫描, 结构化可观测, 错误显式返回 (复用 bridge.doctor)."""
-        try:
-            from bridge.doctor import render_text, run_checks, save_snapshot, summarize
+        from bridge.commands import doctor
 
-            results = await run_checks()
-            summary = summarize(results)
-            report = render_text(results, summary)
-            # 错误显式返回: 有失败项时附修复提示 + 快照落盘
-            if summary["failed"] or summary["warn"]:
-                snap = save_snapshot(results, summary)
-                report += "\n\n── 修复建议 ──"
-                report += "\n  1. Config/Downloader 失败 → 检查插件配置与依赖"
-                report += "\n  2. Chromium 警告 → 发送 parse_install_chromium"
-                report += "\n  3. Network 失败 → 检查代理/网络"
-                report += "\n  4. 其余失败 → 查看上方 error 详情"
-                if snap:
-                    report += f"\n\n快照已保存: {snap}"
-            yield event.plain_result(report)
-        except Exception as e:
-            yield event.plain_result(f"doctor 执行失败: {e}")
+        async for msg in doctor(self, event):
+            yield msg
 
     async def cmd_install_chromium(self, event: AstrMessageEvent):
-        try:
-            from nonebot_plugin_parser_lite.utils.browser import BrowserManager
+        from bridge.commands import install_chromium
 
-            await BrowserManager.ensure_started()
-            yield event.plain_result("Chromium 已可用, 无需重复安装")
-            return
-        except Exception:
-            pass
-        yield event.plain_result("开始安装 Chromium (耗时较长, 请等待)...")
-        pb = str(Path(get_config().data_dir) / "playwright_browsers")
-        installed = False
-        for url, name in [
-            ("https://npmmirror.com/mirrors/playwright", "npmmirror"),
-            ("https://playwright.azureedge.net", "Azure"),
-        ]:
-            env = os.environ.copy()
-            env["PLAYWRIGHT_BROWSERS_PATH"] = pb
-            env["PLAYWRIGHT_DOWNLOAD_HOST"] = url
-            try:
-                yield event.plain_result(f"尝试 {name} ({url}) ...")
-                proc = await asyncio.create_subprocess_exec(
-                    sys.executable, "-m", "playwright", "install", "chromium", env=env
-                )
-                await asyncio.wait_for(proc.wait(), timeout=600)
-                if proc.returncode != 0:
-                    yield event.plain_result(
-                        f"{name} 安装失败 (rc={proc.returncode}), 切换镜像..."
-                    )
-                    continue
-                installed = True
-                break
-            except asyncio.TimeoutError:
-                yield event.plain_result(f"{name} 超时, 切换镜像...")
-            except Exception as e:
-                yield event.plain_result(f"{name} 失败: {e}\n切换镜像...")
-        if not installed:
-            yield event.plain_result(
-                "✗ 浏览器下载失败, 请检查网络或手动执行: python -m playwright install chromium"
-            )
-            return
-        # 浏览器就绪 → 检查/补齐系统库 (install-deps 优先, apt-get 回退)
-        missing = _detect_missing_libs()
-        if missing:
-            yield event.plain_result(f"检测到缺失系统库, 尝试自动安装:\n{missing}")
-            if not (hasattr(os, "geteuid") and os.geteuid() == 0):
-                yield event.plain_result(
-                    "✗ 非 root 用户无法安装系统库, 请在容器/服务器以 root 运行:\n"
-                    "  apt-get update && apt-get install -y libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0\n"
-                    "  或: python -m playwright install-deps chromium"
-                )
-                return
-            # ① playwright install-deps (全量依赖, 适配发行版包管理器)
-            try:
-                _deps_proc = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "-m",
-                    "playwright",
-                    "install-deps",
-                    "chromium",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _deps_out, _deps_err = await asyncio.wait_for(
-                    _deps_proc.communicate(), timeout=600
-                )
-                if _deps_proc.returncode == 0:
-                    astrbot_logger.info("[ParserLite] playwright install-deps 成功")
-                else:
-                    yield event.plain_result(
-                        f"playwright install-deps 失败 (rc={_deps_proc.returncode}), "
-                        f"回退 apt-get:\n{_deps_err.decode(errors='replace').strip()[-200:]}"
-                    )
-                    # ② 回退: 手写 apt-get 补齐核心库
-                    try:
-                        _apt1 = await asyncio.create_subprocess_exec(
-                            "apt-get",
-                            "update",
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
-                        )
-                        await asyncio.wait_for(_apt1.communicate(), timeout=300)
-                        _apt2 = await asyncio.create_subprocess_exec(
-                            "apt-get",
-                            "install",
-                            "-y",
-                            "--no-install-recommends",
-                            "libnspr4",
-                            "libnss3",
-                            "libgbm1",
-                            "libasound2",
-                            "libxkbcommon0",
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
-                        )
-                        _o2, _e2 = await asyncio.wait_for(
-                            _apt2.communicate(), timeout=600
-                        )
-                        if _apt2.returncode != 0:
-                            yield event.plain_result(
-                                f"✗ apt-get 安装失败: rc={_apt2.returncode} "
-                                f"{_e2.decode(errors='replace').strip()[-300:]}"
-                            )
-                            yield event.plain_result(
-                                "请手动执行: apt-get update && apt-get install -y "
-                                "libnspr4 libnss3 libgbm1 libasound2 libxkbcommon0"
-                            )
-                            return
-                    except Exception as e:
-                        yield event.plain_result(
-                            f"✗ apt-get 异常: {e}\n请手动安装系统库后重试"
-                        )
-                        return
-            except asyncio.TimeoutError:
-                yield event.plain_result(
-                    "✗ playwright install-deps 超时, 请手动安装系统库后重试"
-                )
-                return
-            except Exception as e:
-                yield event.plain_result(f"✗ 系统库安装异常: {e}\n请手动安装后重试")
-                return
-        # 最终验证
-        try:
-            from nonebot_plugin_parser_lite.utils.browser import BrowserManager
-
-            await BrowserManager.ensure_started()
-            yield event.plain_result("✓ Chromium 安装完成且可启动!")
-        except Exception as e:
-            yield event.plain_result(
-                f"✗ Chromium 仍无法启动: {e}\n缺失库: {_detect_missing_libs() or '(none)'}\n"
-                "请运行: python -m playwright install-deps chromium"
-            )
+        async for msg in install_chromium(self, event):
+            yield msg
 
     async def cmd_bm(self, event: AstrMessageEvent):
-        """下载 B站音频: 从当前消息 / 回复消息 两路提取 BV 号"""
-        text = event.get_message_str()
-        bvid = None
+        from bridge.commands import bm
 
-        # 1) 当前消息直接匹配
-        m = re.search(r"[Bb][Vv][A-Za-z0-9]{10}", text)
-        if m:
-            bvid = m.group(0)
-
-        # 2) 从回复消息提取 BV 号
-
-        # 3) 从被回复的消息中提取 BV (上游 BvReplyMergeExtension 等价实现)
-        if not bvid:
-            msg_obj = getattr(event, "message_obj", None)
-            if msg_obj:
-                raw_segs = getattr(msg_obj, "message", None) or []
-                for seg in raw_segs if isinstance(raw_segs, list) else []:
-                    if isinstance(seg, dict) and seg.get("type") == "reply":
-                        reply_data = seg.get("data", {})
-                        reply_text = (
-                            reply_data.get("text", "")
-                            or reply_data.get("message", "")
-                            or ""
-                        )
-                        m = re.search(r"[Bb][Vv][A-Za-z0-9]{10}", str(reply_text))
-                        if m:
-                            bvid = m.group(0)
-                            break
-
-        if not bvid:
-            yield event.plain_result("未找到BV号 (当前消息/回复消息均无)")
-            return
-
-        from nonebot_plugin_parser_lite.parsers.bilibili import BilibiliParser
-
-        bili = BilibiliParser()
-        try:
-            urls = await bili.extract_download_urls(bvid=bvid)
-            _video_url, audio_url = (
-                (urls[0], urls[1]) if len(urls) > 1 else (urls[0], None)
-            )
-            if audio_url:
-                yield event.plain_result(f"Audio: {audio_url[:80]}")
-            else:
-                yield event.plain_result("该视频未提取到独立音频流")
-        except Exception as e:
-            yield event.plain_result(f"Error: {e}")
-        finally:
-            await bili.aclose()
+        async for msg in bm(self, event):
+            yield msg
 
     async def cmd_blogin(self, event: AstrMessageEvent):
-        from nonebot_plugin_parser_lite.parsers.bilibili import BilibiliParser
+        from bridge.commands import blogin
 
-        bili = BilibiliParser()
-        try:
-            qr_bytes = await bili.login_with_qrcode()
-            yield event.plain_result("B站登录二维码已生成, 请用手机B站扫描以下二维码:")
-            yield event.chain_result([Comp.Image.fromBytes(qr_bytes)])
-        except Exception as e:
-            yield event.plain_result(f"Error: {e}")
+        async for msg in blogin(self, event):
+            yield msg
 
     async def parse_url(self, event: AstrMessageEvent, url: str) -> str:
-        if self._blacklisted(event):
-            return "黑名单用户"
-        # 启用过滤委托上游: platforms.items.enabled 勾选由 parse_url 内
-        # _sync_enabled_to_upstream() 同步为 pconfig.disabled_platforms
-        result = await self._parse_and_format(url)
-        return result or "无法解析该链接"
+        from bridge.commands import parse_url_cmd as _parse_url
+
+        return await _parse_url(self, event, url)
 
 
 # ── 装饰器注册 ────────────────────────────────────────────────────────────────
