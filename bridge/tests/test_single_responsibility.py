@@ -70,9 +70,18 @@ def test_key_functions_single_owner():
         "format_full": "format.py",
         "format_brief": "format.py",
         "extract_urls": "url_extract.py",
+        "extract_reply_urls": "url_extract.py",
         "ParserLite": "resolve.py",
         "inject_dynamic_options_static": "inject.py",
         "sync_cookies_to_upstream": "proxy.py",
+        "ensure_chromium": "chromium.py",
+        "send_items": "send.py",
+        "send_one": "send.py",
+        "dispatch_result": "send.py",
+        "parse_url_cmd": "commands.py",
+        "is_disabled": "commands.py",
+        "is_blacklisted": "commands.py",
+        "gid": "commands.py",
     }
     for fn, owner in owner_map.items():
         files = []
