@@ -57,7 +57,7 @@
                     <div class="content">
                         <div class="text-sm font-black text-gray-500 dark:text-slate-300">{{ comment.author.name }}</div>
                         <div class="text-sm text-gray-700 dark:text-slate-200 leading-relaxed">
-                            {{ render_content_items(comment.content) }}
+                            {{ render_content_items(comment.content) | safe }}
                         </div>
                         <div class="flex items-center space-x-2 text-xs text-gray-400 dark:text-slate-500 uppercase tracking-tight">
                             <span>{{ comment.formatted_datetime }}</span>
@@ -81,7 +81,7 @@
                                              class="w-6 h-6 rounded-full object-cover" />
                                         <div class="content">
                                             <div class="text-sm font-bold text-gray-500 dark:text-slate-300">{{ reply.author.name }}</div>
-                                            <div class="text-sm text-gray-600 dark:text-slate-300 leading-snug">{{ render_content_items(reply.content) }}</div>
+                                            <div class="text-sm text-gray-600 dark:text-slate-300 leading-snug">{{ render_content_items(reply.content) | safe }}</div>
                                             <div class="flex items-center space-x-3 text-xs text-gray-400 dark:text-slate-500 uppercase">
                                                 <span>{{ reply.formatted_datetime }}</span>
                                                 {% if reply.author.location %}<span>{{ reply.author.location }}</span>{% endif %}
@@ -219,7 +219,7 @@
             {# 2. 文本：遇到非图片前先 flush，避免跨段 #}
         {% elif cont is string %}
             {% set _ = flush_images() %}
-            {% set text = cont | e %}
+            {% set text = cont | pl_esc %}
             {# 第一段或紧邻贴纸时，直接作为内联 span；否则仍作为段落 span，但交给外层包 <p> #}
             {% if not state.first_text_seen or prev_is_sticker or next_is_sticker %}
                 {% set _ = html_parts.append('<span class="whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">' ~ text ~ '</span>') %}
@@ -237,21 +237,21 @@
                             '<div class="single-image relative rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-700 shadow-sm">'
                             '<img src="' ~ src ~ '" class="w-full h-auto object-cover" />'
                             '</div>'
-                            '<p class="text-xs text-slate-500 dark:text-slate-400">' ~ (alt|e) ~ '</p>'
+                            '<p class="text-xs text-slate-500 dark:text-slate-400">' ~ (alt|pl_esc) ~ '</p>'
                             '</div>'
                         ) %}
             {# 4. 贴纸 #}
         {% elif cls == 'StickerContent' %}
             {% set src = cont | safe_src(return_none_on_fail=True) %}
             {% if not src %}
-                {% set _ = html_parts.append('<span class="whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">' ~ cont.desc|e ~ '</span>') %}
+                {% set _ = html_parts.append('<span class="whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">' ~ cont.desc|pl_esc ~ '</span>') %}
             {% else %}
                 {% set size = cont.size %}
                 {% set size_class = 'h-6' if size == 'small' else 'h-12' %}
                 {% set _ = html_parts.append(
                                     '<img class="inline-block align-text-bottom ' ~ size_class ~ '"
                      src="' ~ src ~ '"
-                     alt="' ~ (cont.desc|e) ~ '" />'
+                     alt="' ~ (cont.desc|pl_esc) ~ '" />'
                                 ) %}
             {% endif %}
             {# 5. 视频封面 + 播放按钮 #}
@@ -274,15 +274,15 @@
         {% elif cls == 'LinkContent' %}
             {% set _ = flush_images() %}
             {% set _ = html_parts.append(
-                            '<a href="'~(cont.url|e)~'"
+                            '<a href="'~(cont.url|pl_esc)~'"
                target="_blank"
                rel="noreferrer noopener"
                class="block mt-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors duration-150 shadow-sm">
                             <div class="px-3 py-2.5">
                                 <div class="flex items-center justify-between space-x-2">
                                     <div class="flex-1 min-w-0">
-                                        <div class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">'~(cont.text|e)~'</div>
-                                        <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">'~(cont.url|e)~'</div>
+                                        <div class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">'~(cont.text|pl_esc)~'</div>
+                                        <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">'~(cont.url|pl_esc)~'</div>
                                     </div>
                                 </div>
                             </div>
@@ -291,7 +291,7 @@
     {% endif %}
 {% endfor %}
 {% set _ = flush_images() %}
-{{ html_parts|join("") | safe }}
+{{ html_parts|map('pl_str')|join("") | safe }}
 {% endmacro %}
 {# 3. 内容+转发宏（Tailwind 样式 + is_repost） #}
 {% macro render_content(result, is_repost=False) %}
@@ -325,7 +325,7 @@
                 <p class="title text-lg font-extrabold text-gray-800 dark:text-slate-100">{{ result.title | e }}</p>
             {% endif %}
             <div class="text-gray-800 dark:text-slate-200 text-base leading-relaxed">
-                {{ render_content_items(result.content) }}
+                {{ render_content_items(result.content) | safe }}
             </div>
         </div>
         {# AI 总结 / 锐评 #}
@@ -350,7 +350,7 @@
         {# 转发内容：嵌套一层卡片，用 is_repost=True #}
         {% if result.repost %}
             <div class="shadow-sm m-8 mt-0 rounded-xl outline-1 outline-slate-200 dark:outline-slate-700">
-                {{ render_content(result.repost, True) }}
+                {{ render_content(result.repost, True) | safe }}
             </div>
         {% endif %}
         {# 主体内容和评论之间的间隔 #}
@@ -359,7 +359,7 @@
                 <div class="h-px bg-slate-100 dark:bg-slate-700"></div>
             </div>
         {% endif %}
-        {{ render_comments(comments) }}
+        {{ render_comments(comments) | safe }}
         {% if not is_repost %}
             <footer class="px-8 py-6 bg-gray-50 dark:bg-slate-950 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center text-[10px] font-black text-gray-300 dark:text-slate-600 uppercase tracking-widest antialiased">
                 <span>{{ result.bot_name }} Parser · Design negichan</span>

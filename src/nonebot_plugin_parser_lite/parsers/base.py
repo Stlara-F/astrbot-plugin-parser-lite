@@ -311,7 +311,7 @@ class BaseParser:
         content: list[ContentItem],
         **kwargs: Unpack[ParseResultKwargs],
     ) -> ParseResult:
-        """构建解析结果"""
+        """创建解析结果"""
         return ParseResult(
             platform=cls.platform, author=author, url=url, content=content, **kwargs
         )
