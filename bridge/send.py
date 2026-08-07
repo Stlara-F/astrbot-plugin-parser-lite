@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from bridge.cfg import bridge_cfg
 from bridge.context import up_renderer
@@ -243,13 +244,13 @@ async def _send_media_impl(
 ) -> SendReport:
     """媒体发送骨架 (md5 秒传 → 正常路径多级 failback).
 
-    :param converters: 扩展回调 {"image": async fn(path)->bytes, "video": async fn(path)->Path,
-                       "audio": async fn(path)->Path} — 由调用方注入 (FFmpeg 转换保持扩展)
+    :param converters: 扩展回调 {"video": async fn(path)->Path, "audio": async fn(path)->Path}
+                       — 由调用方注入 (FFmpeg 转换; r11: image 键不再消费, 直发原生路径)
     :param cover_path: 视频封面路径 (OneBot11 视频+封面链, 上游 VideoContent.cover)
     :return: SendReport (bool(report)=ok, 兼容旧调用)
 
     OneBot11 发送语义 (参考协议与 AstrBot 组件事实):
-    - image: use_base64 → fromBytes(base64://), 否则 fromFileSystem → 压缩 → fromURL
+    - image: use_base64 → fromBytes(base64://), 否则 fromFileSystem → fromURL
     - video: 空文件拦截; >file_threshold_mb → Comp.File 文件发送 (OneBot11 大文件必失败);
              base64 估算 >20MB → Comp.File; 否则 Video.fromBase64 + 封面链
     - audio: Record.fromBase64 (组件无 fromBytes)
@@ -324,9 +325,6 @@ async def _send_media_impl(
         if _use_b64:
             try:
                 raw = p.read_bytes()
-                compress = converters.get("image")
-                if compress is not None:
-                    raw = await compress(p)
                 _segs = [Image.fromBytes(raw)]
                 await event.send(event.chain_result(_segs))
                 return _ok("image-b64", _segs)
@@ -340,9 +338,6 @@ async def _send_media_impl(
             _try_send("image-fs", [], _e)
         try:
             raw = p.read_bytes()
-            compress = converters.get("image")
-            if compress is not None:
-                raw = await compress(p)
             _segs = [Image.fromBytes(raw)]
             await event.send(event.chain_result(_segs))
             return _ok("image-bytes", _segs)
@@ -449,3 +444,400 @@ async def _send_media_impl(
             except Exception as _e:
                 _try_send("audio-url", [], _e)
     return _report
+
+
+# ── 发送管线 (r11: main.py 下沉, 命令/事件共用) ──────────────────────────────
+
+
+def _logger():
+    import logging
+
+    return logging.getLogger("parser-lite.bridge.send")
+
+
+async def convert_audio(p: Path, fmt: str = "mp3") -> Path:
+    """FFmpeg 音频转码: → MP3 (128k) 或 AMR (8k mono)."""
+    from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
+
+    if not await FFmpeg.is_available():
+        return p
+    if p.suffix.lower() in (".mp3", ".m4a", ".aac", ".wav") and fmt == "mp3":
+        return p
+    out = p.parent / f"{p.stem}_cvt.{fmt}"
+    if out.exists():
+        return out
+    opts = (
+        [
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(p),
+            "-ac",
+            "1",
+            "-ar",
+            "44100",
+            "-b:a",
+            "128k",
+            str(out),
+        ]
+        if fmt == "mp3"
+        else [
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(p),
+            "-ac",
+            "1",
+            "-ar",
+            "8000",
+            "-b:a",
+            "12.2k",
+            str(out),
+        ]
+    )
+    try:
+        await FFmpeg.exec_ffmpeg(opts)
+        return out
+    except Exception:
+        return p
+
+
+async def convert_video(p: Path) -> Path:
+    """FFmpeg 视频转封装/转码: → H.264 + AAC in MP4."""
+    from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
+
+    if not await FFmpeg.is_available():
+        return p
+    if p.suffix.lower() == ".mp4":
+        return p
+    out = p.parent / f"{p.stem}_cvt.mp4"
+    if out.exists():
+        return out
+    try:
+        await FFmpeg.exec_ffmpeg(
+            [
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(p),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "28",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "96k",
+                "-movflags",
+                "+faststart",
+                str(out),
+            ]
+        )
+        return out
+    except Exception:
+        return p
+
+
+def _default_converters() -> dict:
+    """媒体转换器 (r11: 仅 video/audio — FFmpeg; image 直发原生路径)."""
+    return {
+        "video": convert_video,
+        "audio": lambda path: convert_audio(path, fmt="mp3"),
+    }
+
+
+async def resolve_cover_path(item) -> Path | None:
+    """视频封面路径: 优先上游 cover path_task, 失败返回 None."""
+    try:
+        _cover = getattr(item, "cover", None)
+        if _cover is not None and getattr(_cover, "path_task", None) is not None:
+            _cp = Path(str(await _cover.path_task))
+            if _cp.exists():
+                return _cp
+    except Exception:
+        pass
+    return None
+
+
+async def try_direct_send(event, item, src_url: str) -> bool:
+    """F5: HEAD+Range 探测大小, 未超限则 URL 直发 (免下载). 失败返回 False."""
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.head(src_url, headers={"Range": "bytes=0-0"})
+            size = None
+            cr = resp.headers.get("content-range", "")
+            cl = resp.headers.get("content-length", "")
+            if cr and "/" in cr:
+                size = int(cr.split("/")[-1])
+            elif cl and cl.isdigit():
+                size = int(cl)
+        if size is None:
+            return False
+        from bridge.context import get_config
+
+        max_mb = int(get_config().max_size)
+        if size > max_mb * 1024 * 1024:
+            return False  # 超限回退下载
+        from astrbot.api.message_components import Image, Video
+
+        from nonebot_plugin_parser_lite.data import (
+            GraphicContent,
+            ImageContent,
+            VideoContent,
+        )
+
+        if isinstance(item, VideoContent):
+            if should_send("video"):
+                await event.send(event.chain_result([Video.fromURL(src_url)]))
+            return True
+        if isinstance(item, (ImageContent, GraphicContent)):
+            if should_send("image"):
+                await event.send(event.chain_result([Image.fromURL(src_url)]))
+            return True
+        return False
+    except Exception:
+        return False
+
+
+async def _send_media(
+    event, p: Path, media_type: str, source_url: str = "", cover_path: str = ""
+):
+    """send_media_file 封装: 默认转换器 + 失败回显."""
+    report = await send_media_file(
+        event,
+        p,
+        media_type,
+        source_url,
+        _default_converters(),
+        _logger(),
+        cover_path=cover_path,
+    )
+    if report:
+        return
+    try:
+        _why = "; ".join(report.errors)[:300] or "OneBot API 不可用"
+        from astrbot.api.message_components import Plain
+
+        await event.send(
+            event.chain_result([Plain(f"[ParserLite] {media_type} 发送失败: {_why}")])
+        )
+    except Exception:
+        pass
+
+
+async def send_video_cover(event, item) -> None:
+    """F6: 视频仅发封面 — 优先上游 cover, 无则 ffmpeg 截帧兜底."""
+    try:
+        _cp = await resolve_cover_path(item)
+        if _cp is not None:
+            if should_send("image"):
+                await _send_media(
+                    event,
+                    _cp,
+                    "image",
+                    source_url=getattr(item.path_task, "url", ""),
+                )
+            return
+        from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg
+
+        if not await FFmpeg.is_available():
+            return
+        vpath = Path(str(await item.path_task))
+        cover = vpath.parent / f"{vpath.stem}_cover.jpg"
+        await FFmpeg.exec_ffmpeg(
+            [
+                "-i",
+                str(vpath),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "5",
+                "-y",
+                str(cover),
+            ]
+        )
+        if cover.exists():
+            if should_send("image"):
+                await _send_media(
+                    event,
+                    cover,
+                    "image",
+                    source_url=getattr(item.path_task, "url", ""),
+                )
+            cover.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+async def send_as_forward(event, items: list, result) -> None:
+    """合并转发: 多项媒体打包 Comp.Nodes (移植自上游 Renderer.__build_forward_segs)."""
+    from astrbot.api.message_components import (
+        Image,
+        Node,
+        Nodes,
+        Plain,
+        Record,
+        Video,
+    )
+
+    from bridge.fallback import send_with_fallback
+    from nonebot_plugin_parser_lite.data import AudioContent, ImageContent, VideoContent
+
+    nodes = []
+    author = result.author.name if result.author and result.author.name else "解析"
+    platform = result.platform.display_name if result.platform else ""
+    MAX_PER_NODE = int(bridge_cfg("plite_forward_max_nodes", 90) or 90)
+
+    for item in items:
+        if not hasattr(item, "path_task"):
+            continue
+        if len(nodes) >= MAX_PER_NODE:
+            break
+        try:
+            p = Path(str(await item.path_task))
+            if isinstance(item, ImageContent):
+                nodes.append(
+                    Node(
+                        content=[
+                            Plain(f"{author} | {platform}"),
+                            Image.fromFileSystem(str(p)),
+                        ],
+                        name=author,
+                        uin="0",
+                    )
+                )
+            elif isinstance(item, VideoContent):
+                nodes.append(
+                    Node(
+                        content=[
+                            Plain(f"{author} 的视频"),
+                            Video.fromFileSystem(str(p)),
+                        ],
+                        name=author,
+                        uin="0",
+                    )
+                )
+            elif isinstance(item, AudioContent):
+                nodes.append(
+                    Node(
+                        content=[
+                            Plain(f"{author} 的音频"),
+                            Record.fromFileSystem(str(p)),
+                        ],
+                        name=author,
+                        uin="0",
+                    )
+                )
+        except Exception:
+            pass
+
+    if nodes:
+        # E4: 发送降级链 — 合并转发失败 → 逐项单发
+        async def _try_forward() -> bool:
+            await event.send(event.chain_result([Nodes(nodes=nodes)]))
+            return True
+
+        async def _try_individual() -> bool:
+            sent_any = False
+            for _node in nodes:
+                for _seg in getattr(_node, "content", []) or []:
+                    try:
+                        await event.send(event.chain_result([_seg]))
+                        sent_any = True
+                    except Exception:
+                        pass
+            return sent_any
+
+        await send_with_fallback(
+            try_send=_try_forward,
+            fallbacks=[_try_individual],
+            logger=_logger(),
+            label="合并转发",
+        )
+
+
+async def send_one(event, item) -> None:
+    """发送单个媒体项 (直链/仅封面/按类型分派)."""
+    if not hasattr(item, "path_task"):
+        return
+    try:
+        src_url = getattr(item.path_task, "url", "")
+        dur = getattr(item, "duration", 0.0)
+        _direct = bool(bridge_cfg("plite_direct_link", False))
+        _cover_only = bool(bridge_cfg("plite_send_cover_only", False))
+        from nonebot_plugin_parser_lite.data import (
+            AudioContent,
+            GraphicContent,
+            ImageContent,
+            StickerContent,
+            VideoContent,
+        )
+
+        # F5: 直链免下载模式 (配置驱动)
+        if _direct and src_url:
+            sent = await try_direct_send(event, item, src_url)
+            if sent:
+                return
+        # F6: 视频仅发封面 (配置驱动)
+        if isinstance(item, VideoContent) and _cover_only:
+            if should_send("image"):
+                await send_video_cover(event, item)
+            return
+        p = Path(str(await item.path_task))
+        _cover_p = ""
+        if isinstance(item, VideoContent):
+            _cover_p = str(await resolve_cover_path(item)) or ""
+        if isinstance(item, (ImageContent, GraphicContent, StickerContent)):
+            if should_send("image"):
+                await _send_media(event, p, "image", source_url=src_url)
+        elif isinstance(item, VideoContent):
+            if should_send("video"):
+                await _send_media(
+                    event,
+                    p,
+                    "video",
+                    source_url=src_url,
+                    cover_path=_cover_p,
+                )
+        elif isinstance(item, AudioContent):
+            if should_send("audio"):
+                await _send_media(event, p, "audio", source_url=src_url, duration=dur)
+    except Exception:
+        pass
+
+
+async def send_items(event, items: list, result) -> None:
+    """统一发送入口: 超过4项且配置允许 → 合并转发, 否则逐一发送."""
+    from bridge.context import get_config
+
+    need_forward = (
+        get_config().need_forward_contents
+        and len([i for i in items if hasattr(i, "path_task")]) > 4
+    )
+    if need_forward:
+        await send_as_forward(event, items, result)
+    else:
+        for item in items:
+            await send_one(event, item)
+
+
+async def dispatch_result(event, result) -> None:
+    """解析结果统一分派: should_send("card") → send_card + send_items.
+
+    命令与消息事件共用 (send_card 的文本回退在 send_card 内部).
+    """
+    if should_send("card"):
+        from bridge.format import format_full
+
+        await send_card(event, result, format_full)
+    await send_items(event, result.content, result)
