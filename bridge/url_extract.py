@@ -261,3 +261,48 @@ def extract_urls(event, comp_cls) -> list[str]:
             seen.add(u)
             result.append(u)
     return result
+
+
+def extract_reply_urls(event) -> list[str]:
+    """从被回复消息中提取 URL — 小程序卡片链接的逃生通道 (r11: main.py 下沉).
+
+    兼容 OneBot reply 段 (data.text / data.message) 与 AstrBot message_obj 链.
+    """
+    urls: list[str] = []
+    msg_obj = getattr(event, "message_obj", None)
+    chain = getattr(msg_obj, "message", None) or []
+    for seg in chain if isinstance(chain, list) else []:
+        seg_type = str(seg.get("type", "")) if isinstance(seg, dict) else ""
+        if "reply" not in seg_type:
+            continue
+        data = seg.get("data", {}) if isinstance(seg, dict) else {}
+        if not isinstance(data, dict):
+            continue
+        for key in ("text", "message", "content"):
+            raw = data.get(key, "")
+            if isinstance(raw, list):
+                for sub in raw:
+                    if isinstance(sub, dict):
+                        sub_data = sub.get("data", {})
+                        if isinstance(sub_data, dict):
+                            collect_urls(str(sub_data.get("text", "")), urls)
+                            d = sub_data.get("data", "")
+                            if isinstance(d, str) and d:
+                                collect_urls(d, urls)
+                                u = extract_card_json_url(d)
+                                if u:
+                                    urls.append(u)
+            elif isinstance(raw, str) and raw:
+                collect_urls(raw, urls)
+                u = extract_card_json_url(raw)
+                if u:
+                    urls.append(u)
+    # 去重
+    seen = set()
+    result = []
+    for u in urls:
+        u = u.strip().rstrip(".,;!?，。；！？〉》）〕")
+        if u not in seen:
+            seen.add(u)
+            result.append(u)
+    return result
