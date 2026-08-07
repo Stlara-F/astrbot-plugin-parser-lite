@@ -13,7 +13,34 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import types
+
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _astrbot_stub(monkeypatch):
+    """CI 无 astrbot 环境 → stub astrbot.api.message_components."""
+    comp = types.ModuleType("astrbot.api.message_components")
+
+    class Image:
+        @staticmethod
+        def fromBytes(raw):
+            return ("img", raw)
+
+    class Plain:
+        def __init__(self, text):
+            self.text = text
+
+    comp.Image = Image
+    comp.Plain = Plain
+    api = types.ModuleType("astrbot.api")
+    api.message_components = comp
+    ast = types.ModuleType("astrbot")
+    ast.api = api
+    monkeypatch.setitem(sys.modules, "astrbot", ast)
+    monkeypatch.setitem(sys.modules, "astrbot.api", api)
+    monkeypatch.setitem(sys.modules, "astrbot.api.message_components", comp)
 
 
 class FakeEvent:
