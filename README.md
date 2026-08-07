@@ -201,7 +201,7 @@ plite_day_range=["6:00", "19:00"]
 plite_zhihu_ck="z_c0=xxxx"
 
 # [可选] linuxdo cookie, 部分帖子需要登录或有一定的阅读等级才可以查看
-plite_linuxdo_ck="d_c0=xxxx"
+plite_linuxdo_ck="xxxx"
 ```
 
 </details>
