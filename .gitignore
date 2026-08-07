@@ -7,3 +7,6 @@ _conf_schema.json
 data/
 test/_doctor_snapshot.json
 *.pyc
+
+# 上游运行时产物 (src 内)
+**/parser_lite/*.json
