@@ -37,7 +37,8 @@ def _sync_enabled_to_upstream() -> None:
             return
         _all = {p.name for p in PlatformEnum}
         _disabled = [p for p in _all if p not in _en]
-        if list(pconfig.disabled_platforms) != _disabled:
+        # 枚举 → 名称比较 (pconfig 存 PlatformEnum, 同步值为 str)
+        if [p.name for p in pconfig.disabled_platforms] != _disabled:
             pconfig.disabled_platforms = _disabled
     except Exception:
         pass

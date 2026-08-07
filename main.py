@@ -1141,8 +1141,8 @@ class ParserLitePlugin(Star):
     async def parse_url(self, event: AstrMessageEvent, url: str) -> str:
         if self._blacklisted(event):
             return "黑名单用户"
-        # T1: disabled_platforms 已移除 (与 platforms.items.enabled 收敛,
-        # 启用判定由 _is_parser_enabled 统一处理)
+        # 启用过滤委托上游: platforms.items.enabled 勾选由 parse_url 内
+        # _sync_enabled_to_upstream() 同步为 pconfig.disabled_platforms
         result = await self._parse_and_format(url)
         return result or "无法解析该链接"
 
