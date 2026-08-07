@@ -136,12 +136,6 @@ _BRIDGE_FIELDS: list[dict] = [
         "default": False,
     },
     {
-        "path": "plite_image_compress_mb",
-        "type": "int",
-        "desc": tr("plite_image_compress_mb"),
-        "default": 20,
-    },
-    {
         "path": "plite_video_file_threshold_mb",
         "type": "int",
         "desc": tr("plite_video_file_threshold_mb"),
@@ -154,8 +148,6 @@ _BRIDGE_FIELDS: list[dict] = [
         "desc": tr("plite_forward_max_nodes"),
         "default": 50,
     },
-    # r8 已删除的自研字段: md5_fast_send/md5_cache_max/dedup_ttl/cache_interval/
-    # card_semantic/push/push_interval (对应模块已随 r8 移除)
 ]
 
 _PARSER_EXTRA_MAP: dict[str, tuple[str, type, bool]] = {}
@@ -168,6 +160,7 @@ _STALE_CONFIG_KEYS = (
     "custom_parsers",
     "test_urls",
     "plite_disabled_platforms",
+    "plite_image_compress_mb",
     "plite_http_proxy",
     "plite_md5_fast_send",
     "plite_md5_cache_max",

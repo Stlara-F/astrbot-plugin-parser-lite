@@ -67,9 +67,8 @@ def test_bridge_fields_structure():
     paths = re.findall(r'"path": "([^"]+)"', block)
     assert paths, "未解析到配置路径"
 
-    # 必含新键 (r8: dedup/cache_interval 已删)
+    # 必含新键 (r8/r10: dedup/cache_interval/image_compress_mb 已删)
     for key in (
-        "plite_image_compress_mb",
         "plite_forward_max_nodes",
         "send_strategy",
     ):

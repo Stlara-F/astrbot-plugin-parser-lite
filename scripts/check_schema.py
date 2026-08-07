@@ -67,11 +67,8 @@ def main() -> int:
     if last_low and min(last_low) < first_high_end:
         errors.append("FAIL: 配置顺序错误")
 
-    # 3. 必含新配置项 (r8: dedup/cache_interval 已删)
-    for key in (
-        "plite_image_compress_mb",
-        "plite_forward_max_nodes",
-    ):
+    # 3. 必含新配置项 (r8/r10: dedup/cache_interval/image_compress_mb 已删)
+    for key in ("plite_forward_max_nodes",):
         if key not in paths:
             errors.append(f"FAIL: 缺少配置项 {key}")
 

@@ -33,6 +33,7 @@ STALE_SYMBOLS = [
     "proxied",
     "plite_http_proxy",
     "plite_dedup_ttl",
+    "plite_image_compress_mb",
     "plite_md5_",
     "plite_cache_interval",
     "plite_disabled_platforms",
