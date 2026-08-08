@@ -587,6 +587,7 @@ def sync_cookies_to_upstream() -> None:
     仅同步源码声明了 _ck 字段的平台; 无 astrbot/无上游时静默跳过.
     """
     try:
+        from bridge.config import up_config as _up_config
 
         _cfg = _up_config()
         _sync = False
