@@ -9,7 +9,6 @@ from urllib.parse import urljoin
 
 import aiofiles
 from anyio import Path
-from nonebot import logger
 from rich.progress import (
     BarColumn,
     DownloadColumn,
@@ -25,6 +24,7 @@ from ..exception import DownloadException, SizeLimitException, ZeroSizeException
 from ..utils.cache import CacheManager
 from ..utils.common import generate_file_name, make_filename, safe_unlink
 from ..utils.ffmpeg import FFmpeg
+from ..utils.log import logger
 from .client import RetryableDownloadError, UniHttpClient, UniResponse
 from .task import auto_task
 
