@@ -13,8 +13,8 @@ from typing import Any
 
 def status_text(plugin: Any) -> str:
     """状态报告 (纯数据, 插件实例注入; r8: 自研缓存/懒下载会话已删)."""
+    from bridge.adapter import up_base_parser
     from bridge.config import get_config
-    from bridge.context import up_base_parser
     from nonebot_plugin_parser_lite.constants import PlatformEnum
     from nonebot_plugin_parser_lite.utils.ffmpeg import FFmpeg  # noqa: E402
 
@@ -103,7 +103,7 @@ def _extract_urls(event) -> list[str]:
     """消息 URL 提取 (主链路 + 引用消息逃生通道)."""
     import astrbot.api.message_components as _Comp
 
-    from bridge.url_extract import extract_reply_urls, extract_urls
+    from bridge.adapter import extract_reply_urls, extract_urls
 
     urls = extract_urls(event, _Comp)
     if not urls:

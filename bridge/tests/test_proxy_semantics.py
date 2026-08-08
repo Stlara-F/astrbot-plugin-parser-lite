@@ -40,7 +40,7 @@ def test_enabled_platforms_checklist():
 
 def test_downloader_rebuild_direct():
     """apply_downloader_proxy 直连重建 (早期返回/存活检测)."""
-    from bridge.platform import apply_downloader_proxy
+    from bridge.adapter import apply_downloader_proxy
 
     try:
         apply_downloader_proxy()  # 无上游 client 时静默 (CI 无 astrbot)

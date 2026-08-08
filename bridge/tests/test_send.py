@@ -141,7 +141,7 @@ def test_send_card_fallback_text(monkeypatch: MonkeyPatch):
 
     monkeypatch.setattr(render_mod, "_plain", lambda text: FakePlain(text))
     monkeypatch.setattr(
-        "bridge.context.up_renderer",
+        "bridge.adapter.up_renderer",
         lambda: type("R", (), {"render_image": fake_render})(),
     )
     ev = FakeEvent()

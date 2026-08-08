@@ -37,9 +37,9 @@ for fn_name in ("_get_cookies_for",):
 
 
 # ═══════════════════════════════════════════════════════════════
-# C8: 注入函数可调用且不崩溃 (r9: 改由 bridge.inject 导入, main 不再持有)
+# C8: 注入函数可调用且不崩溃 (r9: 改由 bridge.config 导入, main 不再持有)
 # ═══════════════════════════════════════════════════════════════
-from bridge.inject import inject_dynamic_options_static
+from bridge.config import inject_dynamic_options_static
 
 try:
     _schema_f = _ROOT / "_conf_schema.json"

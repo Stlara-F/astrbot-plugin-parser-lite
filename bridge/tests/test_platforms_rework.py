@@ -19,20 +19,20 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge import inject  # noqa: E402
-from bridge.core import BridgeConfig, _is_parser_enabled  # noqa: E402
-from bridge.platform import (  # noqa: E402
+from bridge import config as inject  # noqa: E402
+from bridge.adapter import (  # noqa: E402
     _platforms_block,
     cookies_entries,
     enabled_platforms,
     get_cookies_for,
     sync_cookies_to_upstream,
 )
+from bridge.core import BridgeConfig, _is_parser_enabled  # noqa: E402
 from bridge.send import _onebot11_segments  # noqa: E402
 
 
 def _src():
-    return (_ROOT / "bridge" / "inject.py").read_text("utf-8")
+    return (_ROOT / "bridge" / "config.py").read_text("utf-8")
 
 
 def _set_cfg(data: dict):

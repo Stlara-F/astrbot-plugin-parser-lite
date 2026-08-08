@@ -127,11 +127,10 @@ class _LoguruBridge(logging.Handler):
 
 
 # ── 上游 imports ───────────────────────────────────────────────────────────────
-from bridge.format import format_full
-
 # ── 动态注入 ──────────────────────────────────────────────────────────────────
 # 模块加载时执行注入 (含 _injected 开关保护) — 委托 bridge.inject 决策树
-from bridge.inject import inject_dynamic_options_static  # noqa: E402
+from bridge.config import inject_dynamic_options_static  # noqa: E402
+from bridge.format import format_full
 from nonebot_plugin_parser_lite.data import (
     ParseResult,
 )

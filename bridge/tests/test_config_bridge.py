@@ -49,12 +49,12 @@ def test_read_cfg_exception_safe():
 
 
 def _bridge_fields_src():
-    """_BRIDGE_FIELDS 现定义于 bridge/inject.py (main.py 薄化)."""
-    return (_ROOT / "bridge" / "inject.py").read_text("utf-8")
+    """_BRIDGE_FIELDS 现定义于 bridge/config.py (main.py 薄化)."""
+    return (_ROOT / "bridge" / "config.py").read_text("utf-8")
 
 
 def test_bridge_fields_structure():
-    """读取 bridge/inject.py 的 _BRIDGE_FIELDS 结构 (静态解析)."""
+    """读取 bridge/config.py 的 _BRIDGE_FIELDS 结构 (静态解析)."""
     src = _bridge_fields_src()
     start = src.find("_BRIDGE_FIELDS: list[dict] = [")
     end = src.find("_PARSER_EXTRA_MAP", start)

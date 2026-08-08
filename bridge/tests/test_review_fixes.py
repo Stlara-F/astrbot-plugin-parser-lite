@@ -10,7 +10,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge.state_store import JsonStateStore  # noqa: E402
+from bridge.config import JsonStateStore  # noqa: E402
 
 
 def test_state_store_atomic_write(tmp_path):
@@ -66,7 +66,7 @@ def test_doctor_class_model_fields():
 
 def test_bool_annotation_helper():
     """P1-7: bool 判定兼容 bool | None / bool | None."""
-    from bridge.inject import is_bool_field
+    from bridge.config import is_bool_field
 
     class _F:
         def __init__(self, ann):

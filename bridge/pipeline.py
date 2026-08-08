@@ -12,8 +12,8 @@ import asyncio
 import logging
 from typing import Any
 
+from bridge.adapter import apply_downloader_proxy, sync_cookies_to_upstream
 from bridge.config import BridgeConfig
-from bridge.platform import apply_downloader_proxy, sync_cookies_to_upstream
 
 PARSE_TIMEOUT = 60.0  # 单次解析总超时(秒) — 防慢解析拖死
 
@@ -27,7 +27,7 @@ def _sync_enabled_to_upstream() -> None:
     bridge 勾选驱动 (未配置勾选 = 全部启用, 与 bridge 语义一致).
     """
     try:
-        from bridge.platform import enabled_platforms
+        from bridge.adapter import enabled_platforms
         from nonebot_plugin_parser_lite.config import pconfig
         from nonebot_plugin_parser_lite.constants import PlatformEnum
 

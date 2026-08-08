@@ -31,34 +31,33 @@ def _get_logger():
 astrbot_logger = _get_logger()
 
 # ── re-export: 配置/上下文 ──────────────────────────────────────────────────
+# ── re-export: 代理/平台决策 ────────────────────────────────────────────────
+from bridge.adapter import (  # noqa: F401,E402
+    apply_downloader_proxy as _apply_downloader_proxy,
+)
+from bridge.adapter import (
+    client_closed as _client_closed,
+)
+from bridge.adapter import (
+    get_cookies_for as _get_cookies_for,
+)
+from bridge.adapter import (
+    load_parsers_config as _load_parsers_config,
+)
+from bridge.adapter import (
+    platform_cfg as _platform_cfg,
+)
 from bridge.config import (  # noqa: F401,E402
     BridgeConfig,
     configure,
     get_config,
 )
-from bridge.i18n import (  # noqa: F401,E402
+from bridge.config import (  # noqa: F401,E402
     label as _label,
 )
 
 # ── re-export: 解析编排 ─────────────────────────────────────────────────────
 from bridge.pipeline import PARSE_TIMEOUT, ParserLite  # noqa: F401,E402
-
-# ── re-export: 代理/平台决策 ────────────────────────────────────────────────
-from bridge.platform import (  # noqa: F401,E402
-    apply_downloader_proxy as _apply_downloader_proxy,
-)
-from bridge.platform import (
-    client_closed as _client_closed,
-)
-from bridge.platform import (
-    get_cookies_for as _get_cookies_for,
-)
-from bridge.platform import (
-    load_parsers_config as _load_parsers_config,
-)
-from bridge.platform import (
-    platform_cfg as _platform_cfg,
-)
 
 
 def _is_parser_enabled(platform: str) -> bool:
@@ -67,7 +66,7 @@ def _is_parser_enabled(platform: str) -> bool:
     优先级: platforms.items.enabled 勾选 → 旧模板 enable → True.
     """
     try:
-        from bridge.platform import enabled_platforms
+        from bridge.adapter import enabled_platforms
 
         _en = enabled_platforms()
         if _en is not None:
@@ -88,7 +87,7 @@ _DISABLED_GROUPS_STORE = None  # JsonStateStore (B6: 统一锁/原子写/节流)
 def _disabled_groups_path() -> Path:
     global _DISABLED_GROUPS_FILE
     if _DISABLED_GROUPS_FILE is None:
-        from bridge.paths import ensure_state_dir
+        from bridge.config import ensure_state_dir
 
         _DISABLED_GROUPS_FILE = ensure_state_dir() / "disabled_groups.json"
     return _DISABLED_GROUPS_FILE
@@ -98,7 +97,7 @@ def _disabled_groups_store():
     """禁用群组状态存储 (JsonStateStore: 锁 + 原子写 + 节流)."""
     global _DISABLED_GROUPS_STORE
     if _DISABLED_GROUPS_STORE is None:
-        from bridge.state_store import JsonStateStore
+        from bridge.config import JsonStateStore
 
         _DISABLED_GROUPS_STORE = JsonStateStore(
             _disabled_groups_path(), flush_every=1, flush_interval=0.5

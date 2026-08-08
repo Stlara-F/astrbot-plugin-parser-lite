@@ -54,11 +54,11 @@ def test_up_renderer_refresh_after_upstream_rebuild():
 
     回归: 缓存 _UP_RENDERER 指向旧实例, patch 作用于新模块 → 调用漂移.
     """
-    from bridge import context
+    from bridge import adapter
     from nonebot_plugin_parser_lite import render as render_mod
 
     # 触发首次缓存 + patch
-    _r1 = context.up_renderer()
+    _r1 = adapter.up_renderer()
     assert getattr(render_mod.safe_src, "_pl_default_method", False)
 
     # 模拟 main.py 清 sys.modules → 上游模块重建
@@ -66,7 +66,7 @@ def test_up_renderer_refresh_after_upstream_rebuild():
         if _m.startswith("nonebot_plugin_parser_lite"):
             del sys.modules[_m]
 
-    _r2 = context.up_renderer()
+    _r2 = adapter.up_renderer()
     assert _r2 is not _r1  # 已重建
     from nonebot_plugin_parser_lite import render as render_mod2
 

@@ -11,7 +11,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge.url_extract import (  # noqa: E402
+from bridge.adapter import (  # noqa: E402
     collect_urls,
     extract_card_json_url,
     extract_forward_urls,

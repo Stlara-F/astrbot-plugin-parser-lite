@@ -97,7 +97,7 @@ async def send_card(event, result, format_full, logger=None):
         return _report
 
     try:
-        from bridge.context import up_renderer
+        from bridge.adapter import up_renderer
 
         data = await up_renderer().render_image(result)
         if len(data) < 1024 or data[:2] != b"\xff\xd8":

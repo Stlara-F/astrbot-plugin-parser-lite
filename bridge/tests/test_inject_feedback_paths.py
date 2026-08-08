@@ -17,8 +17,8 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge import inject  # noqa: E402
-from bridge.paths import get_base_dir, state_dir  # noqa: E402
+from bridge import config as inject  # noqa: E402
+from bridge.config import get_base_dir, state_dir  # noqa: E402
 
 
 def test_inject_report_structure():
@@ -83,7 +83,7 @@ def test_state_dir_under_base_dir(monkeypatch):
 
 def test_no_object_options_in_inject():
     """inject.py 无 {value,label} 对象 options (AstrBot 按字符串渲染)."""
-    src = (_ROOT / "bridge" / "inject.py").read_text(encoding="utf-8")
+    src = (_ROOT / "bridge" / "config.py").read_text(encoding="utf-8")
     assert '{"value": ' not in src
     assert '"options": [{' not in src
 

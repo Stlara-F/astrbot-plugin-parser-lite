@@ -10,7 +10,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import bridge.inject as inject  # noqa: E402
+import bridge.config as inject  # noqa: E402
 
 
 def test_schema_version_constant():
@@ -48,7 +48,7 @@ def test_flag_version_changed_triggers_reinject(tmp_path):
     # 用 monkeypatch 替代注入内部逻辑验证版本分支
     called = {}
 
-    import bridge.inject as inj
+    import bridge.config as inj
 
     orig = inj._rebuild_parser_extra_map
 

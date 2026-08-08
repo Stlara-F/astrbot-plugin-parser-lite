@@ -39,7 +39,7 @@ def parse_bridge_fields(src: str) -> list[dict]:
 
 def main() -> int:
     errors: list[str] = []
-    main_src = (ROOT / "bridge" / "inject.py").read_text("utf-8")
+    main_src = (ROOT / "bridge" / "config.py").read_text("utf-8")
     fields = parse_bridge_fields(main_src)
     paths = [f["path"] for f in fields]
 
