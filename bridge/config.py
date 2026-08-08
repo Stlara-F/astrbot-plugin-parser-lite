@@ -512,7 +512,11 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
     """注入主体 (被 inject_dynamic_options_static 包裹以提供失败反馈)."""
 
     _UpConfig = up_config()
-    from nonebot_plugin_parser_lite.parsers.base import BaseParser
+    # 必须经 up_base_parser (内部 load_all 注册子类) — 直接 import base 类
+    # 时 get_all_subclass() 为空 → platforms.enabled options 空 (未注入)
+    from bridge.adapter import up_base_parser
+
+    BaseParser = up_base_parser()
 
     schema = json.loads(schema_path.read_text("utf-8")) if schema_path.exists() else {}
     has_markers = "__INJECT__" in json.dumps(schema)
