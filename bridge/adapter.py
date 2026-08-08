@@ -704,3 +704,7 @@ def _is_parser_enabled(platform: str) -> bool:
         return True
     except Exception:
         return True
+
+
+# ── 兼容别名 (_ 前缀, 历史测试/调用引用) ────────────────────────────────────
+_platform_cfg = platform_cfg

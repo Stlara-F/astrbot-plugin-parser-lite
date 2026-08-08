@@ -10,7 +10,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import bridge.core as core  # noqa: E402
+import bridge.adapter as adapter  # noqa: E402
 
 
 class FakeClosedHttpx:
@@ -32,21 +32,21 @@ class FakeOpenCurl:
 def test_client_closed_detects_httpx():
     """httpx is_closed 检测."""
     client = type("C", (), {"_httpx": FakeClosedHttpx(), "_curl": FakeOpenCurl()})()
-    assert core._client_closed(client) is True
+    assert adapter.client_closed(client) is True
     client2 = type("C", (), {"_httpx": FakeOpenHttpx(), "_curl": FakeOpenCurl()})()
-    assert core._client_closed(client2) is False
+    assert adapter.client_closed(client2) is False
 
 
 def test_client_closed_detects_curl():
     """curl_cffi 内部 _curl None (已关闭) 检测."""
     client = type("C", (), {"_httpx": FakeOpenHttpx(), "_curl": FakeClosedCurl()})()
-    assert core._client_closed(client) is True
+    assert adapter.client_closed(client) is True
 
 
 def test_client_closed_missing_session():
     """session 缺失 (未初始化) → closed."""
     client = type("C", (), {"_httpx": None, "_curl": None})()
-    assert core._client_closed(client) is True
+    assert adapter.client_closed(client) is True
 
 
 def test_parserlite_no_self_managed_parsers():

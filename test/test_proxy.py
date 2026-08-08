@@ -59,7 +59,9 @@ else:
 # ═══════════════════════════════════════════════════════════════
 # C31: apply_downloader_proxy 直连重建 (r8: 代理体系已收敛)
 # ═══════════════════════════════════════════════════════════════
-proxy_src = inspect.getsource(_m._apply_downloader_proxy)
+import bridge.adapter as _adapter
+
+proxy_src = inspect.getsource(_adapter.apply_downloader_proxy)
 if "HttpxClient(" in proxy_src and "CurlSession(" in proxy_src:
     ok("_apply_downloader_proxy rebuilds httpx+curl clients (direct)")
 else:

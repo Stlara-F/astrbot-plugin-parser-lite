@@ -39,7 +39,7 @@ async def main() -> int:
         return 1
 
     from bridge.fixtures import install_httpx_hook  # noqa: E402
-    from bridge.format import format_brief, format_full  # noqa: E402
+    from bridge.send import format_brief, format_full  # noqa: E402
     from main import ParserLite  # noqa: E402  (需先设 env)
     from nonebot_plugin_parser_lite.parsers.base import BaseParser  # noqa: E402
 

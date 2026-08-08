@@ -167,7 +167,7 @@ async def test_install_chromium_delegates(monkeypatch):
     async def fake_ensure(browsers_path="", started_msg="ok"):
         return True, [started_msg, "已安装"]
 
-    monkeypatch.setattr("bridge.browser.ensure_chromium", fake_ensure)
+    monkeypatch.setattr("bridge.commands.ensure_chromium", fake_ensure)
     plugin = FakePlugin()
     event = FakeEvent()
     msgs = [m async for m in commands.install_chromium(plugin, event)]
@@ -187,9 +187,9 @@ async def test_doctor_ok(monkeypatch):
     def fake_render(results, summary):
         return "OK report"
 
-    monkeypatch.setattr("bridge.doctor.run_checks", fake_checks)
-    monkeypatch.setattr("bridge.doctor.summarize", fake_summarize)
-    monkeypatch.setattr("bridge.doctor.render_text", fake_render)
+    monkeypatch.setattr("bridge.commands.run_checks", fake_checks)
+    monkeypatch.setattr("bridge.commands.summarize", fake_summarize)
+    monkeypatch.setattr("bridge.commands.render_text", fake_render)
     plugin = FakePlugin()
     event = FakeEvent()
     msgs = [m async for m in commands.doctor(plugin, event)]

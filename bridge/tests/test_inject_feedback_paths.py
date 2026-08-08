@@ -90,7 +90,7 @@ def test_no_object_options_in_inject():
 
 def test_disabled_groups_no_file_dependency():
     """disabled_groups 路径不依赖 __file__ (统一状态目录)."""
-    core_src = (_ROOT / "bridge" / "core.py").read_text(encoding="utf-8")
+    core_src = (_ROOT / "bridge" / "config.py").read_text(encoding="utf-8")
     assert "_DISABLED_GROUPS_FILE" in core_src
     assert (
         "os.path.dirname(os.path.abspath(__file__))"

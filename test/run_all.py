@@ -96,7 +96,13 @@ if not args.smoke:
 print("\n-- doctor --")  # noqa: T201
 t0 = time.time()
 try:
-    from bridge.doctor import render_text, run_checks, save_snapshot, summarize, to_json
+    from bridge.commands import (
+        render_text,
+        run_checks,
+        save_snapshot,
+        summarize,
+        to_json,
+    )
 
     _checks = asyncio.run(run_checks())
     _summary = summarize(_checks)

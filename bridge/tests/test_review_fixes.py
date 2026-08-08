@@ -59,7 +59,7 @@ def test_state_store_concurrent_updates(tmp_path):
 
 def test_doctor_class_model_fields():
     """P0-2: doctor 不得实例访问 model_fields (pydantic 2.11+ deprecation)."""
-    src = (_ROOT / "bridge" / "doctor.py").read_text(encoding="utf-8")
+    src = (_ROOT / "bridge" / "commands.py").read_text(encoding="utf-8")
     assert "type(cfg).model_fields" in src
     assert "cfg.model_fields" not in src
 

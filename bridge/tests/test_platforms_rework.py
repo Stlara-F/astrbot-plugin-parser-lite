@@ -21,13 +21,14 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
 
 from bridge import config as inject  # noqa: E402
 from bridge.adapter import (  # noqa: E402
+    _is_parser_enabled,  # noqa: E402
     _platforms_block,
     cookies_entries,
     enabled_platforms,
     get_cookies_for,
     sync_cookies_to_upstream,
 )
-from bridge.core import BridgeConfig, _is_parser_enabled  # noqa: E402
+from bridge.config import BridgeConfig
 from bridge.send import _onebot11_segments  # noqa: E402
 
 

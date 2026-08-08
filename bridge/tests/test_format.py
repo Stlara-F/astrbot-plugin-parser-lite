@@ -10,7 +10,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge.format import format_brief, format_full  # noqa: E402
+from bridge.send import format_brief, format_full  # noqa: E402
 from nonebot_plugin_parser_lite.data import (  # noqa: E402
     Author,
     ParseResult,

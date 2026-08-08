@@ -1,7 +1,7 @@
 """导入完整性检查: 所有 from bridge.* import 的符号必须存在.
 
 防止删除死代码时遗漏 import 引用 (曾致插件加载失败:
-cannot import name '_extract_config_value' from 'bridge.core').
+cannot import name '_extract_config_value' from 'bridge.config').
 """
 
 from __future__ import annotations

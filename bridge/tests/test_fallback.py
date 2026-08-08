@@ -13,7 +13,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from bridge.fallback import safe, send_with_fallback, truncate_text  # noqa: E402
+from bridge.send import safe, send_with_fallback, truncate_text  # noqa: E402
 
 
 def test_safe_returns_none_on_error():

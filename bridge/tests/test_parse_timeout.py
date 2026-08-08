@@ -14,7 +14,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import bridge.core as core  # noqa: E402
+import bridge.pipeline as pipeline  # noqa: E402
 
 
 async def _slow_parse(seconds):
@@ -24,7 +24,7 @@ async def _slow_parse(seconds):
 
 def test_parse_timeout_constant():
     """解析超时常量存在且合理 (60s, 远小于 curl 240s)."""
-    assert core.PARSE_TIMEOUT <= 60.0
+    assert pipeline.PARSE_TIMEOUT <= 60.0
 
 
 @pytest.mark.asyncio
@@ -40,5 +40,5 @@ async def test_wait_for_truncates_slow_parse():
 @pytest.mark.asyncio
 async def test_fast_parse_not_affected():
     """正常解析不受超时影响."""
-    r = await asyncio.wait_for(_slow_parse(0.01), timeout=core.PARSE_TIMEOUT)
+    r = await asyncio.wait_for(_slow_parse(0.01), timeout=pipeline.PARSE_TIMEOUT)
     assert r == "done"

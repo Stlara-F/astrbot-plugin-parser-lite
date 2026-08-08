@@ -84,8 +84,6 @@ def is_bool_annotation(ann) -> bool:
     return False
 
 
-
-
 def up_config():
     """上游 Config 类 (兼容别名: 测试/内部延迟引用)."""
     from nonebot_plugin_parser_lite.config import Config
@@ -982,3 +980,35 @@ def _save_disabled_groups(data: set[str]) -> None:
         _store.flush()  # 命令触发场景即时落盘
     except Exception:
         pass
+
+
+def _detect_missing_libs() -> str:
+    """检测 Chromium 缺失系统库 (仅 Linux, Windows/macOS 不误报)."""
+    if sys.platform != "linux":
+        return ""
+    import ctypes
+    import ctypes.util
+
+    libs = {
+        "libnspr4.so": "nspr4",
+        "libnss3.so": "nss3",
+        "libgbm.so.1": "gbm",
+        "libasound.so.2": "asound",
+        "libxkbcommon.so.0": "xkbcommon",
+    }
+    missing = [
+        s
+        for s, n in libs.items()
+        if not (ctypes.util.find_library(n) and _try_load(ctypes.util.find_library(n)))
+    ]
+    return "\n".join(missing)
+
+
+def _try_load(path):
+    import ctypes
+
+    try:
+        ctypes.cdll.LoadLibrary(path)
+        return True
+    except OSError:
+        return False

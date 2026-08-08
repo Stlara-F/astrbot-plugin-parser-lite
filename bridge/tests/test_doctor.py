@@ -21,7 +21,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import bridge.doctor as doctor  # noqa: E402
+import bridge.commands as doctor  # noqa: E402
 
 
 def test_check_result_structure():
@@ -190,7 +190,7 @@ def test_detect_missing_libs_hint_safe():
 
 def test_check_chromium_reports_missing_libs(monkeypatch):
     """Chromium 启动失败 (缺库) → detail 含 apt 修复命令 (显式返回)."""
-    import bridge.doctor as d
+    import bridge.commands as d
 
     async def fake_started():
         raise RuntimeError("error while loading shared libraries: libnspr4.so")

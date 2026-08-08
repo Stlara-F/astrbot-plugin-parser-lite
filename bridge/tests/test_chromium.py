@@ -21,7 +21,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_verify_ok_returns_started(monkeypatch):
-    from bridge import browser as chromium
+    from bridge import commands as chromium
 
     async def _fake_verify() -> bool:
         return True
@@ -34,7 +34,7 @@ async def test_verify_ok_returns_started(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_download_fail_then_libs_ok(monkeypatch):
-    from bridge import browser as chromium
+    from bridge import commands as chromium
 
     async def _fake_verify() -> bool:
         return False
@@ -67,7 +67,7 @@ async def test_download_fail_then_libs_ok(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_root_manual_guidance(monkeypatch):
-    from bridge import browser as chromium
+    from bridge import commands as chromium
 
     async def _fake_verify() -> bool:
         return False
@@ -94,7 +94,7 @@ async def test_non_root_manual_guidance(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_total_failure_guidance(monkeypatch):
-    from bridge import browser as chromium
+    from bridge import commands as chromium
 
     async def _verify_fail() -> bool:
         return False
@@ -118,7 +118,7 @@ async def test_total_failure_guidance(monkeypatch):
 @pytest.mark.asyncio
 async def test_install_system_libs_root_apt_fallback(monkeypatch):
     """root + install-deps 失败 → apt-get 回退 (mock subprocess)."""
-    from bridge import browser as chromium
+    from bridge import commands as chromium
 
     class FakeProc:
         def __init__(self, rc):
@@ -134,7 +134,7 @@ async def test_install_system_libs_root_apt_fallback(monkeypatch):
     async def fake_subprocess_exec(*a, **kw):
         return next(procs)
 
-    monkeypatch.setattr("bridge.core._detect_missing_libs", lambda: ["libnss3"])
+    monkeypatch.setattr("bridge.config._detect_missing_libs", lambda: ["libnss3"])
     monkeypatch.setattr(chromium, "_is_root", lambda: True)
     monkeypatch.setattr(
         chromium.asyncio, "create_subprocess_exec", fake_subprocess_exec

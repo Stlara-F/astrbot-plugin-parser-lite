@@ -23,17 +23,17 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════════
-# C7: _get_cookies_for re-export 存在且唯一 (bridge.core; r9: _use_proxy_for 已删)
+# C7: get_cookies_for 存在且唯一 (bridge.adapter; r9: _use_proxy_for 已删)
 # ═══════════════════════════════════════════════════════════════
-import bridge.core as _core_mod
+import bridge.adapter as _core_mod
 
 src = inspect.getsource(_core_mod)
-for fn_name in ("_get_cookies_for",):
+for fn_name in ("get_cookies_for",):
     count = src.count(fn_name)
     if count >= 1:
-        ok(f"{fn_name}: re-export present (no duplicate)")
+        ok(f"{fn_name}: present (no duplicate)")
     else:
-        bad(f"{fn_name}: missing from bridge.core")
+        bad(f"{fn_name}: missing from bridge.adapter")
 
 
 # ═══════════════════════════════════════════════════════════════

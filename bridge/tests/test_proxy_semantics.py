@@ -16,12 +16,13 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import bridge.core as core  # noqa: E402
+import bridge.adapter as core  # noqa: E402
+from bridge.config import BridgeConfig
 
 
 def test_platform_cfg_no_proxy_key():
     """T2: platform_cfg 不再产出 proxy 键 (规则代理移除)."""
-    core.BridgeConfig._source = {
+    BridgeConfig._source = {
         "platforms": [{"platform": "x", "proxy": True, "enable": True}],
     }
     _pc = core._platform_cfg("x")
@@ -31,7 +32,7 @@ def test_platform_cfg_no_proxy_key():
 
 def test_enabled_platforms_checklist():
     """新格式 enabled 勾选语义保留."""
-    core.BridgeConfig._source = {
+    BridgeConfig._source = {
         "platforms": {"items": {"enabled": ["bilibili"]}},
     }
     assert core._is_parser_enabled("bilibili") is True

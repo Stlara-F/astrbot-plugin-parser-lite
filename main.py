@@ -56,27 +56,18 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
 # ── bridge core (拆分) ─────────────────────────────────────────────────────
-from bridge.core import (  # noqa: F401
+from bridge.adapter import _is_parser_enabled  # noqa: F401
+from bridge.config import (  # noqa: F401
     BridgeConfig,
-    ParserLite,
     _detect_missing_libs,
     _load_disabled_groups,
     configure,
     get_config,
 )
+from bridge.pipeline import ParserLite  # noqa: F401
 
 _CONF_SCHEMA_PATH = Path(__file__).parent / "_conf_schema.json"
 
-
-# ── 兼容 re-export (从 bridge.core) — 保持外部 API / 测试稳定 ──
-from bridge.core import (  # noqa: F401
-    _apply_downloader_proxy,
-    _get_cookies_for,
-    _is_parser_enabled,
-    _label,
-    _load_parsers_config,
-    _try_load,
-)
 
 # ── Monkey-patch ────────────────────────────────────────────────────────────────
 if not hasattr(logging.Logger, "success"):
@@ -130,7 +121,7 @@ class _LoguruBridge(logging.Handler):
 # ── 动态注入 ──────────────────────────────────────────────────────────────────
 # 模块加载时执行注入 (含 _injected 开关保护) — 委托 bridge.inject 决策树
 from bridge.config import inject_dynamic_options_static  # noqa: E402
-from bridge.format import format_full
+from bridge.send import format_full
 from nonebot_plugin_parser_lite.data import (
     ParseResult,
 )
@@ -215,8 +206,8 @@ class ParserLitePlugin(Star):
                 pass
 
     async def _auto_ensure_chromium(self) -> None:
-        # r11: Chromium 安装统一编排 (bridge.browser, 与命令共用)
-        from bridge.browser import ensure_chromium
+        # r11: Chromium 安装统一编排 (bridge.commands, 与命令共用)
+        from bridge.commands import ensure_chromium
 
         await ensure_chromium(
             browsers_path="",  # initialize 已设置 PLAYWRIGHT_BROWSERS_PATH

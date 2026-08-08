@@ -15,7 +15,8 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import bridge.core as core  # noqa: E402
+import bridge.adapter as adapter
+import bridge.config as core  # noqa: E402
 
 
 def test_read_cfg_dot_path():
@@ -42,14 +43,14 @@ def test_load_parsers_config_nested_items():
     core.BridgeConfig._source = {
         "parsers": {"items": {"proxied": ["bilibili"], "cookies": []}},
     }
-    cfg = core._load_parsers_config()
+    cfg = adapter.load_parsers_config()
     assert cfg.get("proxied") == ["bilibili"]
 
 
 def test_load_parsers_config_flat():
     """兼容旧扁平格式 {parsers: {proxied: [...]}}."""
     core.BridgeConfig._source = {"parsers": {"proxied": ["bilibili"]}}
-    cfg = core._load_parsers_config()
+    cfg = adapter.load_parsers_config()
     assert cfg.get("proxied") == ["bilibili"]
 
 
@@ -65,8 +66,8 @@ def test_get_cookies_template_list():
             }
         },
     }
-    assert core._get_cookies_for("bilibili") == {"Cookie": "SESSDATA=abc"}
-    assert core._get_cookies_for("douyin") == {}
+    assert adapter.get_cookies_for("bilibili") == {"Cookie": "SESSDATA=abc"}
+    assert adapter.get_cookies_for("douyin") == {}
 
 
 def test_get_cookies_legacy_json():
@@ -74,7 +75,7 @@ def test_get_cookies_legacy_json():
     core.BridgeConfig._source = {
         "parsers": {"items": {"cookies": '{"bilibili": "SESSDATA=old"}'}},
     }
-    assert core._get_cookies_for("bilibili") == {"Cookie": "SESSDATA=old"}
+    assert adapter.get_cookies_for("bilibili") == {"Cookie": "SESSDATA=old"}
 
 
 def test_platform_cfg_template_list():
@@ -90,8 +91,8 @@ def test_platform_cfg_template_list():
             {"platform": "zhihu", "enable": False},
         ],
     }
-    assert core._platform_cfg("zhihu")["enable"] is False
-    assert core._platform_cfg("douyin") == {}
+    assert adapter.platform_cfg("zhihu")["enable"] is False
+    assert adapter.platform_cfg("douyin") == {}
 
 
 def test_platform_cfg_legacy_dict():
@@ -99,7 +100,7 @@ def test_platform_cfg_legacy_dict():
     core.BridgeConfig._source = {
         "platforms": {"bilibili": {"enable": True}},
     }
-    assert core._platform_cfg("bilibili")["enable"] is True
+    assert adapter.platform_cfg("bilibili")["enable"] is True
 
 
 def test_platform_enable_priority():
@@ -108,7 +109,7 @@ def test_platform_enable_priority():
         "platforms": [{"platform": "bilibili", "enable": False}]
     }
     # _is_parser_enabled 读取 platforms.enable
-    assert core._is_parser_enabled("bilibili") is False
+    assert adapter._is_parser_enabled("bilibili") is False
 
 
 def test_platform_cookies_priority_over_parsers_items():
@@ -119,10 +120,10 @@ def test_platform_cookies_priority_over_parsers_items():
             "items": {"cookies": [{"platform": "bilibili", "cookie": "ck_old"}]}
         },
     }
-    assert core._get_cookies_for("bilibili") == {"Cookie": "ck_new"}
+    assert adapter.get_cookies_for("bilibili") == {"Cookie": "ck_new"}
     core.BridgeConfig._source = {
         "platforms": [{"platform": "zhihu", "cookies": ""}],
         "parsers": {"items": {"cookies": [{"platform": "zhihu", "cookie": "ck_old"}]}},
     }
     # platforms.cookies 为空 → 回退 parsers.items.cookies
-    assert core._get_cookies_for("zhihu") == {"Cookie": "ck_old"}
+    assert adapter.get_cookies_for("zhihu") == {"Cookie": "ck_old"}

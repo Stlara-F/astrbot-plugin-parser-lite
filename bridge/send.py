@@ -6,10 +6,22 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+import functools
+import logging
 from pathlib import Path
+from typing import TypeVar
 
 from bridge.config import bridge_cfg
+from nonebot_plugin_parser_lite.data import (  # noqa: E402
+    AudioContent,
+    ImageContent,
+    ParseResult,
+    StickerContent,
+    VideoContent,
+)
 
 
 @dataclass
@@ -612,7 +624,7 @@ async def send_as_forward(event, items: list, result) -> None:
         Video,
     )
 
-    from bridge.fallback import send_with_fallback
+    from bridge.send import send_with_fallback
     from nonebot_plugin_parser_lite.data import AudioContent, ImageContent, VideoContent
 
     nodes = []
@@ -759,8 +771,148 @@ async def dispatch_result(event, result) -> None:
     命令与消息事件共用 (send_card 的文本回退在 send_card 内部).
     """
     if should_send("card"):
-        from bridge.format import format_full
         from bridge.render import send_card
+        from bridge.send import format_full
 
         await send_card(event, result, format_full)
     await send_items(event, result.content, result)
+
+
+# ── 格式化 (format 合并) ─────────────────────────────────────
+def _safe_label(result: ParseResult) -> str:
+    _p = getattr(result, "platform", None)
+    _pn = getattr(_p, "display_name", None) or getattr(_p, "name", None) or "解析"
+    _a = getattr(result, "author", None)
+    _an = getattr(_a, "name", None) or ""
+    return f"【{_pn}】{_an}"
+
+
+def format_full(result: ParseResult) -> str:
+    lines = [
+        _safe_label(result),
+        result.title or "",
+    ]
+    if result.timestamp:
+        lines.append(result.formatted_datetime)
+    # 保持 content 原始顺序: 文本 + 贴纸 desc 按序拼接
+    texts = []
+    for t in result.content:
+        if isinstance(t, str):
+            texts.append(t)
+        elif isinstance(t, StickerContent):
+            texts.append(t.desc or "[表情]")
+    if texts:
+        lines.append("\n" + "\n".join(texts))
+    media = []
+    for item in result.content:
+        if isinstance(item, VideoContent):
+            media.append(f"[{item.display_duration}]")
+        elif isinstance(item, ImageContent):
+            media.append("[图]")
+        elif isinstance(item, AudioContent):
+            media.append("[音]")
+    if media:
+        lines.append("\n" + " ".join(media))
+    s = result.stats
+    stats = []
+    if s.view_count:
+        stats.append(f"播放{s.view_count}")
+    if s.like_count:
+        stats.append(f"赞{s.like_count}")
+    if s.comment_count:
+        stats.append(f"评论{s.comment_count}")
+    if s.share_count:
+        stats.append(f"分享{s.share_count}")
+    if s.collect_count:
+        stats.append(f"收藏{s.collect_count}")
+    if stats:
+        lines.append("\n" + " | ".join(stats))
+    if result.comments:
+        lines.append(f"\n--- 评论 (共{len(result.comments)}条) ---")
+        for i, c in enumerate(result.comments[:5], 1):
+            body = " ".join([x for x in c.content if isinstance(x, str)])[:80]
+            lines.append(f"[{i}] {c.author.name}: {body}")
+    if result.ai_summary and "cookie 未配置" not in result.ai_summary:
+        lines.append(f"\nAI摘要: {result.ai_summary[:500]}")
+    return "\n".join(lines)
+
+
+def format_brief(result: ParseResult) -> str:
+    lines = [_safe_label(result), result.title or ""]
+    s = result.stats
+    parts = []
+    if s.view_count:
+        parts.append(f"播放{s.view_count}")
+    if s.like_count:
+        parts.append(f"赞{s.like_count}")
+    if s.comment_count:
+        parts.append(f"评论{s.comment_count}")
+    if parts:
+        lines.append(" | ".join(parts))
+    return "\n".join(lines)
+
+
+# ── 发送降级 (fallback 合并) ───────────────────────────────────
+_logger = logging.getLogger("parser-lite.bridge")
+
+T = TypeVar("T")
+
+
+def safe(
+    logger=None, label: str = ""
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T | None]]]:
+    """异步装饰器: 捕获异常, 记录 traceback 摘要, 返回 None 不抛出."""
+
+    def deco(fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T | None]]:
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await fn(*args, **kwargs)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                _lg = logger or _logger
+                _lg.warning(
+                    f"[ParserLite] {label or fn.__name__} 失败: {type(exc).__name__}: {exc}"
+                )
+                return None
+
+        return wrapper
+
+    return deco
+
+
+async def send_with_fallback(
+    *,
+    try_send: Callable[[], Awaitable[bool]],
+    fallbacks: list[Callable[[], Awaitable[bool]]],
+    logger=None,
+    label: str = "发送",
+) -> bool:
+    """发送降级链: 依次尝试 try_send 与 fallbacks, 首个成功即返回.
+
+    :param try_send: 主发送 (如合并转发)
+    :param fallbacks: 降级序列 (拆包单发 → 纯文本 → 截断), 每个返回是否成功
+    :return: 是否至少一个成功
+    """
+    _lg = logger or _logger
+    attempts = [try_send, *list(fallbacks)]
+    for i, fn in enumerate(attempts):
+        try:
+            ok = await fn()
+            if ok:
+                return True
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            _lg.warning(
+                f"[ParserLite] {label} 第 {i + 1} 级失败: {type(exc).__name__}: {exc}"
+            )
+    return False
+
+
+def truncate_text(text: str, max_len: int) -> str:
+    """按长度截断文本 (动态 max_len), 保留末尾省略号."""
+    if max_len <= 0 or len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
