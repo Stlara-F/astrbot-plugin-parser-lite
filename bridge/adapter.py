@@ -42,11 +42,6 @@ def _import_upstream() -> None:
         from nonebot_plugin_parser_lite.creator import Creator as _UP_CREATOR
 
 
-def __up_config():
-    _import_upstream()
-    return _UP_CONFIG
-
-
 def up_downloader():
     _import_upstream()
     return _UP_DOWNLOADER
@@ -86,12 +81,6 @@ def up_creator():
 
 
 URL_RE = re.compile(r"https?://[^\s<>\"{}|\\^`\[\]]+", re.IGNORECASE)
-
-
-def url_from_text(get_message_str) -> str | None:
-    """从消息文本提取首个 URL."""
-    m = URL_RE.search(str(get_message_str()).strip())
-    return m.group(0) if m else None
 
 
 def collect_urls(text: str, urls: list[str]) -> None:
@@ -660,28 +649,6 @@ def get_cookies_for(platform: str) -> dict:
     except Exception as _cfg_e:
         _log_cfg_fallback(_cfg_e)
     return {}
-
-
-def build_feature_table() -> dict:
-    """动态特征表: URL关键词 → 解析器名 (O(1) 路由, 0 硬编码)."""
-    import inspect as _inspect
-    import re as _re
-
-    from bridge.adapter import up_base_parser
-
-    table: dict[str, str] = {}
-    for cls in up_base_parser().get_all_subclass():
-        name = cls.__name__
-        for _, method in _inspect.getmembers(cls, _inspect.isfunction):
-            kp = getattr(method, "_key_patterns", None)
-            if not kp:
-                continue
-            for keyword, _pattern, _params in kp:
-                if _re.search(r"[\\^$*+?{}()\[\]|]", keyword):
-                    continue
-                if len(keyword) >= 2:
-                    table[keyword] = name
-    return table
 
 
 def _is_parser_enabled(platform: str) -> bool:

@@ -463,6 +463,8 @@ def _rebuild_parser_extra_map() -> None:
         ann = finfo.annotation
         is_list = hasattr(ann, "__args__")
         enum_cls = typing.get_args(ann)[0] if is_list else ann
+        if fname == "plite_disabled_platforms":
+            continue  # 收敛: 启用入口唯一
         short_key = fname.removeprefix("plite_")
         _PARSER_EXTRA_MAP[short_key] = (fname, enum_cls, is_list)
 
@@ -744,6 +746,8 @@ def _inject_inner(schema_path: Path, flag_path: Path, _logger) -> list[str]:
         ann = finfo.annotation
         is_list = hasattr(ann, "__args__")
         enum_cls = typing.get_args(ann)[0] if is_list else ann
+        if fname == "plite_disabled_platforms":
+            continue  # 收敛: 启用入口唯一 (platforms.enabled)
         short_key = fname.removeprefix("plite_")
         try:
             dv = finfo.default

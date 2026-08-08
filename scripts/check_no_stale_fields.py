@@ -59,6 +59,7 @@ ALLOW_CONTEXTS = (
     "已移除",
     "自研",  # 中文清理注释
     "残留清理",  # inject 清理段
+    'fname == "plite_disabled_platforms"',  # parser_extra 注入排除 (收敛单一入口)
     "stale",
     "Stale",  # 本脚本自身
     "_STALE_",
