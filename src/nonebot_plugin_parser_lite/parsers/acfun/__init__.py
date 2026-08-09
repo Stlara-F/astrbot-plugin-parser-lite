@@ -63,7 +63,7 @@ class AcfunParser(BaseParser):
         response.raise_for_status()
         raw = response.text
 
-        matched = re.search(r"window\.videoInfo =(.*?)</script>", raw)
+        matched = re.search(r"window\.videoInfo\s*=(.*?)</script>", raw)
         if not matched:
             raise ParseException("解析 acfun 视频信息失败")
 
