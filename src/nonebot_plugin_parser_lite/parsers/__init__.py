@@ -1,59 +1,54 @@
-from .acfun import AcfunParser
-from .bilibili import BilibiliParser
-from .buff import BuffParser
-from .coolapk import CoolapkParser
-from .douban import DoubanParser
-from .doubao import DouBaoParser
-from .douyin import DouyinParser
-from .duitang import DuiTangParser
-from .fiveeplay import FiveEPlayParser
-from .heybox import HeyBoxParser
-from .hupu import HupuParser
-from .illu import IlluParser
-from .kuaishou import KuaiShouParser
-from .kugou import KuGouParser
-from .kuwo import KuWoParser
-from .linuxdo import LinuxDoParser
-from .lofter import LofterParser
-from .miyoushe import MiyousheParser
-from .netease import NCMParser
-from .qsmusic import QSMusicParser
-from .rednote import RedNoteParser
-from .taptap import TapTapParser
-from .tieba import TiebaParser
-from .weibo import WeiBoParser
-from .wmpvp import WMPVPParser
-from .x import XParser
-from .zhihu import ZhiHuParser
-from .zlb import ZLBParser
+"""Lazy exports for platform parsers."""
 
-__all__ = [
-    "AcfunParser",
-    "BilibiliParser",
-    "BuffParser",
-    "CoolapkParser",
-    "DouBaoParser",
-    "DoubanParser",
-    "DouyinParser",
-    "DuiTangParser",
-    "FiveEPlayParser",
-    "HeyBoxParser",
-    "HupuParser",
-    "IlluParser",
-    "KuGouParser",
-    "KuWoParser",
-    "KuaiShouParser",
-    "LinuxDoParser",
-    "LofterParser",
-    "MiyousheParser",
-    "NCMParser",
-    "QSMusicParser",
-    "RedNoteParser",
-    "TapTapParser",
-    "TiebaParser",
-    "WMPVPParser",
-    "WeiBoParser",
-    "XParser",
-    "ZLBParser",
-    "ZhiHuParser",
-]
+from importlib import import_module
+from typing import Any
+
+_PARSERS = {
+    "AcfunParser": ".acfun",
+    "BilibiliParser": ".bilibili",
+    "BuffParser": ".buff",
+    "CoolapkParser": ".coolapk",
+    "DoubanParser": ".douban",
+    "DouBaoParser": ".doubao",
+    "DouyinParser": ".douyin",
+    "DuiTangParser": ".duitang",
+    "FiveEPlayParser": ".fiveeplay",
+    "HeyBoxParser": ".heybox",
+    "HupuParser": ".hupu",
+    "IlluParser": ".illu",
+    "KuaiShouParser": ".kuaishou",
+    "KuGouParser": ".kugou",
+    "KuWoParser": ".kuwo",
+    "LinuxDoParser": ".linuxdo",
+    "LofterParser": ".lofter",
+    "MiyousheParser": ".miyoushe",
+    "NCMParser": ".netease",
+    "QSMusicParser": ".qsmusic",
+    "RedNoteParser": ".rednote",
+    "TiebaParser": ".tieba",
+    "WeiBoParser": ".weibo",
+    "WMPVPParser": ".wmpvp",
+    "XParser": ".x",
+    "ZhiHuParser": ".zhihu",
+    "ZLBParser": ".zlb",
+}
+
+__all__ = list(_PARSERS)
+
+
+def __getattr__(name: str) -> Any:
+    try:
+        module_name = _PARSERS[name]
+    except KeyError as exc:
+        raise AttributeError(name) from exc
+    value = getattr(import_module(module_name, __name__), name)
+    globals()[name] = value
+    return value
+
+
+def load_all() -> tuple[type, ...]:
+    """Load every platform parser for automatic text matching."""
+    return tuple(
+        __getattr__(name) if name not in globals() else globals()[name]
+        for name in __all__
+    )

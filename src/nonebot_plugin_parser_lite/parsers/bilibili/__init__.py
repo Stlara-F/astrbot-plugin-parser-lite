@@ -7,7 +7,6 @@ from typing import Any, ClassVar
 import aiofiles
 from anyio import Path
 from msgspec import convert
-from nonebot import logger
 import ujson
 
 from ...exception import DownloadException, TipException
@@ -31,6 +30,7 @@ from ...utils.bilibili.user import get_black_list
 from ...utils.bilibili.video import Video, VideoDownloadURLDataDetecter
 from ...utils.cookie import ck2dict
 from ...utils.format import format_num
+from ...utils.log import logger
 from ..base import (
     DOWNLOADER,
     Author,
@@ -124,22 +124,17 @@ class BilibiliParser(BaseParser):
                 f"已加载 {len(self.black_mids)} 个 B 站黑名单用户 (pages={pages})"
             )
 
-            # 首次成功加载黑名单后，注册定时刷新任务（最多注册一次）
+            # 首次成功加载黑名单后注册小时刷新任务
             if not self._black_list_job_added:
-                try:
-                    from nonebot_plugin_apscheduler import scheduler
+                from ...utils.scheduler import scheduler
 
-                    scheduler.add_job(
-                        self.load_black_list,
-                        "interval",
-                        hours=1,
-                        id="sync-bili-black-list",
-                        replace_existing=True,
-                    )
-                    self._black_list_job_added = True
-                    logger.info("已注册 B 站黑名单定时同步任务（每 1 小时刷新一次）")
-                except Exception as e:
-                    logger.warning(f"注册 B 站黑名单定时任务失败: {e}")
+                scheduler.add_job(
+                    self.load_black_list,
+                    seconds=60 * 60,
+                    id="sync-bili-black-list",
+                )
+                self._black_list_job_added = True
+                logger.info("已注册 B 站黑名单异步同步任务（每 1 小时刷新一次）")
 
         except Exception as e:
             logger.exception(f"请求 B 站黑名单接口异常: {e}")

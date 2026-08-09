@@ -1,6 +1,9 @@
+import json
+import os
+from pathlib import Path as SyncPath
+from typing import Any
+
 from anyio import Path
-from nonebot import get_driver, get_plugin_config
-import nonebot_plugin_localstore as _store
 from pydantic import BaseModel
 
 from .constants import PlatformEnum
@@ -238,14 +241,48 @@ class Config(BaseModel):
         )
 
 
-# 初始化配置实例
-_driver = get_driver()
-_cache_dir: Path = Path(_store.get_plugin_cache_dir())
-_config_dir: Path = Path(_store.get_plugin_config_dir())
-_data_dir: Path = Path(_store.get_plugin_data_dir())
-pconfig: Config = get_plugin_config(Config)
-"""插件配置"""
-gconfig = _driver.config
-"""全局配置"""
-_nickname: str = next(iter(gconfig.nickname), "nonebot-plugin-parser")
-"""机器人昵称"""
+# Standalone configuration
+def _decode_env_value(raw: str) -> Any:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def _config_from_env() -> Config:
+    values: dict[str, Any] = {}
+    for name in Config.model_fields:
+        if (raw := os.getenv(name)) is None:
+            raw = os.getenv(name.upper())
+        if raw is not None:
+            values[name] = _decode_env_value(raw)
+    return Config.model_validate(values)
+
+
+_base_dir = SyncPath(
+    os.getenv("PARSER_LITE_BASE_DIR", SyncPath.cwd() / ".parser-lite")
+).resolve()
+_cache_dir = Path(_base_dir / "cache")
+_config_dir = Path(_base_dir / "config")
+_data_dir = Path(_base_dir / "data")
+pconfig: Config = _config_from_env()
+"""Active standalone configuration."""
+
+
+class GlobalConfig(BaseModel):
+    log_level: str | int = os.getenv("LOG_LEVEL", "INFO")
+    nickname: list[str] = [os.getenv("PARSER_LITE_NICKNAME", "parser-lite")]
+
+
+gconfig = GlobalConfig()
+_nickname: str = next(iter(gconfig.nickname), "parser-lite")
+
+
+def configure(config: Config | None = None, **overrides: Any) -> Config:
+    """Update the shared configuration without invalidating imported references."""
+    values = (config or pconfig).model_dump()
+    values.update(overrides)
+    validated = Config.model_validate(values)
+    for name, value in validated:
+        setattr(pconfig, name, value)
+    return pconfig

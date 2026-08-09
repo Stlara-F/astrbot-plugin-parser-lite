@@ -1,9 +1,8 @@
 import re
 from typing import ClassVar
 
-from nonebot import logger
-
 from ...utils.format import format_num
+from ...utils.log import logger
 from ..base import (
     BaseParser,
     MatchWithParams,
