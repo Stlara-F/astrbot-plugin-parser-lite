@@ -3,6 +3,8 @@ name: Publish standalone branch
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/nonebot_plugin_parser_lite/**'
   workflow_dispatch:
 
 concurrency:
