@@ -22,6 +22,7 @@ class HeyBoxParser(BaseParser):
     platform: ClassVar[Platform] = Platform(
         name=PlatformEnum.HEYBOX, display_name="小黑盒"
     )
+    device_id: str = ""
 
     def __init__(self):
         super().__init__()
@@ -33,7 +34,6 @@ class HeyBoxParser(BaseParser):
                 "Accept": "application/json, text/plain, */*",
             }
         )
-        self.device_id: str = ""
 
     async def ensure_token(self):
         if self.device_id:
