@@ -3,6 +3,8 @@ import random
 import time
 from typing import ClassVar
 
+from nonebot.log import logger
+
 from .base import (
     BaseParser,
     ContentItem,
@@ -80,8 +82,18 @@ class NCMParser(BaseParser):
         lyric = ""
         with contextlib.suppress(Exception):
             lyric = (await self.fetch("getSongLyric", {"id": ncm_id})).get("lrc")
-        url_data = await self.fetch("getSongUrl", {"id": ncm_id, "level": "standard"})
-        if not (audio_url := url_data.get("url")):
+        audio_url: str | None = None
+        for level in ("lossless", "standard"):
+            try:
+                url_data = await self.fetch(
+                    "getSongUrl", {"id": ncm_id, "level": level}
+                )
+                audio_url = url_data.get("url")
+                if audio_url:
+                    break
+            except Exception as e:
+                logger.warning(f"[网易云解析] {level} 获取失败: {e}")
+        if not audio_url:
             raise ParseException("无法获取音频下载地址")
         url_no_params = audio_url.split("?", 1)[0]
         ext = url_no_params.rsplit(".", 1)[-1].lower() if "." in url_no_params else ""
@@ -99,7 +111,10 @@ class NCMParser(BaseParser):
         if cover_url := song.get("picimg"):
             contents.append(self.create_image(cover_url))
 
-        audio_info = f"大小: {await audio.get_display_size()} | 格式: {audio_type}"
+        audio_info = (
+            f"音质: {level} | 大小: {await audio.get_display_size()} |"
+            f" 格式: {audio_type}"
+        )
 
         extra = {
             "info": audio_info,
