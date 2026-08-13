@@ -244,5 +244,6 @@ npm run build:css
 - [ikenxuan/karin-plugin-kkk](https://github.com/ikenxuan/karin-plugin-kkk) 给群聊机器人提供视频作品、动态解析和推送功能，并使用 React + Tailwindcss 构建出现代审美设计的信息卡片
 - [ikenxuan/amagi](https://github.com/ikenxuan/amagi) 抖音、B站 web 端相关数据接口封装基于 Node.js 的实现
 - [zly2006/zhihu-plus-plus](https://github.com/zly2006/zhihu-plus-plus) Zhihu++ | 知乎++: Ad-free, low cost, AI powered zhihu android 3rd-party client. 去广告、占用低、AI大模型的新时代知乎安卓端体验
-- [Uesugi Hanako](https://github.com/negichan) 渲染模板设计
+- [Uesugi Hanako](https://github.com/negichan) 渲染模板设计和部分签名算法
+- [soloxiaoye2022](https://github.com/soloxiaoye2022) 部分签名算法
 - 致2026年的你们
