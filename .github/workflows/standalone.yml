@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/standalone.yml'
+      - 'LICENSE'
+      - 'requirements.txt'
+      - 'ruff.toml'
+      - 'scripts/generate_standalone.py'
+      - 'scripts/verify_standalone.py'
+      - 'scripts/standalone_templates/**'
       - 'src/nonebot_plugin_parser_lite/**'
   workflow_dispatch:
 
@@ -63,16 +70,34 @@ jobs:
             exit 0
           fi
 
-          git add --all
+          publish_index="$(mktemp)"
+          rm -f "$publish_index"
+          export GIT_INDEX_FILE="$publish_index"
+          git read-tree --empty
+          git add -- README.md LICENSE requirements.txt pyproject.toml \
+            src/nonebot_plugin_parser_lite
+
+          unexpected_paths="$(git ls-files | awk -F/ '
+            $1 != "README.md" &&
+            $1 != "LICENSE" &&
+            $1 != "requirements.txt" &&
+            $1 != "pyproject.toml" &&
+            !($1 == "src" && $2 == "nonebot_plugin_parser_lite")
+          ')"
+          if [[ -n "$unexpected_paths" ]]; then
+            echo "refusing to publish unexpected paths:"
+            printf '%s\n' "$unexpected_paths"
+            exit 1
+          fi
+
           tree="$(git write-tree)"
-          main_parent="$source_main"
           expected_standalone=""
           if git rev-parse --verify refs/remotes/origin/standalone >/dev/null 2>&1; then
             expected_standalone="$(git rev-parse refs/remotes/origin/standalone)"
           fi
-          commit="$(printf '%s\n' "auto: publish standalone for ${main_parent:0:12}" |
-            git commit-tree "$tree" -p "$main_parent")"
-          echo "publishing standalone as one snapshot commit on ${main_parent:0:12}"
+          commit="$(printf '%s\n' "auto: publish standalone for ${source_main:0:12}" |
+            git commit-tree "$tree")"
+          echo "publishing standalone as an isolated snapshot for ${source_main:0:12}"
           git push origin \
             --force-with-lease="refs/heads/standalone:${expected_standalone}" \
             "$commit:refs/heads/standalone"
